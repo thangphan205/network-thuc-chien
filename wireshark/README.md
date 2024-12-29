@@ -10,6 +10,6 @@
 | Database    | Download |
 | -------- | ------- |
 | Country | https://share.9ping.cloud/wireshark/GeoLite2-Country.mmdb |
-|ASN| https://share.9ping.cloud/wireshark/GeoLite2-Country.mmdb|
-|Country| https://share.9ping.cloud/wireshark/GeoLite2-Country.mmdb|
+|City| https://share.9ping.cloud/wireshark/GeoLite2-City.mmdb|
+|ASN| https://share.9ping.cloud/wireshark/GeoLite2-ASN.mmdb|
 
