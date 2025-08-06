@@ -1,0 +1,23 @@
+name: cisco_lab
+
+mgmt:
+  network: mgmt
+  ipv4-subnet: 192.168.11.0/24
+
+topology:
+  nodes:
+    cisco1:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.11.11
+      startup-config: config/cisco.conf.partial
+    cisco2:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.11.12
+      startup-config: config/cisco.conf.partial
+    cisco3:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.11.13
+      startup-config: config/cisco.conf.partial

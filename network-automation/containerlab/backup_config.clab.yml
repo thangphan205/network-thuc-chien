@@ -1,0 +1,61 @@
+name: backup-config
+
+mgmt:
+  network: mgmt
+  ipv4-subnet: 192.168.11.0/24
+
+topology:
+  nodes:
+    cisco1:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.11.11
+      startup-config: config/cisco.conf.partial
+    cisco2:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.11.12
+      startup-config: config/cisco.conf.partial
+    cisco3:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.11.13
+      startup-config: config/cisco.conf.partial
+    cisco4:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.11.14
+      startup-config: config/cisco.conf.partial
+    cisco5:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.11.15
+      startup-config: config/cisco.conf.partial
+
+    juniper1:
+      kind: juniper_crpd
+      image: crpd:25.2R1.9
+      mgmt-ipv4: 192.168.11.21
+      startup-config: config/juniper.conf
+    juniper2:
+      kind: juniper_crpd
+      image: crpd:25.2R1.9
+      mgmt-ipv4: 192.168.11.22
+      startup-config: config/juniper.conf
+    juniper3:
+      kind: juniper_crpd
+      image: crpd:25.2R1.9
+      mgmt-ipv4: 192.168.11.23
+      startup-config: config/juniper.conf
+    juniper4:
+      kind: juniper_crpd
+      image: crpd:25.2R1.9
+      mgmt-ipv4: 192.168.11.24
+      startup-config: config/juniper.conf
+    juniper5:
+      kind: juniper_crpd
+      image: crpd:25.2R1.9
+      mgmt-ipv4: 192.168.11.25
+      startup-config: config/juniper.conf
+  links:
+    - endpoints: ["cisco1:Ethernet0/1", "juniper1:eth1"]

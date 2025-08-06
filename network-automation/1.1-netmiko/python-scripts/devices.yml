@@ -1,0 +1,14 @@
+# devices.yml
+- host: 192.168.11.11
+  username: backup_user
+  password: Poothe0uR3Ohziox6mos
+  device_type: cisco_ios
+- host: 192.168.11.12
+  username: backup_user
+  password: Poothe0uR3Ohziox6mos
+  device_type: arista_eos
+  secret: enable
+- host: 192.168.11.13
+  username: backup_user
+  password: Poothe0uR3Ohziox6mos
+  device_type: juniper_junos
