@@ -1,0 +1,21 @@
+---
+- name: Check DNS compliance without configuration
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Get current DNS configuration
+      cisco.ios.ios_command:
+        commands:
+          - show running-config | include name-server
+      register: dns_output
+
+    - name: Display compliant status
+      debug:
+        msg: "✅ DNS server is compliant. Current config: {{ dns_output.stdout[0] }}"
+      when: "'192.168.1.10' in dns_output.stdout[0]"
+
+    - name: Display non-compliant status
+      debug:
+        msg: "❌ DNS server is NOT compliant. Current config: {{ dns_output.stdout[0] }}"
+      when: "'192.168.1.10' not in dns_output.stdout[0]"

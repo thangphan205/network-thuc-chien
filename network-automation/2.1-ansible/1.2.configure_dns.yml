@@ -1,0 +1,16 @@
+---
+- name: Configure DNS servers on Cisco IOS devices
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Set DNS name servers and enable DNS lookup
+      cisco.ios.ios_system:
+        name_servers:
+          - 9.9.9.9
+        lookup_enabled: true
+      register: dns_config_output
+
+    - name: Print the configuration output
+      debug:
+        var: dns_config_output

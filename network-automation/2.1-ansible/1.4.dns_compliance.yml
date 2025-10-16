@@ -1,0 +1,22 @@
+---
+- name: Check and enforce DNS compliance
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Get current DNS name-server configuration
+      cisco.ios.ios_command:
+        commands:
+          - show running-config | include name-server
+      register: dns_config_output
+
+    - name: Configure DNS server if not compliant
+      cisco.ios.ios_system:
+        name_servers:
+          - 192.168.1.10
+      when: "'192.168.1.10' not in dns_config_output.stdout[0]"
+
+    # - name: Show status
+    #   debug:
+    #     msg: "DNS server is now configured correctly."
+    #   when: changed

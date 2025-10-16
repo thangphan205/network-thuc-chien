@@ -1,0 +1,15 @@
+---
+- name: Show current DNS configuration on Cisco IOS devices
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Get DNS name servers
+      cisco.ios.ios_command:
+        commands:
+          - show running-config | include name-server
+      register: dns_output
+
+    - name: Print DNS configuration
+      debug:
+        var: dns_output.stdout_lines

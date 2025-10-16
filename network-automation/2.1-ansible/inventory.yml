@@ -1,0 +1,20 @@
+all:
+  hosts:
+    cisco1:
+      ansible_host: 192.168.11.11
+    cisco2:
+      ansible_host: 192.168.11.12
+    cisco3:
+      ansible_host: 192.168.11.13
+    cisco4:
+      ansible_host: 192.168.11.14
+    cisco5:
+      ansible_host: 192.168.11.15
+  vars:
+    ansible_network_os: ios
+    ansible_connection: network_cli
+    ansible_user: backup_user
+    ansible_password: Poothe0uR3Ohziox6mos
+    ansible_become: yes
+    ansible_become_method: enable
+    ansible_become_password: your_enable_password
