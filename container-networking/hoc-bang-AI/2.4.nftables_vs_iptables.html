@@ -1,0 +1,253 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{padding:1rem 0 2rem;font-family:var(--font-sans)}
+.snav{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:1.25rem}
+.sn{padding:5px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);font-size:12px;cursor:pointer;background:transparent;color:var(--color-text-secondary);white-space:nowrap}
+.sn:hover{background:var(--color-background-secondary)}
+.sn.on{background:var(--color-background-primary);border-color:var(--color-border-primary);color:var(--color-text-primary);font-weight:500}
+.concept{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:11px 14px;margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7}
+.concept b{font-weight:500;color:var(--color-text-primary)}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.col-card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:12px 14px}
+.col-title{font-size:12px;font-weight:500;margin-bottom:8px}
+.col-body{font-size:12px;color:var(--color-text-secondary);line-height:1.7}
+.col-old .col-title{color:#A32D2D}
+.col-new .col-title{color:#085041}
+.col-old{border-color:#F7C1C1}
+.col-new{border-color:#9FE1CB}
+.cmd-block{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);overflow:hidden;margin-bottom:8px}
+.clabel{font-size:11px;color:var(--color-text-tertiary);padding:6px 12px 0;text-transform:uppercase;letter-spacing:.04em;font-weight:500}
+.cmd{font-family:var(--font-mono);font-size:12px;padding:5px 12px 10px;color:var(--color-text-primary);line-height:1.95}
+.ps{color:var(--color-text-tertiary)}.kw{color:#185FA5}.arg{color:#1D9E75}.fl{color:#BA7517}.cm{color:var(--color-text-tertiary)}.str{color:#993556}
+.out{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:9px 12px;margin-bottom:8px;font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary);line-height:1.85;white-space:pre-wrap}
+.hi{color:var(--color-text-primary);font-weight:500}.lo{color:var(--color-text-tertiary)}.ok{color:#1D9E75;font-weight:500}.err{color:#A32D2D}
+.insight{border-left:3px solid #1D9E75;padding:10px 14px;background:var(--color-background-secondary);margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7;border-radius:0}
+.insight b{font-weight:500;color:var(--color-text-primary)}
+.warn-box{border-left:3px solid #BA7517;padding:10px 14px;background:var(--color-background-secondary);margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7;border-radius:0}
+.warn-box b{font-weight:500;color:#633806}
+.compare-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px}
+.cbox{border-radius:var(--border-radius-md);padding:10px 12px;font-family:var(--font-mono);font-size:12px;line-height:1.8}
+.c-old{background:#FCEBEB;border:0.5px solid #F7C1C1;color:#501313}
+.c-new{background:#E1F5EE;border:0.5px solid #9FE1CB;color:#04342C}
+.cbox-label{font-size:11px;font-weight:500;margin-bottom:5px;font-family:var(--font-sans);text-transform:uppercase;letter-spacing:.04em}
+.nav-row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+button.nb{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 14px;color:var(--color-text-primary);cursor:pointer}
+button.nb:hover{background:var(--color-background-secondary)}
+button.nb:disabled{opacity:.35;cursor:default}
+button.askb{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 13px;color:var(--color-text-primary);cursor:pointer}
+button.askb:hover{background:var(--color-background-secondary)}
+</style>
+
+<div class="wrap">
+<h2 style="position:absolute;left:-9999px">nftables so sánh với iptables: kiến trúc, syntax, và dùng trong container networking</h2>
+<div class="snav" id="snav"></div>
+<div id="sc"></div>
+<div class="nav-row">
+  <button class="nb" id="bp" onclick="go(-1)">← Trước</button>
+  <button class="nb" id="bn" onclick="go(1)">Tiếp →</button>
+</div>
+</div>
+
+<script>
+const steps=[
+{label:"Tại sao nftables?",html:`
+<div class="concept">iptables có 4 vấn đề cốt lõi mà nftables được thiết kế để giải quyết:</div>
+<div class="two-col">
+<div class="col-card col-old">
+<div class="col-title">iptables — vấn đề</div>
+<div class="col-body">
+<b>4 công cụ riêng lẻ:</b> iptables, ip6tables, arptables, ebtables — mỗi cái syntax khác nhau<br><br>
+<b>Linear scan:</b> mỗi packet duyệt qua từng rule một — 500 rules = 500 lần check<br><br>
+<b>Không atomic:</b> thêm rule là thêm ngay, không rollback được nếu giữa chừng lỗi<br><br>
+<b>Tables cố định:</b> filter, nat, mangle — không tạo thêm được
+</div>
+</div>
+<div class="col-card col-new">
+<div class="col-title">nftables — giải pháp</div>
+<div class="col-body">
+<b>1 công cụ duy nhất:</b> <code>nft</code> xử lý IPv4, IPv6, ARP, bridge — cùng syntax<br><br>
+<b>Sets & Maps:</b> lookup O(1) — 10,000 IP rules = 1 lần check<br><br>
+<b>Atomic ruleset:</b> load toàn bộ ruleset từ file, all-or-nothing<br><br>
+<b>Tables tùy ý:</b> bạn tự đặt tên table, tự tạo chain
+</div>
+</div>
+</div>
+<div class="concept">Trong thực tế container networking: <b>Calico</b> vừa ra nftables dataplane (thay iptables). <b>Cilium</b> dùng eBPF — bỏ qua cả hai. <b>Docker</b> vẫn dùng iptables theo mặc định (đang migrate).</div>
+`},
+{label:"Kiến trúc: table → chain → rule",html:`
+<div class="concept">iptables có table và chain <b>cố định</b>. nftables cho bạn <b>tự tạo</b> — nhưng phải khai báo <b>family</b> (ip, ip6, inet, arp, bridge) và <b>hook point</b> khi tạo chain.</div>
+<svg width="100%" viewBox="0 0 680 210" role="img">
+<title>So sánh kiến trúc: iptables cố định vs nftables tự do</title>
+<desc>iptables: filter/nat/mangle table cố định. nftables: tự đặt tên table, tự tạo chain với hook tùy chọn</desc>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<text class="ts" x="160" y="20" text-anchor="middle" fill="var(--color-text-tertiary)">iptables (cố định)</text>
+<g class="c-coral"><rect x="30" y="30" width="260" height="36" rx="6" stroke-width="0.5"/>
+<text class="ts" x="160" y="48" text-anchor="middle" dominant-baseline="central">table: filter | nat | mangle | raw</text></g>
+<g class="c-gray"><rect x="30" y="78" width="80" height="30" rx="5" stroke-width="0.5"/><text class="ts" x="70" y="93" text-anchor="middle" dominant-baseline="central">INPUT</text></g>
+<g class="c-gray"><rect x="120" y="78" width="80" height="30" rx="5" stroke-width="0.5"/><text class="ts" x="160" y="93" text-anchor="middle" dominant-baseline="central">FORWARD</text></g>
+<g class="c-gray"><rect x="210" y="78" width="80" height="30" rx="5" stroke-width="0.5"/><text class="ts" x="250" y="93" text-anchor="middle" dominant-baseline="central">OUTPUT</text></g>
+<text class="ts" x="160" y="135" text-anchor="middle" fill="var(--color-text-tertiary)">chain tên cố định, không đổi được</text>
+
+<text class="ts" x="520" y="20" text-anchor="middle" fill="var(--color-text-tertiary)">nftables (tự do)</text>
+<g class="c-teal"><rect x="390" y="30" width="260" height="36" rx="6" stroke-width="0.5"/>
+<text class="ts" x="520" y="48" text-anchor="middle" dominant-baseline="central">table: <tspan font-weight="500">tên tùy ý</tspan> + family (inet/ip/bridge)</text></g>
+<g class="c-blue"><rect x="390" y="78" width="110" height="40" rx="5" stroke-width="0.5"/>
+<text class="ts" x="445" y="92" text-anchor="middle" dominant-baseline="central">chain: my_input</text>
+<text class="ts" x="445" y="108" text-anchor="middle" dominant-baseline="central">hook=input pri=0</text></g>
+<g class="c-blue"><rect x="510" y="78" width="140" height="40" rx="5" stroke-width="0.5"/>
+<text class="ts" x="580" y="92" text-anchor="middle" dominant-baseline="central">chain: my_postroute</text>
+<text class="ts" x="580" y="108" text-anchor="middle" dominant-baseline="central">hook=postrouting</text></g>
+<text class="ts" x="520" y="148" text-anchor="middle" fill="var(--color-text-tertiary)">family inet = xử lý cả IPv4 + IPv6 cùng lúc</text>
+
+<text class="ts" x="340" y="185" text-anchor="middle" fill="var(--color-text-secondary)">Hook points giống nhau: prerouting, input, forward, output, postrouting</text>
+</svg>
+<div class="insight"><b>family "inet"</b> là thứ hữu ích nhất: một rule xử lý cả IPv4 lẫn IPv6. Với iptables bạn phải viết 2 lần — một lần cho <code>iptables</code>, một lần cho <code>ip6tables</code>.</div>
+`},
+{label:"Syntax so sánh",html:`
+<div class="concept">Cùng một tác vụ — MASQUERADE và DNAT như bạn vừa làm — nhưng syntax khác hoàn toàn. Đọc 2 cột song song:</div>
+
+<div class="compare-row">
+<div class="cbox c-old"><div class="cbox-label" style="color:#712B13">iptables</div><span style="color:#A32D2D">iptables -t nat -A POSTROUTING \
+  -s 10.0.0.0/24 ! -o br0 \
+  -j MASQUERADE</span></div>
+<div class="cbox c-new"><div class="cbox-label" style="color:#085041">nftables</div><span style="color:#085041">nft add rule inet my_table \
+  my_postroute \
+  ip saddr 10.0.0.0/24 \
+  oifname != "br0" \
+  masquerade</span></div>
+</div>
+
+<div class="compare-row">
+<div class="cbox c-old"><div class="cbox-label" style="color:#712B13">iptables — DNAT port 8080</div><span style="color:#A32D2D">iptables -t nat -A PREROUTING \
+  -p tcp --dport 8080 \
+  -j DNAT \
+  --to-destination 10.0.0.1:80</span></div>
+<div class="cbox c-new"><div class="cbox-label" style="color:#085041">nftables — DNAT port 8080</div><span style="color:#085041">nft add rule inet my_table \
+  my_preroute \
+  tcp dport 8080 \
+  dnat to 10.0.0.1:80</span></div>
+</div>
+
+<div class="compare-row">
+<div class="cbox c-old"><div class="cbox-label" style="color:#712B13">iptables — block IP</div><span style="color:#A32D2D">iptables -A INPUT \
+  -s 1.2.3.4 -j DROP
+
+iptables -A INPUT \
+  -s 1.2.3.5 -j DROP
+
+iptables -A INPUT \
+  -s 1.2.3.6 -j DROP
+← 3 rules riêng lẻ</span></div>
+<div class="cbox c-new"><div class="cbox-label" style="color:#085041">nftables — block nhiều IP (set)</div><span style="color:#085041">nft add set inet my_table \
+  blocked_ips \
+  { type ipv4_addr; }
+
+nft add element inet my_table \
+  blocked_ips \
+  { 1.2.3.4, 1.2.3.5, 1.2.3.6 }
+
+nft add rule inet my_table \
+  my_input ip saddr @blocked_ips drop
+← 1 rule, set O(1)</span></div>
+</div>
+<div class="insight"><b>Set</b> là lợi thế lớn nhất của nftables trong container networking. Calico quản lý hàng nghìn Pod IP — với iptables là hàng nghìn rule, với nftables là một set duy nhất lookup O(1).</div>
+`},
+{label:"Lab: dựng NAT với nftables",html:`
+<div class="concept">Tái hiện lại bài lab routing + NAT vừa rồi — nhưng dùng nftables hoàn toàn. <b>Flush iptables trước</b> để tránh conflict.</div>
+<div class="cmd-block"><div class="clabel">0. Flush iptables cũ (nếu đang test)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo iptables</span> <span class="arg">-t nat -F</span>
+<span class="ps">$ </span><span class="kw">sudo iptables</span> <span class="arg">-F</span></div></div>
+<div class="cmd-block"><div class="clabel">1. Tạo table (family inet = IPv4 + IPv6)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo nft add table</span> <span class="fl">inet</span> <span class="arg">container_nat</span></div></div>
+<div class="cmd-block"><div class="clabel">2. Tạo chain postrouting (SNAT ra ngoài)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo nft add chain</span> <span class="fl">inet</span> <span class="arg">container_nat postroute</span> <span class="str">'{ type nat hook postrouting priority 100; }'</span></div></div>
+<div class="cmd-block"><div class="clabel">3. Tạo chain prerouting (DNAT vào trong)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo nft add chain</span> <span class="fl">inet</span> <span class="arg">container_nat preroute</span> <span class="str">'{ type nat hook prerouting priority -100; }'</span></div></div>
+<div class="cmd-block"><div class="clabel">4. Rule MASQUERADE (SNAT)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo nft add rule</span> <span class="fl">inet</span> <span class="arg">container_nat postroute</span>
+    <span class="fl">ip saddr 10.0.0.0/24</span> <span class="arg">oifname !=</span> <span class="str">"br0"</span> <span class="arg">masquerade</span></div></div>
+<div class="cmd-block"><div class="clabel">5. Rule DNAT (port forwarding)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo nft add rule</span> <span class="fl">inet</span> <span class="arg">container_nat preroute</span>
+    <span class="fl">tcp dport 8080</span> <span class="arg">dnat to</span> <span class="fl">10.0.0.1:80</span></div></div>
+`},
+{label:"Verify & atomic load",html:`
+<div class="cmd-block"><div class="clabel">Xem toàn bộ ruleset — một lệnh duy nhất</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo nft list ruleset</span></div></div>
+<div class="out"><span class="hi">table inet container_nat {</span>
+<span class="hi">    chain preroute {</span>
+<span class="lo">        type nat hook prerouting priority -100; policy accept;</span>
+<span class="ok">        tcp dport 8080 dnat to 10.0.0.1:80</span>
+<span class="hi">    }</span>
+<span class="hi">    chain postroute {</span>
+<span class="lo">        type nat hook postrouting priority 100; policy accept;</span>
+<span class="ok">        ip saddr 10.0.0.0/24 oifname != "br0" masquerade</span>
+<span class="hi">    }</span>
+<span class="hi">}</span></div>
+<div class="cmd-block"><div class="clabel">Lưu ruleset ra file (để load lại sau reboot)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo nft list ruleset</span> <span class="arg">></span> <span class="fl">/etc/nftables.conf</span></div></div>
+<div class="cmd-block"><div class="clabel">Load atomic từ file (all-or-nothing)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo nft</span> <span class="arg">-f</span> <span class="fl">/etc/nftables.conf</span>
+<span class="cm"># nếu file có lỗi → không apply gì cả</span>
+<span class="cm"># iptables không có tính năng này</span></div></div>
+<div class="cmd-block"><div class="clabel">Flush toàn bộ để dọn dẹp</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo nft flush ruleset</span></div></div>
+<div class="insight"><b>Atomic load</b> là tính năng quan trọng trong production. Calico khi cập nhật NetworkPolicy sẽ replace toàn bộ nftables ruleset cùng lúc — không có khoảnh khắc "nửa policy cũ nửa policy mới" gây ra security hole tạm thời như iptables.</div>
+`},
+{label:"CNI & vị trí trong hành trình",html:`
+<div class="concept">Bạn vừa học xong 4/5 chủ đề. Đây là bức tranh tổng kết — mỗi công nghệ đang ở đâu trong thực tế container networking:</div>
+<svg width="100%" viewBox="0 0 680 230" role="img">
+<title>Vị trí nftables trong thực tế: Docker dùng iptables, Calico hỗ trợ nftables, Cilium dùng eBPF</title>
+<desc>Stack từ dưới lên: Linux kernel, netfilter/eBPF, iptables/nftables/eBPF, container runtime, CNI</desc>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<g class="c-gray"><rect x="30" y="170" width="620" height="40" rx="6" stroke-width="0.5"/>
+<text class="th" x="340" y="190" text-anchor="middle" dominant-baseline="central">Linux kernel — netfilter hooks</text></g>
+
+<g class="c-coral"><rect x="50" y="110" width="160" height="48" rx="6" stroke-width="0.5"/>
+<text class="th" x="130" y="128" text-anchor="middle" dominant-baseline="central">iptables</text>
+<text class="ts" x="130" y="146" text-anchor="middle" dominant-baseline="central">Docker (default)</text></g>
+
+<g class="c-teal"><rect x="260" y="110" width="160" height="48" rx="6" stroke-width="0.5"/>
+<text class="th" x="340" y="128" text-anchor="middle" dominant-baseline="central">nftables</text>
+<text class="ts" x="340" y="146" text-anchor="middle" dominant-baseline="central">Calico (mới)</text></g>
+
+<g class="c-amber"><rect x="470" y="110" width="160" height="48" rx="6" stroke-width="0.5"/>
+<text class="th" x="550" y="128" text-anchor="middle" dominant-baseline="central">eBPF</text>
+<text class="ts" x="550" y="146" text-anchor="middle" dominant-baseline="central">Cilium (bypass cả 2)</text></g>
+
+<line x1="130" y1="158" x2="130" y2="168" stroke="#D85A30" stroke-width="1" marker-end="url(#ar)"/>
+<line x1="340" y1="158" x2="340" y2="168" stroke="#1D9E75" stroke-width="1" marker-end="url(#ar)"/>
+<line x1="550" y1="158" x2="550" y2="168" stroke="#BA7517" stroke-width="1" marker-end="url(#ar)"/>
+
+<g class="c-blue"><rect x="130" y="40" width="420" height="52" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="60" text-anchor="middle" dominant-baseline="central">Container runtime (containerd / Docker)</text>
+<text class="ts" x="340" y="78" text-anchor="middle" dominant-baseline="central">ip netns + veth pair + bridge + NAT rules</text></g>
+
+<text class="ts" x="340" y="22" text-anchor="middle" fill="var(--color-text-tertiary)">Bạn đã học: namespace → bridge → routing+iptables → nftables</text>
+</svg>
+<div class="warn-box"><b>Thực tế 2025:</b> Ubuntu 22.04+ dùng nftables mặc định. Nhưng Docker vẫn cài iptables compatibility layer. Nếu bạn chạy <code>iptables -L</code> trên Ubuntu 22 và thấy rules — thực ra chúng đang được translate sang nftables backend phía dưới qua <code>iptables-nft</code>.</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+  <button class="askb" onclick="sendPrompt('Giờ tôi đã hiểu cả 4 chủ đề. Hãy dạy tôi Docker networking — docker0, veth pair, port mapping và các network mode hoạt động như thế nào bên dưới?')">Sang chủ đề 5: Docker networking ↗</button>
+  <button class="askb" onclick="sendPrompt('Giải thích nftables sets và maps chi tiết hơn — tại sao O(1) và cách Calico dùng nó để quản lý Pod IP?')">Nftables sets & maps trong Calico ↗</button>
+</div>
+`}
+];
+
+let cur=0;
+function render(){
+  document.getElementById('sc').innerHTML=steps[cur].html;
+  document.querySelectorAll('.sn').forEach((b,i)=>b.classList.toggle('on',i===cur));
+  document.getElementById('bp').disabled=cur===0;
+  document.getElementById('bn').disabled=cur===steps.length-1;
+}
+function go(d){cur=Math.max(0,Math.min(steps.length-1,cur+d));render();}
+const nav=document.getElementById('snav');
+steps.forEach((s,i)=>{
+  const b=document.createElement('button');
+  b.className='sn'+(i===0?' on':'');
+  b.textContent=s.label;
+  b.onclick=()=>{cur=i;render();};
+  nav.appendChild(b);
+});
+render();
+</script>

@@ -1,0 +1,254 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{padding:1rem 0 2rem;font-family:var(--font-sans)}
+.snav{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:1.25rem}
+.sn{padding:5px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);font-size:12px;cursor:pointer;background:transparent;color:var(--color-text-secondary);white-space:nowrap}
+.sn:hover{background:var(--color-background-secondary)}
+.sn.on{background:var(--color-background-primary);border-color:var(--color-border-primary);color:var(--color-text-primary);font-weight:500}
+.concept{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:11px 14px;margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7}
+.concept b{font-weight:500;color:var(--color-text-primary)}
+.cmd-block{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);overflow:hidden;margin-bottom:8px}
+.clabel{font-size:11px;color:var(--color-text-tertiary);padding:6px 12px 0;text-transform:uppercase;letter-spacing:.04em;font-weight:500}
+.cmd{font-family:var(--font-mono);font-size:12px;padding:5px 12px 10px;color:var(--color-text-primary);line-height:1.95}
+.ps{color:var(--color-text-tertiary)}.kw{color:#185FA5}.arg{color:#1D9E75}.fl{color:#BA7517}.cm{color:var(--color-text-tertiary)}
+.out{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:9px 12px;margin-bottom:8px;font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary);line-height:1.85;white-space:pre-wrap}
+.hi{color:var(--color-text-primary);font-weight:500}
+.lo{color:var(--color-text-tertiary)}
+.ok{color:#1D9E75;font-weight:500}
+.err{color:#A32D2D;font-weight:500}
+.warn{color:#BA7517;font-weight:500}
+.insight{border-left:3px solid #1D9E75;padding:10px 14px;background:var(--color-background-secondary);margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7;border-radius:0}
+.insight b{font-weight:500;color:var(--color-text-primary)}
+.danger{border-left:3px solid #D85A30;padding:10px 14px;background:var(--color-background-secondary);margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7;border-radius:0}
+.danger b{font-weight:500;color:#712B13}
+.step-badge{display:inline-flex;align-items:center;gap:8px;margin-bottom:10px}
+.badge{font-size:11px;font-weight:500;padding:3px 10px;border-radius:99px;border:0.5px solid}
+.b-route{background:#E6F1FB;color:#0C447C;border-color:#B5D4F4}
+.b-fwd{background:#FAEEDA;color:#633806;border-color:#FAC775}
+.b-nat{background:#E1F5EE;color:#085041;border-color:#9FE1CB}
+.b-test{background:#EEEDFE;color:#3C3489;border-color:#CECBF6}
+.flow-row{display:flex;align-items:center;gap:0;margin-bottom:8px;flex-wrap:wrap}
+.flow-node{padding:6px 12px;border-radius:var(--border-radius-md);font-size:12px;border:0.5px solid;white-space:nowrap}
+.flow-arrow{font-size:14px;color:var(--color-text-tertiary);padding:0 6px;flex-shrink:0}
+.fn-ns{background:#E6F1FB;color:#0C447C;border-color:#B5D4F4}
+.fn-br{background:#EAF3DE;color:#27500A;border-color:#C0DD97}
+.fn-host{background:#FAEEDA;color:#633806;border-color:#FAC775}
+.fn-inet{background:#F1EFE8;color:#444441;border-color:#D3D1C7}
+.fn-x{background:#FCEBEB;color:#791F1F;border-color:#F7C1C1}
+.nav-row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+button.nb{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 14px;color:var(--color-text-primary);cursor:pointer}
+button.nb:hover{background:var(--color-background-secondary)}
+button.nb:disabled{opacity:.35;cursor:default}
+button.askb{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 13px;color:var(--color-text-primary);cursor:pointer}
+button.askb:hover{background:var(--color-background-secondary)}
+</style>
+
+<div class="wrap">
+<h2 style="position:absolute;left:-9999px">Lab routing và iptables MASQUERADE: cho namespace ping ra internet</h2>
+<div class="snav" id="snav"></div>
+<div id="sc"></div>
+<div class="nav-row">
+  <button class="nb" id="bp" onclick="go(-1)">← Trước</button>
+  <button class="nb" id="bn" onclick="go(1)">Tiếp →</button>
+</div>
+</div>
+
+<script>
+const steps=[
+{label:"Bức tranh đầy đủ",html:`
+<div class="concept">Packet từ namespace ra internet phải vượt <b>3 rào cản theo thứ tự</b>. Thiếu bất kỳ cái nào là fail — và lỗi fail khác nhau tùy cái nào thiếu.</div>
+<svg width="100%" viewBox="0 0 680 260" role="img">
+<title>3 rào cản: default route trong namespace, ip_forward trên host, MASQUERADE ở iptables</title>
+<desc>Packet đi từ ns_A qua br0, qua host eth0 ra internet. Mỗi bước cần một điều kiện khác nhau.</desc>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+
+<g class="c-blue">
+  <rect x="30" y="90" width="120" height="80" rx="8" stroke-width="0.5"/>
+  <text class="th" x="90" y="118" text-anchor="middle" dominant-baseline="central">ns_A</text>
+  <text class="ts" x="90" y="138" text-anchor="middle" dominant-baseline="central">10.0.0.1</text>
+  <text class="ts" x="90" y="156" text-anchor="middle" dominant-baseline="central">src IP</text>
+</g>
+
+<g class="c-teal">
+  <rect x="250" y="90" width="120" height="80" rx="8" stroke-width="0.5"/>
+  <text class="th" x="310" y="118" text-anchor="middle" dominant-baseline="central">br0</text>
+  <text class="ts" x="310" y="138" text-anchor="middle" dominant-baseline="central">10.0.0.254</text>
+  <text class="ts" x="310" y="156" text-anchor="middle" dominant-baseline="central">gateway</text>
+</g>
+
+<g class="c-amber">
+  <rect x="460" y="60" width="120" height="60" rx="8" stroke-width="0.5"/>
+  <text class="th" x="520" y="82" text-anchor="middle" dominant-baseline="central">host eth0</text>
+  <text class="ts" x="520" y="100" text-anchor="middle" dominant-baseline="central">203.x.x.x (public)</text>
+</g>
+
+<g class="c-gray">
+  <rect x="460" y="145" width="120" height="50" rx="8" stroke-width="0.5"/>
+  <text class="th" x="520" y="162" text-anchor="middle" dominant-baseline="central">iptables</text>
+  <text class="ts" x="520" y="180" text-anchor="middle" dominant-baseline="central">MASQUERADE</text>
+</g>
+
+<rect x="30" y="210" width="120" height="36" rx="6" fill="none" stroke="#1D9E75" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="90" y="228" text-anchor="middle" dominant-baseline="central" fill="#085041">① default route</text>
+
+<rect x="250" y="210" width="120" height="36" rx="6" fill="none" stroke="#BA7517" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="310" y="228" text-anchor="middle" dominant-baseline="central" fill="#633806">② ip_forward=1</text>
+
+<rect x="460" y="210" width="120" height="36" rx="6" fill="none" stroke="#1D9E75" stroke-width="1" stroke-dasharray="4 3"/>
+<text class="ts" x="520" y="228" text-anchor="middle" dominant-baseline="central" fill="#085041">③ SNAT src IP</text>
+
+<line x1="150" y1="130" x2="248" y2="130" stroke="#378ADD" stroke-width="1.5" marker-end="url(#ar)"/>
+<line x1="370" y1="115" x2="458" y2="90" stroke="#1D9E75" stroke-width="1.5" marker-end="url(#ar)"/>
+<line x1="520" y1="120" x2="520" y2="143" stroke="#888780" stroke-width="1" marker-end="url(#ar)"/>
+<line x1="580" y1="90" x2="648" y2="90" stroke="#888780" stroke-width="1.2" marker-end="url(#ar)"/>
+<text class="ts" x="650" y="86" dominant-baseline="central">internet</text>
+</svg>
+`},
+{label:"Vấn đề 1: default route",html:`
+<div class="step-badge"><span class="badge b-route">Vấn đề 1 / 3</span></div>
+<div class="concept">Routing table trong namespace chỉ có subnet nội bộ. Packet đến <code>8.8.8.8</code> — kernel tìm route, không thấy → <b>Network is unreachable</b>. Cần thêm default route trỏ về gateway là IP của <code>br0</code>.</div>
+<div class="flow-row">
+  <div class="flow-node fn-ns">ns_A: 10.0.0.1</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-node fn-x">route? ✗</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-node fn-x">drop ngay trong ns</div>
+</div>
+<div class="cmd-block"><div class="clabel">Gán IP cho br0 — để làm gateway</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip addr add</span> <span class="fl">10.0.0.254/24</span> <span class="arg">dev</span> <span class="fl">br0</span></div></div>
+<div class="cmd-block"><div class="clabel">Thêm default route trong ns_A trỏ về br0</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ip route add default via</span> <span class="fl">10.0.0.254</span></div></div>
+<div class="cmd-block"><div class="clabel">Verify routing table trong ns_A</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ip route</span></div></div>
+<div class="out"><span class="hi">default via 10.0.0.254 dev veth_a</span>   <span class="lo">← mới thêm</span>
+<span class="lo">10.0.0.0/24 dev veth_a proto kernel scope link src 10.0.0.1</span></div>
+<div class="cmd-block"><div class="clabel">Thử ping lại — lỗi mới xuất hiện</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ping -c 1 -W 2</span> <span class="fl">8.8.8.8</span></div></div>
+<div class="out"><span class="warn">PING 8.8.8.8: 56 data bytes</span>
+<span class="warn">--- ping statistics ---
+1 packets transmitted, 0 received, 100% packet loss</span>
+<span class="lo">← không còn "unreachable" — packet rời namespace được rồi
+   nhưng bị drop ở host → lỗi khác, tiến triển rồi!</span></div>
+<div class="insight"><b>Đọc lỗi như kỹ sư:</b> "Network is unreachable" = lỗi trong namespace (không có route). "100% packet loss" = packet ra khỏi namespace được nhưng bị drop đâu đó trên đường. Hai lỗi khác nhau hoàn toàn.</div>
+`},
+{label:"Vấn đề 2: ip_forward",html:`
+<div class="step-badge"><span class="badge b-fwd">Vấn đề 2 / 3</span></div>
+<div class="concept">Packet đến <code>br0</code> (host), cần đi tiếp ra <code>eth0</code>. Nhưng Linux mặc định <b>không forward packet</b> giữa các interface — chỉ nhận packet destined for itself. Cần bật <code>ip_forward</code>.</div>
+<div class="flow-row">
+  <div class="flow-node fn-ns">ns_A</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-node fn-br">br0 ✓</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-node fn-x">forward? ✗</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-node fn-x">drop tại host</div>
+</div>
+<div class="cmd-block"><div class="clabel">Kiểm tra trạng thái hiện tại</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">cat</span> <span class="arg">/proc/sys/net/ipv4/ip_forward</span></div></div>
+<div class="out"><span class="err">0</span>   <span class="lo">← tắt — đây là lý do packet bị drop</span></div>
+<div class="cmd-block"><div class="clabel">Bật ip_forward (tạm thời — mất sau reboot)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo sysctl</span> <span class="arg">-w</span> <span class="fl">net.ipv4.ip_forward=1</span></div></div>
+<div class="cmd-block"><div class="clabel">Bật vĩnh viễn (persistent sau reboot)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">echo</span> <span class="fl">"net.ipv4.ip_forward=1"</span> <span class="arg">| sudo tee -a</span> <span class="fl">/etc/sysctl.conf</span>
+<span class="ps">$ </span><span class="kw">sudo sysctl</span> <span class="arg">-p</span></div></div>
+<div class="cmd-block"><div class="clabel">Thử ping lại</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ping -c 1 -W 2</span> <span class="fl">8.8.8.8</span></div></div>
+<div class="out"><span class="warn">1 packets transmitted, 0 received, 100% packet loss</span>
+<span class="lo">← vẫn chưa được — packet ra internet nhưng router ngoài
+   không biết route về 10.0.0.1 (private IP) → reply bị drop</span></div>
+<div class="insight"><b>ip_forward</b> là thứ phân biệt Linux hoạt động như <b>router</b> hay như <b>host</b>. Mọi container runtime (Docker, containerd), mọi CNI plugin đều bật setting này khi khởi động. Nếu bạn thấy container mất mạng sau khi restart daemon — kiểm tra cái này đầu tiên.</div>
+`},
+{label:"Vấn đề 3: MASQUERADE",html:`
+<div class="step-badge"><span class="badge b-nat">Vấn đề 3 / 3</span></div>
+<div class="concept">Packet ra internet với <b>src IP = 10.0.0.1</b> (private). Router ngoài nhận packet, muốn gửi reply về — nhưng <code>10.0.0.1</code> không routable trên internet, reply bị drop. Cần iptables <b>MASQUERADE</b> để thay src IP bằng IP public của host <b>trước khi ra</b>.</div>
+<div class="flow-row">
+  <div class="flow-node fn-ns">src: 10.0.0.1</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-node fn-host">MASQUERADE</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-node fn-inet">src: 203.x.x.x</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-node fn-inet">8.8.8.8 ✓</div>
+</div>
+<div class="cmd-block"><div class="clabel">Thêm rule MASQUERADE — áp dụng cho traffic ra eth0</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo iptables</span> <span class="arg">-t nat -A POSTROUTING</span> <span class="fl">-s 10.0.0.0/24</span> <span class="arg">! -o br0 -j</span> <span class="fl">MASQUERADE</span></div></div>
+<div class="cmd-block"><div class="clabel">Giải thích từng phần lệnh</div>
+<div class="cmd"><span class="arg">-t nat</span>          <span class="cm">: bảng nat (xử lý địa chỉ)</span>
+<span class="arg">-A POSTROUTING</span>  <span class="cm">: sau khi routing quyết định → trước khi ra interface</span>
+<span class="fl">-s 10.0.0.0/24</span>  <span class="cm">: chỉ áp dụng cho traffic từ namespace</span>
+<span class="arg">! -o br0</span>        <span class="cm">: KHÔNG áp dụng khi ra br0 (traffic nội bộ)</span>
+<span class="fl">-j MASQUERADE</span>   <span class="cm">: thay src IP bằng IP của outbound interface</span></div></div>
+<div class="cmd-block"><div class="clabel">Verify rule đã được thêm</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo iptables</span> <span class="arg">-t nat -L POSTROUTING -v --line-numbers</span></div></div>
+<div class="out"><span class="lo">Chain POSTROUTING (policy ACCEPT)</span>
+<span class="lo">num  pkts bytes target      prot opt in  out    source</span>
+<span class="hi">1       0     0 MASQUERADE  all  --  any !br0   10.0.0.0/24</span></div>
+`},
+{label:"Ping thành công + verify",html:`
+<div class="concept">Tất cả 3 vấn đề đã được giải quyết. Bây giờ kiểm tra:</div>
+<div class="cmd-block"><div class="clabel">Ping ra internet từ namespace</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ping -c 3</span> <span class="fl">8.8.8.8</span></div></div>
+<div class="out"><span class="ok">64 bytes from 8.8.8.8: icmp_seq=1 ttl=118 time=12.3 ms</span>
+<span class="ok">64 bytes from 8.8.8.8: icmp_seq=2 ttl=118 time=11.8 ms</span>
+<span class="ok">64 bytes from 8.8.8.8: icmp_seq=3 ttl=118 time=12.1 ms</span></div>
+<div class="cmd-block"><div class="clabel">Verify: xem conntrack — NAT đang hoạt động</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo conntrack</span> <span class="arg">-L</span> <span class="fl">-p icmp</span></div></div>
+<div class="out"><span class="hi">icmp ... src=10.0.0.1 dst=8.8.8.8 ... </span>
+<span class="hi">     src=8.8.8.8 dst=203.x.x.x ...</span>
+<span class="lo">← conntrack theo dõi cả 2 chiều:
+   → 10.0.0.1 → 8.8.8.8      (trong namespace)
+   ← 8.8.8.8 → 203.x.x.x   (ngoài internet, sau MASQUERADE)</span></div>
+<div class="cmd-block"><div class="clabel">Tcpdump: xem src IP thay đổi khi ra eth0</div>
+<div class="cmd"><span class="ps">T1$ </span><span class="kw">sudo tcpdump</span> <span class="fl">-i veth_ha</span> <span class="arg">-n icmp</span>  <span class="cm">← bên trong ns_A</span>
+<span class="ps">T2$ </span><span class="kw">sudo tcpdump</span> <span class="fl">-i eth0</span> <span class="arg">-n icmp</span>    <span class="cm">← sau khi MASQUERADE</span></div></div>
+<div class="out"><span class="lo">veth_ha:</span> <span class="hi">10.0.0.1 > 8.8.8.8</span>   <span class="lo">ICMP echo request</span>
+<span class="lo">eth0:   </span> <span class="hi">203.x.x.x > 8.8.8.8</span> <span class="lo">ICMP echo request</span>
+<span class="lo">         ↑ src IP đã đổi!</span></div>
+<div class="insight"><b>Đây chính xác là cách Docker hoạt động:</b> mỗi container có namespace riêng, nối vào docker0 (bridge), docker0 là gateway, iptables MASQUERADE đổi IP khi ra ngoài. Bạn vừa tự tay dựng lại toàn bộ cơ chế đó.</div>
+`},
+{label:"DNAT: port mapping",html:`
+<div class="concept">MASQUERADE = traffic <b>ra ngoài</b>. Còn muốn traffic <b>từ ngoài vào container</b>? Đó là <b>DNAT</b> — đổi destination IP/port. Đây chính là <code>docker run -p 8080:80</code>.</div>
+<div class="flow-row">
+  <div class="flow-node fn-inet">client → host:8080</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-node fn-host">DNAT</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-node fn-ns">10.0.0.1:80</div>
+</div>
+<div class="cmd-block"><div class="clabel">Forward port 8080 trên host → port 80 trong ns_A</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo iptables</span> <span class="arg">-t nat -A PREROUTING</span>
+    <span class="arg">-p tcp --dport</span> <span class="fl">8080</span>
+    <span class="arg">-j DNAT --to-destination</span> <span class="fl">10.0.0.1:80</span></div></div>
+<div class="cmd-block"><div class="clabel">Verify tất cả rules đang có</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo iptables</span> <span class="arg">-t nat -L -n -v --line-numbers</span></div></div>
+<div class="out"><span class="lo">Chain PREROUTING:</span>
+<span class="hi">1   DNAT  tcp -- any  any  0.0.0.0/0  0.0.0.0/0  tcp dpt:8080 to:10.0.0.1:80</span>
+<span class="lo">Chain POSTROUTING:</span>
+<span class="hi">1   MASQUERADE  all -- any !br0  10.0.0.0/24</span></div>
+<div class="insight"><b>PREROUTING vs POSTROUTING:</b><br>— <b>PREROUTING</b>: trước khi routing quyết định → dùng cho DNAT (đổi dst)<br>— <b>POSTROUTING</b>: sau khi routing quyết định → dùng cho SNAT/MASQUERADE (đổi src)<br><br>Docker dùng cả hai: DNAT cho <code>-p</code>, MASQUERADE cho traffic ra ngoài.</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+  <button class="askb" onclick="sendPrompt('Giờ tôi hiểu routing và iptables rồi. Hãy dạy tôi về nftables — nó khác iptables như thế nào và syntax thay đổi ra sao?')">Sang chủ đề 4: nftables ↗</button>
+  <button class="askb" onclick="sendPrompt('Giải thích kỹ hơn về iptables chains và tables — PREROUTING, POSTROUTING, FORWARD, INPUT, OUTPUT hoạt động theo thứ tự nào?')">Đào sâu iptables chains ↗</button>
+</div>
+`}
+];
+
+let cur=0;
+function render(){
+  document.getElementById('sc').innerHTML=steps[cur].html;
+  document.querySelectorAll('.sn').forEach((b,i)=>b.classList.toggle('on',i===cur));
+  document.getElementById('bp').disabled=cur===0;
+  document.getElementById('bn').disabled=cur===steps.length-1;
+}
+function go(d){cur=Math.max(0,Math.min(steps.length-1,cur+d));render();}
+const nav=document.getElementById('snav');
+steps.forEach((s,i)=>{
+  const b=document.createElement('button');
+  b.className='sn'+(i===0?' on':'');
+  b.textContent=s.label;
+  b.onclick=()=>{cur=i;render();};
+  nav.appendChild(b);
+});
+render();
+</script>

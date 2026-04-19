@@ -1,0 +1,218 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{padding:1rem 0 2rem;font-family:var(--font-sans)}
+.snav{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:1.25rem}
+.sn{padding:5px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);font-size:12px;cursor:pointer;background:transparent;color:var(--color-text-secondary);white-space:nowrap}
+.sn:hover{background:var(--color-background-secondary)}
+.sn.on{background:var(--color-background-primary);border-color:var(--color-border-primary);color:var(--color-text-primary);font-weight:500}
+.concept{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:11px 14px;margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7}
+.concept b{font-weight:500;color:var(--color-text-primary)}
+.cmd-block{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);overflow:hidden;margin-bottom:8px}
+.clabel{font-size:11px;color:var(--color-text-tertiary);padding:6px 12px 0;text-transform:uppercase;letter-spacing:.04em;font-weight:500}
+.cmd{font-family:var(--font-mono);font-size:12px;padding:5px 12px 10px;color:var(--color-text-primary);line-height:1.95}
+.ps{color:var(--color-text-tertiary)}.kw{color:#185FA5}.arg{color:#1D9E75}.fl{color:#BA7517}.cm{color:var(--color-text-tertiary)}.str{color:#993556}
+.out{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:9px 12px;margin-bottom:8px;font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary);line-height:1.85;white-space:pre-wrap}
+.hi{color:var(--color-text-primary);font-weight:500}.lo{color:var(--color-text-tertiary)}.ok{color:#1D9E75;font-weight:500}.err{color:#A32D2D;font-weight:500}.warn{color:#BA7517;font-weight:500}
+.insight{border-left:3px solid #1D9E75;padding:10px 14px;background:var(--color-background-secondary);margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7;border-radius:0}
+.insight b{font-weight:500;color:var(--color-text-primary)}
+.warn-box{border-left:3px solid #BA7517;padding:10px 14px;background:var(--color-background-secondary);margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7;border-radius:0}
+.warn-box b{font-weight:500;color:#633806}
+.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.mode-card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:11px 13px}
+.mode-name{font-size:12px;font-weight:500;margin-bottom:5px}
+.mode-desc{font-size:12px;color:var(--color-text-secondary);line-height:1.6}
+.mode-cmd{font-size:11px;font-family:var(--font-mono);color:var(--color-text-tertiary);margin-top:5px}
+.step-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:8px}
+.step-num{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;flex-shrink:0;margin-top:1px}
+.step-body{flex:1;font-size:13px;color:var(--color-text-secondary);line-height:1.6}
+.step-body b{font-weight:500;color:var(--color-text-primary)}
+.nav-row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+button.nb{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 14px;color:var(--color-text-primary);cursor:pointer}
+button.nb:hover{background:var(--color-background-secondary)}
+button.nb:disabled{opacity:.35;cursor:default}
+button.askb{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 13px;color:var(--color-text-primary);cursor:pointer}
+button.askb:hover{background:var(--color-background-secondary)}
+</style>
+
+<div class="wrap">
+<h2 style="position:absolute;left:-9999px">Docker networking: docker0, veth pair, port mapping, network modes</h2>
+<div class="snav" id="snav"></div>
+<div id="sc"></div>
+<div class="nav-row">
+  <button class="nb" id="bp" onclick="go(-1)">← Trước</button>
+  <button class="nb" id="bn" onclick="go(1)">Tiếp →</button>
+</div>
+</div>
+
+<script>
+const steps=[
+{label:"Docker = những gì bạn đã biết",html:`
+<div class="concept">Docker không phát minh ra gì mới. Nó chỉ <b>tự động hóa</b> chính xác những gì bạn đã tự tay làm trong 4 chủ đề vừa rồi — theo đúng thứ tự đó.</div>
+<div class="step-row"><div class="step-num" style="background:#E6F1FB;color:#0C447C">1</div><div class="step-body"><b>ip netns add</b> → tạo network namespace cho container</div></div>
+<div class="step-row"><div class="step-num" style="background:#E6F1FB;color:#0C447C">2</div><div class="step-body"><b>ip link add veth... type veth peer</b> → tạo veth pair</div></div>
+<div class="step-row"><div class="step-num" style="background:#E6F1FB;color:#0C447C">3</div><div class="step-body"><b>ip link set veth_host master docker0</b> → cắm đầu host vào bridge docker0</div></div>
+<div class="step-row"><div class="step-num" style="background:#E6F1FB;color:#0C447C">4</div><div class="step-body"><b>ip link set veth_container netns &lt;PID&gt;</b> → gắn đầu kia vào namespace container</div></div>
+<div class="step-row"><div class="step-num" style="background:#E6F1FB;color:#0C447C">5</div><div class="step-body"><b>ip addr add + ip link set up</b> → gán IP từ subnet 172.17.0.0/16, bật interface</div></div>
+<div class="step-row"><div class="step-num" style="background:#E6F1FB;color:#0C447C">6</div><div class="step-body"><b>ip route add default via 172.17.0.1</b> → default route trỏ về docker0</div></div>
+<div class="step-row"><div class="step-num" style="background:#E6F1FB;color:#0C447C">7</div><div class="step-body"><b>sysctl net.ipv4.ip_forward=1</b> → bật forwarding (Docker làm lúc khởi động daemon)</div></div>
+<div class="step-row"><div class="step-num" style="background:#E6F1FB;color:#0C447C">8</div><div class="step-body"><b>iptables -t nat MASQUERADE</b> → NAT traffic ra ngoài internet</div></div>
+<div class="step-row"><div class="step-num" style="background:#E6F1FB;color:#0C447C">9</div><div class="step-body"><b>iptables -t nat DNAT</b> → port mapping (chỉ khi dùng <code>-p</code>)</div></div>
+<div class="insight"><b>Sự khác biệt duy nhất:</b> Docker làm 9 bước này trong vài mili-giây, tự động, mỗi khi bạn gõ <code>docker run</code>. Bạn vừa hiểu tất cả 9 bước đó — Docker không còn là hộp đen nữa.</div>
+`},
+{label:"docker0 là Linux bridge",html:`
+<div class="concept"><code>docker0</code> được tạo khi Docker daemon khởi động lần đầu. Nó là một <b>Linux bridge thông thường</b> — bạn có thể kiểm tra bằng đúng các lệnh đã học.</div>
+<div class="cmd-block"><div class="clabel">Kiểm tra docker0 là bridge thật</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">ip link show</span> <span class="fl">docker0</span></div></div>
+<div class="out"><span class="hi">3: docker0: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt;</span>
+<span class="lo">    link/ether 02:42:a1:b2:c3:d4 brd ff:ff:ff:ff:ff:ff</span></div>
+<div class="cmd-block"><div class="clabel">Xem docker0 trong bridge list</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">bridge link show</span></div></div>
+<div class="out"><span class="hi">5: veth3a2b1c@if4</span><span class="lo">: ... master </span><span class="hi">docker0</span><span class="lo"> state forwarding</span>
+<span class="hi">7: veth8d9e0f@if6</span><span class="lo">: ... master </span><span class="hi">docker0</span><span class="lo"> state forwarding</span>
+<span class="lo">← mỗi container có 1 veth nối vào docker0</span></div>
+<div class="cmd-block"><div class="clabel">Xem IP của docker0 (gateway mặc định)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">ip addr show</span> <span class="fl">docker0</span></div></div>
+<div class="out"><span class="hi">inet 172.17.0.1/16</span><span class="lo"> brd 172.17.255.255 scope global docker0</span>
+<span class="lo">← đây là gateway của mọi container trong bridge network</span></div>
+<div class="cmd-block"><div class="clabel">Xem FDB của docker0 — giống hệt lab bridge trước</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">bridge fdb show dev</span> <span class="fl">docker0</span></div></div>
+<div class="out"><span class="hi">02:42:ac:11:00:02 master docker0</span>  <span class="lo">← MAC của container A</span>
+<span class="hi">02:42:ac:11:00:03 master docker0</span>  <span class="lo">← MAC của container B</span></div>
+<div class="insight"><b>docker0 = br0 trong lab của bạn.</b> Chỉ khác tên và Docker đặt IP 172.17.0.1 thay vì 10.0.0.254. Toàn bộ FDB learning, MAC flooding, unicast forwarding — hoạt động y hệt.</div>
+`},
+{label:"Veth pair mỗi container",html:`
+<div class="concept">Mỗi container có <b>một veth pair riêng</b>. Đầu trong namespace container đổi tên thành <code>eth0</code>. Đầu host-side giữ tên ngẫu nhiên (<code>veth3a2b1c</code>). Hai đầu luôn pair với nhau — kernel biết qua <code>@if&lt;index&gt;</code>.</div>
+<div class="cmd-block"><div class="clabel">Chạy 2 container rồi quan sát</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">docker run</span> <span class="arg">-d --name</span> <span class="fl">web</span> nginx
+<span class="ps">$ </span><span class="kw">docker run</span> <span class="arg">-d --name</span> <span class="fl">db</span> postgres</div></div>
+<div class="cmd-block"><div class="clabel">Xem veth pair trên host</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">ip link show</span> <span class="arg">type veth</span></div></div>
+<div class="out"><span class="hi">8: veth3a2b1c@if7</span><span class="lo">: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt;</span>
+<span class="lo">   link/ether ... master docker0</span>
+<span class="hi">10: veth8d9e0f@if9</span><span class="lo">: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt;</span>
+<span class="lo">   link/ether ... master docker0</span></div>
+<div class="cmd-block"><div class="clabel">Xem eth0 từ góc nhìn trong container (không cần docker exec!)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">WEB_PID</span>=<span class="arg">$(docker inspect web --format '{{.State.Pid}}')</span>
+<span class="ps">$ </span><span class="kw">sudo nsenter</span> <span class="fl">--net=/proc/$WEB_PID/ns/net</span> <span class="arg">ip addr</span></div></div>
+<div class="out"><span class="lo">1: lo: ...</span>
+<span class="hi">7: eth0@if8</span><span class="lo">: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt;</span>
+<span class="hi">   inet 172.17.0.2/16</span><span class="lo"> brd 172.17.255.255</span>
+<span class="lo">   ← @if8 = peer với interface index 8 trên host (veth3a2b1c)</span></div>
+<div class="insight"><b>nsenter</b> là kỹ năng debug quan trọng nhất: chui vào namespace của container <b>mà không cần process nào chạy trong đó</b>. Khi container bị crash và không thể <code>docker exec</code>, bạn vẫn debug được network qua nsenter.</div>
+`},
+{label:"Port mapping = iptables DNAT",html:`
+<div class="concept">Khi bạn dùng <code>-p 8080:80</code>, Docker thêm 2 iptables rules — y hệt những gì bạn đã tự làm ở bài routing & iptables.</div>
+<div class="cmd-block"><div class="clabel">Chạy container với port mapping</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">docker run</span> <span class="arg">-d -p</span> <span class="fl">8080:80</span> <span class="arg">--name</span> <span class="fl">web</span> nginx</div></div>
+<div class="cmd-block"><div class="clabel">Xem iptables rules Docker đã tạo</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo iptables</span> <span class="arg">-t nat -L -n -v</span></div></div>
+<div class="out"><span class="lo">Chain DOCKER (2 references)</span>
+<span class="hi">DNAT  tcp -- !docker0  *  0.0.0.0/0  0.0.0.0/0</span>
+<span class="hi">      tcp dpt:8080 to:172.17.0.2:80</span>
+<span class="lo">← traffic vào port 8080 → DNAT sang container 172.17.0.2:80</span>
+
+<span class="lo">Chain POSTROUTING</span>
+<span class="hi">MASQUERADE  tcp -- *  *  172.17.0.2  172.17.0.2</span>
+<span class="hi">            tcp dpt:80</span>
+<span class="lo">← MASQUERADE cho reply packet từ container ra</span></div>
+<div class="cmd-block"><div class="clabel">Xem chain DOCKER-USER (override point)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo iptables</span> <span class="arg">-L DOCKER-USER -n -v</span></div></div>
+<div class="out"><span class="lo">Chain DOCKER-USER (1 references)</span>
+<span class="hi">RETURN  all -- *  *  0.0.0.0/0  0.0.0.0/0</span>
+<span class="lo">← đây là nơi bạn thêm custom rules mà Docker không overwrite</span></div>
+<div class="warn-box"><b>Không bao giờ sửa chain DOCKER trực tiếp</b> — Docker overwrite nó mỗi khi container start/stop. Luôn thêm custom firewall rules vào chain <code>DOCKER-USER</code>.</div>
+`},
+{label:"Network modes",html:`
+<div class="concept">Docker có 4 network mode. Mỗi mode quyết định container được cô lập ở mức nào — từ hoàn toàn chia sẻ namespace với host đến hoàn toàn tách biệt.</div>
+<div class="mode-grid">
+<div class="mode-card" style="border-color:#B5D4F4">
+  <div class="mode-name" style="color:#0C447C">bridge (mặc định)</div>
+  <div class="mode-desc">Namespace riêng + veth pair + docker0 bridge. Những gì bạn vừa học. Container nói chuyện qua bridge, ra ngoài qua NAT.</div>
+  <div class="mode-cmd">docker run --network bridge nginx</div>
+</div>
+<div class="mode-card" style="border-color:#F0997B">
+  <div class="mode-name" style="color:#712B13">host</div>
+  <div class="mode-desc"><b>Không có namespace riêng.</b> Container dùng chung network namespace với host — thấy tất cả interface của host, bind port trực tiếp. Hiệu năng cao nhất, cô lập thấp nhất.</div>
+  <div class="mode-cmd">docker run --network host nginx</div>
+</div>
+<div class="mode-card" style="border-color:#D3D1C7">
+  <div class="mode-name" style="color:#444441">none</div>
+  <div class="mode-desc">Namespace riêng nhưng <b>không có interface nào</b> ngoài loopback. Container hoàn toàn bị cắt khỏi mạng. Dùng cho batch job không cần network.</div>
+  <div class="mode-cmd">docker run --network none alpine</div>
+</div>
+<div class="mode-card" style="border-color:#9FE1CB">
+  <div class="mode-name" style="color:#085041">container:&lt;id&gt;</div>
+  <div class="mode-desc"><b>Chia sẻ namespace</b> với container khác. Hai container thấy nhau qua localhost. Dùng trong pod-pattern (sidecar) — đây chính xác là cách Kubernetes Pod hoạt động!</div>
+  <div class="mode-cmd">docker run --network container:web alpine</div>
+</div>
+</div>
+<div class="cmd-block"><div class="clabel">Verify mode host: container thấy interface của host</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">docker run</span> <span class="arg">--rm --network host</span> alpine <span class="fl">ip addr</span></div></div>
+<div class="out"><span class="lo">← output giống hệt ip addr trên host!
+   eth0, docker0, veth... tất cả đều thấy</span></div>
+<div class="insight"><b>mode container:&lt;id&gt;</b> — đây là chìa khóa hiểu Kubernetes Pod. Một Pod có thể chứa nhiều container nhưng chúng <b>chia sẻ một network namespace</b>. Container "pause" (infra container) giữ namespace, các container khác join vào. Đó là lý do các container trong cùng Pod nói chuyện qua localhost.</div>
+`},
+{label:"Custom bridge network",html:`
+<div class="concept">Bridge mặc định <code>docker0</code> có giới hạn: <b>không có DNS nội bộ</b> — container phải nói chuyện bằng IP, không phải tên. Custom bridge network giải quyết điều này bằng DNS resolver tích hợp.</div>
+<div class="cmd-block"><div class="clabel">Tạo custom bridge network</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">docker network create</span> <span class="fl">my-net</span>
+<span class="ps">$ </span><span class="kw">docker run</span> <span class="arg">-d --network my-net --name</span> <span class="fl">web</span> nginx
+<span class="ps">$ </span><span class="kw">docker run</span> <span class="arg">-d --network my-net --name</span> <span class="fl">db</span> postgres</div></div>
+<div class="cmd-block"><div class="clabel">Ping bằng tên container — DNS hoạt động!</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">docker exec</span> <span class="fl">web</span> ping <span class="fl">db</span></div></div>
+<div class="out"><span class="ok">64 bytes from db (172.18.0.3): icmp_seq=1 ttl=64</span>
+<span class="lo">← "db" được resolve bằng DNS nội bộ của Docker
+   trên docker0 mặc định cái này không hoạt động!</span></div>
+<div class="cmd-block"><div class="clabel">Inspect custom network — xem Linux bridge tương ứng</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">docker network inspect</span> <span class="fl">my-net</span> <span class="arg">--format '{{.Id}}'</span>
+<span class="ps">$ </span><span class="kw">ip link show</span> <span class="arg">type bridge</span></div></div>
+<div class="out"><span class="lo">br-</span><span class="hi">a1b2c3d4e5f6</span><span class="lo">: ...</span>
+<span class="lo">← mỗi custom network = một Linux bridge mới
+   tên = "br-" + 12 ký tự đầu của network ID</span></div>
+<div class="insight"><b>DNS nội bộ:</b> Docker chạy một DNS server nhỏ tại <code>127.0.0.11</code> trong mỗi container thuộc custom network. Container query tên → Docker DNS trả IP. Đây là lý do trong docker-compose, các service nói chuyện bằng tên service name — không bằng IP.</div>
+`},
+{label:"Debug toolkit đầy đủ",html:`
+<div class="concept">Tổng hợp tất cả công cụ debug Docker networking — kết hợp mọi thứ bạn đã học:</div>
+<div class="cmd-block"><div class="clabel">Xem toàn cảnh: container nào đang dùng bridge nào</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">docker network ls</span>
+<span class="ps">$ </span><span class="kw">docker network inspect</span> <span class="fl">bridge</span></div></div>
+<div class="cmd-block"><div class="clabel">Tìm PID của container → vào namespace</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">PID</span>=<span class="arg">$(docker inspect web -f '{{.State.Pid}}')</span>
+<span class="ps">$ </span><span class="kw">sudo nsenter</span> <span class="fl">--net=/proc/$PID/ns/net</span> <span class="arg">ip route</span>
+<span class="ps">$ </span><span class="kw">sudo nsenter</span> <span class="fl">--net=/proc/$PID/ns/net</span> <span class="arg">ss -tlnp</span></div></div>
+<div class="cmd-block"><div class="clabel">Tcpdump trong namespace container (không cần docker exec)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo nsenter</span> <span class="fl">--net=/proc/$PID/ns/net</span> <span class="arg">tcpdump -i eth0 -n</span></div></div>
+<div class="cmd-block"><div class="clabel">Xem veth pair nào thuộc container nào</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">ip link show</span> <span class="arg">type veth</span>  <span class="cm"># thấy index, vd: veth3a2@if7</span>
+<span class="ps">$ </span><span class="kw">sudo nsenter</span> <span class="fl">--net=/proc/$PID/ns/net</span> <span class="arg">ip link</span>  <span class="cm"># thấy if7 = eth0</span></div></div>
+<div class="cmd-block"><div class="clabel">Xem iptables rules Docker đang dùng</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo iptables</span> <span class="arg">-t nat -L -n -v --line-numbers</span>
+<span class="ps">$ </span><span class="kw">sudo iptables</span> <span class="arg">-L DOCKER -n -v</span>
+<span class="ps">$ </span><span class="kw">sudo iptables</span> <span class="arg">-L DOCKER-USER -n -v</span></div></div>
+<div class="insight"><b>3 tầng debug</b> (giống lab FDB):<br>① Trong container: <code>nsenter --net ... ip addr / ip route / ss</code><br>② Trên host-side veth: <code>tcpdump -i vethXXX -n</code><br>③ Trên bridge: <code>tcpdump -i docker0 -n</code><br><br>Ba tầng này đủ để tìm ra 95% lỗi Docker networking — và 100% knowledge này transfer thẳng sang debug CNI plugin trong Kubernetes.</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+  <button class="askb" onclick="sendPrompt('Tôi đã hoàn thành cả 5 chủ đề container networking. Giờ tôi có thể học Kubernetes CNI chưa? Tổng kết lại những gì tôi đã biết và kết nối nó với Flannel, Calico, Cilium?')">Tổng kết & sang CNI ↗</button>
+  <button class="askb" onclick="sendPrompt('Giải thích kubernetes pause container và cách Pod chia sẻ network namespace — kết nối với docker network mode container:id?')">Kubernetes pause container ↗</button>
+</div>
+`}
+];
+
+let cur=0;
+function render(){
+  document.getElementById('sc').innerHTML=steps[cur].html;
+  document.querySelectorAll('.sn').forEach((b,i)=>b.classList.toggle('on',i===cur));
+  document.getElementById('bp').disabled=cur===0;
+  document.getElementById('bn').disabled=cur===steps.length-1;
+}
+function go(d){cur=Math.max(0,Math.min(steps.length-1,cur+d));render();}
+const nav=document.getElementById('snav');
+steps.forEach((s,i)=>{
+  const b=document.createElement('button');
+  b.className='sn'+(i===0?' on':'');
+  b.textContent=s.label;
+  b.onclick=()=>{cur=i;render();};
+  nav.appendChild(b);
+});
+render();
+</script>

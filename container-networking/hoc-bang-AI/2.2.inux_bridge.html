@@ -1,0 +1,184 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{padding:1rem 0 2rem;font-family:var(--font-sans)}
+.snav{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:1.25rem}
+.sn{padding:5px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);font-size:12px;cursor:pointer;background:transparent;color:var(--color-text-secondary)}
+.sn:hover{background:var(--color-background-secondary)}
+.sn.on{background:var(--color-background-primary);border-color:var(--color-border-primary);color:var(--color-text-primary);font-weight:500}
+.concept{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:11px 14px;margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7}
+.concept b{font-weight:500;color:var(--color-text-primary)}
+.cmd-block{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);overflow:hidden;margin-bottom:8px}
+.clabel{font-size:11px;color:var(--color-text-tertiary);padding:6px 12px 0;text-transform:uppercase;letter-spacing:.04em;font-weight:500}
+.cmd{font-family:var(--font-mono);font-size:12px;padding:5px 12px 9px;color:var(--color-text-primary);line-height:1.9}
+.ps{color:var(--color-text-tertiary)}
+.kw{color:#185FA5}.arg{color:#1D9E75}.fl{color:#BA7517}
+.out{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:9px 12px;margin-bottom:8px;font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary);line-height:1.8;white-space:pre-wrap}
+.hi{color:var(--color-text-primary);font-weight:500}
+.lo{color:var(--color-text-tertiary)}
+.ok{color:#1D9E75;font-weight:500}
+.insight{border-left:3px solid #1D9E75;border-radius:0;padding:10px 14px;background:var(--color-background-secondary);margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7}
+.insight b{font-weight:500;color:var(--color-text-primary)}
+.quiz-box{border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-lg);padding:14px 16px;margin-top:10px}
+.qtext{font-size:13px;color:var(--color-text-primary);margin-bottom:10px;line-height:1.6}
+.qopts{display:flex;flex-direction:column;gap:6px}
+.qopt{font-size:12px;padding:9px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);cursor:pointer;color:var(--color-text-secondary);line-height:1.5}
+.qopt:hover{background:var(--color-background-secondary)}
+.qopt.ok{background:#EAF3DE;color:#27500A;border-color:#C0DD97;cursor:default}
+.qopt.no{background:#FCEBEB;color:#791F1F;border-color:#F7C1C1;cursor:default}
+.fb{font-size:12px;margin-top:8px;padding:8px 12px;border-radius:var(--border-radius-md);line-height:1.6}
+.fb.ok{background:#EAF3DE;color:#27500A}
+.fb.no{background:#FCEBEB;color:#791F1F}
+.nav-row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+button.nb{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 14px;color:var(--color-text-primary);cursor:pointer}
+button.nb:hover{background:var(--color-background-secondary)}
+button.nb:disabled{opacity:.35;cursor:default}
+button.askb{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 13px;color:var(--color-text-primary);cursor:pointer}
+button.askb:hover{background:var(--color-background-secondary)}
+</style>
+
+<div class="wrap">
+<h2 style="position:absolute;left:-9999px">Lab Linux bridge: nối nhiều namespace qua một switch ảo</h2>
+<div class="snav" id="snav"></div>
+<div id="sc"></div>
+<div class="nav-row">
+  <button class="nb" id="bp" onclick="go(-1)">← Trước</button>
+  <button class="nb" id="bn" onclick="go(1)">Tiếp →</button>
+</div>
+</div>
+
+<script>
+const steps=[
+{
+label:"So sánh: trước/sau bridge",
+html:`
+<div class="concept">Với veth pair thuần túy, mỗi kết nối cần một dây riêng — <b>n*(n-1)/2 dây</b>. Bridge (switch ảo) cho phép mỗi namespace chỉ cần <b>một veth</b> nối vào bridge, bridge lo phần định tuyến Layer 2.</div>
+<svg width="100%" viewBox="0 0 680 230" role="img">
+<title>So sánh full-mesh veth vs bridge: 10 dây vs 4 dây</title>
+<desc>Bên trái: 4 namespace nối full-mesh cần 6 dây. Bên phải: 4 namespace nối qua bridge chỉ cần 4 dây.</desc>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<text class="ts" x="155" y="22" text-anchor="middle" fill="var(--color-text-tertiary)">full-mesh: 6 dây (n=4)</text>
+<g class="c-gray"><rect x="110" y="35" width="50" height="28" rx="5" stroke-width="0.5"/><text class="ts" x="135" y="49" text-anchor="middle" dominant-baseline="central">ns_A</text></g>
+<g class="c-gray"><rect x="200" y="35" width="50" height="28" rx="5" stroke-width="0.5"/><text class="ts" x="225" y="49" text-anchor="middle" dominant-baseline="central">ns_B</text></g>
+<g class="c-gray"><rect x="110" y="160" width="50" height="28" rx="5" stroke-width="0.5"/><text class="ts" x="135" y="174" text-anchor="middle" dominant-baseline="central">ns_C</text></g>
+<g class="c-gray"><rect x="200" y="160" width="50" height="28" rx="5" stroke-width="0.5"/><text class="ts" x="225" y="174" text-anchor="middle" dominant-baseline="central">ns_D</text></g>
+<line x1="160" y1="63" x2="200" y2="63" stroke="#D85A30" stroke-width="1"/>
+<line x1="160" y1="63" x2="135" y2="160" stroke="#D85A30" stroke-width="1"/>
+<line x1="160" y1="63" x2="225" y2="160" stroke="#D85A30" stroke-width="1"/>
+<line x1="225" y1="63" x2="135" y2="160" stroke="#D85A30" stroke-width="1"/>
+<line x1="225" y1="63" x2="225" y2="160" stroke="#D85A30" stroke-width="1"/>
+<line x1="135" y1="188" x2="225" y2="188" stroke="#D85A30" stroke-width="1"/>
+<text class="ts" x="155" y="215" text-anchor="middle" fill="var(--color-text-tertiary)">6 veth pair</text>
+
+<text class="ts" x="505" y="22" text-anchor="middle" fill="var(--color-text-tertiary)">bridge: 4 dây (n=4)</text>
+<g class="c-teal"><rect x="460" y="100" width="90" height="32" rx="6" stroke-width="0.5"/><text class="th" x="505" y="116" text-anchor="middle" dominant-baseline="central">br0 (bridge)</text></g>
+<g class="c-gray"><rect x="370" y="35" width="50" height="28" rx="5" stroke-width="0.5"/><text class="ts" x="395" y="49" text-anchor="middle" dominant-baseline="central">ns_A</text></g>
+<g class="c-gray"><rect x="590" y="35" width="50" height="28" rx="5" stroke-width="0.5"/><text class="ts" x="615" y="49" text-anchor="middle" dominant-baseline="central">ns_B</text></g>
+<g class="c-gray"><rect x="370" y="165" width="50" height="28" rx="5" stroke-width="0.5"/><text class="ts" x="395" y="179" text-anchor="middle" dominant-baseline="central">ns_C</text></g>
+<g class="c-gray"><rect x="590" y="165" width="50" height="28" rx="5" stroke-width="0.5"/><text class="ts" x="615" y="179" text-anchor="middle" dominant-baseline="central">ns_D</text></g>
+<line x1="420" y1="49" x2="468" y2="108" stroke="#1D9E75" stroke-width="1.2"/>
+<line x1="590" y1="49" x2="545" y2="108" stroke="#1D9E75" stroke-width="1.2"/>
+<line x1="420" y1="179" x2="468" y2="124" stroke="#1D9E75" stroke-width="1.2"/>
+<line x1="590" y1="179" x2="545" y2="124" stroke="#1D9E75" stroke-width="1.2"/>
+<text class="ts" x="505" y="215" text-anchor="middle" fill="var(--color-text-tertiary)">4 veth pair — thêm container = thêm 1 dây</text>
+</svg>
+`},
+{
+label:"Bridge học MAC như switch",
+html:`
+<div class="concept">Bridge là Layer 2 switch — nó <b>không biết IP</b>, chỉ biết <b>MAC address</b>. Nó học MAC bằng cách quan sát packet đến từ port nào, lưu vào <b>FDB (Forwarding Database)</b>.</div>
+<svg width="100%" viewBox="0 0 680 200" role="img">
+<title>Bridge học MAC: ns_A gửi packet, bridge ghi nhớ ns_A ở port veth_a</title>
+<desc>ns_A gửi ARP broadcast, bridge floods ra tất cả ports và học MAC của ns_A</desc>
+<defs><marker id="ar2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<g class="c-teal"><rect x="270" y="80" width="140" height="50" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="100" text-anchor="middle" dominant-baseline="central">br0</text>
+<text class="ts" x="340" y="118" text-anchor="middle" dominant-baseline="central">FDB: MAC_A → port veth_ha</text></g>
+<g class="c-gray"><rect x="40" y="85" width="90" height="40" rx="6" stroke-width="0.5"/><text class="ts" x="85" y="105" text-anchor="middle" dominant-baseline="central">ns_A (MAC_A)</text></g>
+<g class="c-gray"><rect x="550" y="55" width="90" height="40" rx="6" stroke-width="0.5"/><text class="ts" x="595" y="75" text-anchor="middle" dominant-baseline="central">ns_B</text></g>
+<g class="c-gray"><rect x="550" y="110" width="90" height="40" rx="6" stroke-width="0.5"/><text class="ts" x="595" y="130" text-anchor="middle" dominant-baseline="central">ns_C</text></g>
+<line x1="130" y1="105" x2="268" y2="105" stroke="#1D9E75" stroke-width="1.5" marker-end="url(#ar2)"/>
+<text class="ts" x="200" y="96">ARP broadcast</text>
+<line x1="410" y1="98" x2="548" y2="78" stroke="#BA7517" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
+<line x1="410" y1="110" x2="548" y2="128" stroke="#BA7517" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
+<text class="ts" x="480" y="60" fill="var(--color-text-tertiary)">flood tới</text>
+<text class="ts" x="480" y="72" fill="var(--color-text-tertiary)">mọi port</text>
+<text class="ts" x="340" y="170" text-anchor="middle" fill="var(--color-text-secondary)">Lần sau: ns_A → ns_B sẽ unicast thẳng, không flood nữa</text>
+</svg>
+<div class="insight">Bridge học MAC giống switch thật: lần đầu <b>flood</b> (gửi cho tất cả), sau khi biết MAC nằm ở port nào thì <b>unicast</b> thẳng. Bạn xem FDB bằng lệnh <code>bridge fdb show dev br0</code>.</div>
+`},
+{
+label:"Lab: dựng bridge",
+html:`
+<div class="concept">Dựng từ đầu: tạo bridge, tạo 3 namespace, nối tất cả vào bridge. Mỗi namespace chỉ cần 1 veth.</div>
+<div class="cmd-block"><div class="clabel">1. Tạo bridge br0</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip link add</span> <span class="fl">br0</span> <span class="arg">type bridge</span>
+<span class="ps">$ </span><span class="kw">sudo ip link set</span> <span class="fl">br0</span> <span class="arg">up</span></div></div>
+<div class="cmd-block"><div class="clabel">2. Tạo 3 namespace</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns add</span> <span class="fl">ns_A</span>
+<span class="ps">$ </span><span class="kw">sudo ip netns add</span> <span class="fl">ns_B</span>
+<span class="ps">$ </span><span class="kw">sudo ip netns add</span> <span class="fl">ns_C</span></div></div>
+<div class="cmd-block"><div class="clabel">3. Tạo veth pair cho ns_A (lặp tương tự cho B, C)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip link add</span> <span class="fl">veth_a</span> <span class="arg">type veth peer name</span> <span class="fl">veth_ha</span>
+<span class="ps">$ </span><span class="kw">sudo ip link set</span> <span class="fl">veth_a</span> <span class="arg">netns</span> <span class="fl">ns_A</span>
+<span class="ps">$ </span><span class="kw">sudo ip link set</span> <span class="fl">veth_ha</span> <span class="arg">master</span> <span class="fl">br0</span>
+<span class="ps">$ </span><span class="kw">sudo ip link set</span> <span class="fl">veth_ha</span> <span class="arg">up</span></div></div>
+<div class="insight"><b>Key insight:</b> <code>ip link set veth_ha master br0</code> — đây là lệnh "cắm dây vào switch". Đầu host-side (<code>veth_ha</code>) không cần IP, chỉ cần UP và là thành viên của bridge.</div>
+`},
+{
+label:"Lab: gán IP & ping",
+html:`
+<div class="cmd-block"><div class="clabel">Gán IP cho từng namespace (lặp cho B=.2, C=.3)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ip addr add</span> <span class="fl">10.0.0.1/24</span> <span class="arg">dev</span> <span class="fl">veth_a</span>
+<span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ip link set</span> <span class="fl">veth_a</span> <span class="arg">up</span>
+<span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ip link set</span> <span class="fl">lo</span> <span class="arg">up</span></div></div>
+<div class="cmd-block"><div class="clabel">Ping ns_A → ns_C (qua bridge)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ping -c 2</span> <span class="fl">10.0.0.3</span></div></div>
+<div class="out"><span class="ok">64 bytes from 10.0.0.3: icmp_seq=1 ttl=64 time=0.09 ms</span>
+<span class="ok">64 bytes from 10.0.0.3: icmp_seq=2 ttl=64 time=0.07 ms</span></div>
+<div class="cmd-block"><div class="clabel">Xem FDB — bridge đã học MAC của ai</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">bridge fdb show dev</span> <span class="fl">br0</span></div></div>
+<div class="out"><span class="hi">4a:b1:c2:d3:e4:f5 master br0</span><span class="lo"> ← MAC của ns_A (port veth_ha)</span>
+<span class="hi">6c:d2:e3:f4:a5:b6 master br0</span><span class="lo"> ← MAC của ns_B</span>
+<span class="hi">8e:f3:a4:b5:c6:d7 master br0</span><span class="lo"> ← MAC của ns_C</span></div>
+<div class="concept">Bridge đã học 3 MAC tương ứng 3 port. Từ giờ packet giữa bất kỳ cặp nào đều được <b>unicast thẳng</b> — không flood nữa.</div>
+`},
+{
+label:"Giới hạn & câu hỏi tiếp",
+html:`
+<div class="concept">Bridge giải quyết vấn đề <b>kết nối nội bộ</b> giữa các namespace. Nhưng bây giờ thử ping ra ngoài internet từ bên trong namespace:</div>
+<div class="cmd-block"><div class="clabel">Thử ping ra internet từ ns_A</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ping -c 2</span> <span class="fl">8.8.8.8</span></div></div>
+<div class="out"><span style="color:#A32D2D;font-weight:500">ping: connect: Network is unreachable</span>
+<span class="lo">← namespace không có default route!</span></div>
+<div class="cmd-block"><div class="clabel">Kiểm tra routing table trong ns_A</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ip route</span></div></div>
+<div class="out"><span class="hi">10.0.0.0/24 dev veth_a scope link</span>
+<span class="lo">← chỉ biết subnet nội bộ, không có default route (0.0.0.0/0)</span></div>
+<div class="insight"><b>Vấn đề:</b> namespace có thể nói chuyện với nhau qua bridge — nhưng muốn ra internet, cần:<br>1. <b>Default route</b> trỏ về gateway<br>2. Host bật <b>ip_forward</b><br>3. <b>iptables MASQUERADE</b> để NAT IP private → IP public<br><br>Đây chính xác là chủ đề 3 — Routing & iptables.</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+  <button class="askb" onclick="sendPrompt('Tôi hiểu bridge rồi. Giờ hãy dạy tôi routing và iptables — làm sao để namespace ping ra được internet qua NAT?')">Sang chủ đề 3: routing & iptables ↗</button>
+  <button class="askb" onclick="sendPrompt('Giải thích kỹ hơn về FDB và cách bridge flood rồi học MAC — có thể dùng tcpdump để quan sát không?')">Đào sâu hơn về FDB ↗</button>
+</div>
+`}
+];
+
+const quizData={};
+let cur=0;
+function render(){
+  document.getElementById('sc').innerHTML=steps[cur].html;
+  document.querySelectorAll('.sn').forEach((b,i)=>b.classList.toggle('on',i===cur));
+  document.getElementById('bp').disabled=cur===0;
+  document.getElementById('bn').disabled=cur===steps.length-1;
+}
+function go(d){cur=Math.max(0,Math.min(steps.length-1,cur+d));render();}
+const nav=document.getElementById('snav');
+steps.forEach((s,i)=>{
+  const b=document.createElement('button');
+  b.className='sn'+(i===0?' on':'');
+  b.textContent=s.label;
+  b.onclick=()=>{cur=i;render();};
+  nav.appendChild(b);
+});
+render();
+</script>

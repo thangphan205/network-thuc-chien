@@ -1,0 +1,166 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{padding:1rem 0 2rem;font-family:var(--font-sans)}
+.steps-nav{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:1.25rem}
+.sn{padding:5px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);font-size:12px;cursor:pointer;background:transparent;color:var(--color-text-secondary)}
+.sn:hover{background:var(--color-background-secondary)}
+.sn.on{background:var(--color-background-primary);border-color:var(--color-border-primary);color:var(--color-text-primary);font-weight:500}
+.concept{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:11px 14px;margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7}
+.concept b{font-weight:500;color:var(--color-text-primary)}
+.cmd-block{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);overflow:hidden;margin-bottom:8px}
+.clabel{font-size:11px;color:var(--color-text-tertiary);padding:6px 12px 0;text-transform:uppercase;letter-spacing:.04em;font-weight:500}
+.cmd{font-family:var(--font-mono);font-size:12px;padding:5px 12px 9px;color:var(--color-text-primary);line-height:1.8}
+.ps{color:var(--color-text-tertiary)}
+.kw{color:#185FA5}
+.arg{color:#1D9E75}
+.fl{color:#BA7517}
+.out{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:9px 12px;margin-bottom:8px;font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary);line-height:1.8;white-space:pre-wrap}
+.hi{color:var(--color-text-primary);font-weight:500}
+.lo{color:var(--color-text-tertiary)}
+.ok{color:#1D9E75;font-weight:500}
+.warn{color:#BA7517}
+.nav{display:flex;gap:8px;margin-top:12px}
+button.nb{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 14px;color:var(--color-text-primary);cursor:pointer}
+button.nb:hover{background:var(--color-background-secondary)}
+button.nb:disabled{opacity:.35;cursor:default}
+.askbtn{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 13px;color:var(--color-text-primary);cursor:pointer;margin-top:10px}
+.askbtn:hover{background:var(--color-background-secondary)}
+</style>
+
+<div class="wrap">
+<h2 style="position:absolute;left:-9999px">Lab kết nối 2 network namespace bằng veth pair từng bước</h2>
+
+<div class="steps-nav" id="snav"></div>
+<div id="sc"></div>
+<div class="nav">
+  <button class="nb" id="bp" onclick="go(-1)">← Trước</button>
+  <button class="nb" id="bn" onclick="go(1)">Tiếp →</button>
+</div>
+</div>
+
+<script>
+const steps=[
+{
+label:"Tổng quan mục tiêu",
+html:`
+<div class="concept">Mục tiêu của lab này: <b>tạo 2 namespace, nối bằng veth pair, ping thành công</b>. Mỗi bước chỉ làm một việc nhỏ để bạn thấy rõ vai trò từng lệnh.</div>
+<svg width="100%" viewBox="0 0 680 160" role="img"><title>Mục tiêu: ns_A và ns_B nối nhau bằng veth pair, ping được</title><desc>ns_A có veth_a (10.0.0.1), ns_B có veth_b (10.0.0.2), nối bằng veth pair</desc>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<g class="c-teal"><rect x="30" y="40" width="200" height="80" rx="10" stroke-width="0.5"/>
+<text class="th" x="130" y="65" text-anchor="middle" dominant-baseline="central">ns_A</text>
+<text class="ts" x="130" y="85" text-anchor="middle" dominant-baseline="central">veth_a</text>
+<text class="ts" x="130" y="103" text-anchor="middle" dominant-baseline="central">10.0.0.1/24</text></g>
+<g class="c-blue"><rect x="450" y="40" width="200" height="80" rx="10" stroke-width="0.5"/>
+<text class="th" x="550" y="65" text-anchor="middle" dominant-baseline="central">ns_B</text>
+<text class="ts" x="550" y="85" text-anchor="middle" dominant-baseline="central">veth_b</text>
+<text class="ts" x="550" y="103" text-anchor="middle" dominant-baseline="central">10.0.0.2/24</text></g>
+<rect x="230" y="70" width="220" height="20" rx="4" fill="none" stroke="#1D9E75" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text class="ts" x="340" y="81" text-anchor="middle" dominant-baseline="central">veth pair — "dây nối ảo"</text>
+<line x1="230" y1="80" x2="100" y2="80" stroke="#1D9E75" stroke-width="1.5"/>
+<line x1="450" y1="80" x2="580" y2="80" stroke="#378ADD" stroke-width="1.5"/>
+<text class="ts" x="340" y="140" text-anchor="middle">ping 10.0.0.2 → thành công!</text>
+</svg>
+`},
+{
+label:"Bước 1: tạo namespace",
+html:`
+<div class="concept">Tạo 2 namespace trống. Sau bước này, hai "máy ảo" tồn tại nhưng hoàn toàn cô lập — không có interface, không có route, không biết nhau.</div>
+<div class="cmd-block"><div class="clabel">Tạo 2 namespace</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns</span> <span class="arg">add</span> <span class="fl">ns_A</span>
+<span class="ps">$ </span><span class="kw">sudo ip netns</span> <span class="arg">add</span> <span class="fl">ns_B</span></div></div>
+<div class="cmd-block"><div class="clabel">Kiểm tra</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns</span> <span class="arg">list</span></div></div>
+<div class="out"><span class="hi">ns_B</span>
+<span class="hi">ns_A</span></div>
+<div class="concept"><b>Thử ngay:</b> chạy <code>sudo ip netns exec ns_A ip addr</code> — bạn sẽ chỉ thấy <code>lo</code> (loopback) ở trạng thái DOWN. Chứng minh namespace hoàn toàn trống.</div>
+`},
+{
+label:"Bước 2: tạo veth pair",
+html:`
+<div class="concept">Veth pair được tạo cùng lúc — hai đầu <b>luôn đi cùng nhau</b>. Sau lệnh này, cả hai interface xuất hiện ở <b>host namespace</b> (chưa ở trong ns_A hay ns_B).</div>
+<div class="cmd-block"><div class="clabel">Tạo veth pair: veth_a ↔ veth_b</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip link add</span> <span class="fl">veth_a</span> <span class="arg">type veth peer name</span> <span class="fl">veth_b</span></div></div>
+<div class="cmd-block"><div class="clabel">Kiểm tra — cả hai xuất hiện ở host</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">ip link show</span> <span class="arg">type veth</span></div></div>
+<div class="out"><span class="hi">5: veth_b</span><span class="lo">@veth_a: &lt;BROADCAST,MULTICAST&gt; mtu 1500</span>
+<span class="lo">    link/ether 3a:b1:... brd ff:ff:ff:ff:ff:ff</span>
+<span class="hi">6: veth_a</span><span class="lo">@veth_b: &lt;BROADCAST,MULTICAST&gt; mtu 1500</span>
+<span class="lo">    link/ether 4c:d2:... brd ff:ff:ff:ff:ff:ff</span>
+<span class="lo">← ký hiệu @veth_b có nghĩa "peer của tôi là veth_b"</span></div>
+<div class="concept">Chú ý ký hiệu <code>veth_a@veth_b</code>: kernel biết hai interface này là <b>"hai đầu của cùng một dây"</b>. Bất cứ gì gửi vào veth_a đều ra veth_b và ngược lại — không qua routing.</div>
+`},
+{
+label:"Bước 3: gắn vào namespace",
+html:`
+<div class="concept">Đây là bước quan trọng nhất. <b>Di chuyển</b> mỗi đầu veth vào namespace tương ứng. Sau bước này, host namespace <b>không còn thấy</b> veth_a hay veth_b nữa.</div>
+<div class="cmd-block"><div class="clabel">Di chuyển veth_a vào ns_A</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip link set</span> <span class="fl">veth_a</span> <span class="arg">netns</span> <span class="fl">ns_A</span></div></div>
+<div class="cmd-block"><div class="clabel">Di chuyển veth_b vào ns_B</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip link set</span> <span class="fl">veth_b</span> <span class="arg">netns</span> <span class="fl">ns_B</span></div></div>
+<div class="cmd-block"><div class="clabel">Kiểm tra — host không thấy nữa</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">ip link show</span> <span class="arg">type veth</span></div></div>
+<div class="out"><span class="lo">← không có output → đã "biến mất" khỏi host!</span></div>
+<div class="cmd-block"><div class="clabel">Kiểm tra bên trong ns_A</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ip link show</span></div></div>
+<div class="out"><span class="lo">1: </span><span class="hi">lo</span><span class="lo">: &lt;LOOPBACK&gt; ...</span>
+<span class="lo">6: </span><span class="hi">veth_a</span><span class="lo">@if5: &lt;BROADCAST,MULTICAST&gt; mtu 1500</span>
+<span class="lo">    ← veth_a đã ở đây, nhưng vẫn còn DOWN</span></div>
+`},
+{
+label:"Bước 4: gán IP & bật UP",
+html:`
+<div class="concept">Interface đã ở đúng namespace — nhưng chưa có IP và còn DOWN. Cần 3 việc cho mỗi namespace: gán IP, bật interface UP, bật loopback UP.</div>
+<div class="cmd-block"><div class="clabel">Trong ns_A: gán IP + bật UP</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ip addr add</span> <span class="fl">10.0.0.1/24</span> <span class="arg">dev</span> <span class="fl">veth_a</span>
+<span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ip link set</span> <span class="fl">veth_a</span> <span class="arg">up</span>
+<span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ip link set</span> <span class="fl">lo</span> <span class="arg">up</span></div></div>
+<div class="cmd-block"><div class="clabel">Trong ns_B: gán IP + bật UP</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_B</span> <span class="arg">ip addr add</span> <span class="fl">10.0.0.2/24</span> <span class="arg">dev</span> <span class="fl">veth_b</span>
+<span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_B</span> <span class="arg">ip link set</span> <span class="fl">veth_b</span> <span class="arg">up</span>
+<span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_B</span> <span class="arg">ip link set</span> <span class="fl">lo</span> <span class="arg">up</span></div></div>
+<div class="cmd-block"><div class="clabel">Kiểm tra route tự động tạo</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ip route</span></div></div>
+<div class="out"><span class="hi">10.0.0.0/24 dev veth_a proto kernel scope link src 10.0.0.1</span>
+<span class="lo">← route được tạo tự động khi gán /24!</span></div>
+<div class="concept">Khi gán IP với prefix /24, kernel tự thêm route "subnet này đi qua interface này". Đây là lý do ns_A biết rằng 10.0.0.2 có thể đến được qua veth_a — <b>không cần thêm route thủ công</b>.</div>
+`},
+{
+label:"Bước 5: ping & verify",
+html:`
+<div class="concept">Tất cả đã sẵn sàng. Thử ping từ ns_A sang IP của ns_B:</div>
+<div class="cmd-block"><div class="clabel">Ping từ ns_A → ns_B</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ping -c 3</span> <span class="fl">10.0.0.2</span></div></div>
+<div class="out"><span class="ok">PING 10.0.0.2: 56 data bytes</span>
+<span class="ok">64 bytes from 10.0.0.2: icmp_seq=0 ttl=64 time=0.08 ms</span>
+<span class="ok">64 bytes from 10.0.0.2: icmp_seq=1 ttl=64 time=0.06 ms</span>
+<span class="ok">64 bytes from 10.0.0.2: icmp_seq=2 ttl=64 time=0.05 ms</span>
+<span class="ok">--- 10.0.0.2 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss</span></div>
+<div class="cmd-block"><div class="clabel">Xem ARP table trong ns_A (sau ping)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ip neigh</span></div></div>
+<div class="out"><span class="hi">10.0.0.2 dev veth_a lladdr 3a:b1:... REACHABLE</span>
+<span class="lo">← ns_A đã học được MAC của ns_B qua ARP</span></div>
+<div class="concept">ARP hoạt động bình thường trong namespace — ns_A broadcast "ai có 10.0.0.2?", veth_a chuyển thẳng sang veth_b, ns_B trả lời bằng MAC của mình. Đây là Layer 2 thực sự.</div>
+<button class="askbtn" onclick="sendPrompt('Giờ tôi hiểu veth pair nối 2 namespace rồi. Nhưng nếu có 5 container, tôi cần bao nhiêu veth pair? Đây có phải lý do cần Linux bridge không?')">Nếu có 5 container thì sao? ↗</button>
+`}
+];
+
+let cur=0;
+function render(){
+  document.getElementById('sc').innerHTML=steps[cur].html;
+  document.querySelectorAll('.sn').forEach((b,i)=>b.classList.toggle('on',i===cur));
+  document.getElementById('bp').disabled=cur===0;
+  document.getElementById('bn').disabled=cur===steps.length-1;
+}
+function go(d){cur=Math.max(0,Math.min(steps.length-1,cur+d));render();}
+const nav=document.getElementById('snav');
+steps.forEach((s,i)=>{
+  const b=document.createElement('button');
+  b.className='sn'+(i===0?' on':'');
+  b.textContent=s.label;
+  b.onclick=()=>{cur=i;render();};
+  nav.appendChild(b);
+});
+render();
+</script>

@@ -1,0 +1,252 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{padding:1rem 0 2rem;font-family:var(--font-sans)}
+.snav{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:1.25rem}
+.sn{padding:5px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);font-size:12px;cursor:pointer;background:transparent;color:var(--color-text-secondary)}
+.sn:hover{background:var(--color-background-secondary)}
+.sn.on{background:var(--color-background-primary);border-color:var(--color-border-primary);color:var(--color-text-primary);font-weight:500}
+.concept{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:11px 14px;margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7}
+.concept b{font-weight:500;color:var(--color-text-primary)}
+.cmd-block{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);overflow:hidden;margin-bottom:8px}
+.clabel{font-size:11px;color:var(--color-text-tertiary);padding:6px 12px 0;text-transform:uppercase;letter-spacing:.04em;font-weight:500}
+.cmd{font-family:var(--font-mono);font-size:12px;padding:5px 12px 10px;color:var(--color-text-primary);line-height:1.9}
+.ps{color:var(--color-text-tertiary)}.kw{color:#185FA5}.arg{color:#1D9E75}.fl{color:#BA7517}
+.out{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:9px 12px;margin-bottom:8px;font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary);line-height:1.85;white-space:pre-wrap}
+.hi{color:var(--color-text-primary);font-weight:500}
+.lo{color:var(--color-text-tertiary)}
+.ok{color:#1D9E75;font-weight:500}
+.warn{color:#BA7517;font-weight:500}
+.err{color:#A32D2D;font-weight:500}
+.insight{border-left:3px solid #1D9E75;padding:10px 14px;background:var(--color-background-secondary);margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7;border-radius:0}
+.insight b{font-weight:500;color:var(--color-text-primary)}
+.warn-box{border-left:3px solid #BA7517;padding:10px 14px;background:var(--color-background-secondary);margin-bottom:10px;font-size:13px;color:var(--color-text-secondary);line-height:1.7;border-radius:0}
+.warn-box b{font-weight:500;color:#633806}
+.timeline{margin-bottom:12px}
+.t-row{display:flex;gap:0;margin-bottom:4px;align-items:stretch}
+.t-time{font-size:11px;font-family:var(--font-mono);color:var(--color-text-tertiary);width:56px;flex-shrink:0;padding-top:2px}
+.t-bar{width:3px;flex-shrink:0;border-radius:2px;margin-right:10px}
+.t-body{flex:1;padding-bottom:8px}
+.t-title{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:2px}
+.t-desc{font-size:12px;color:var(--color-text-secondary);line-height:1.5}
+.port-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
+.port-card{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:10px 12px}
+.port-name{font-size:12px;font-weight:500;margin-bottom:4px}
+.port-sees{font-size:11px;font-family:var(--font-mono);line-height:1.7}
+.nav-row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+button.nb{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 14px;color:var(--color-text-primary);cursor:pointer}
+button.nb:hover{background:var(--color-background-secondary)}
+button.nb:disabled{opacity:.35;cursor:default}
+button.askb{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 13px;color:var(--color-text-primary);cursor:pointer}
+button.askb:hover{background:var(--color-background-secondary)}
+</style>
+
+<div class="wrap">
+<h2 style="position:absolute;left:-9999px">FDB MAC learning và cách dùng tcpdump quan sát bridge flooding</h2>
+<div class="snav" id="snav"></div>
+<div id="sc"></div>
+<div class="nav-row">
+  <button class="nb" id="bp" onclick="go(-1)">← Trước</button>
+  <button class="nb" id="bn" onclick="go(1)">Tiếp →</button>
+</div>
+</div>
+
+<script>
+const steps=[
+{
+label:"Setup lab 3 terminal",
+html:`
+<div class="concept">Lab này cần <b>3 terminal chạy song song</b>. Đây là điểm khác biệt quan trọng — bạn sẽ thấy bridge flooding xảy ra <b>theo thời gian thực</b> trên 3 cửa sổ khác nhau.</div>
+<svg width="100%" viewBox="0 0 680 185" role="img">
+<title>Setup 3 terminal: terminal 1 tcpdump veth_hb, terminal 2 tcpdump veth_hc, terminal 3 ping từ ns_A</title>
+<desc>Ba terminal cạnh nhau: T1 chạy tcpdump trên veth_hb, T2 chạy tcpdump trên veth_hc, T3 chạy lệnh ping</desc>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<g class="c-gray"><rect x="30" y="20" width="185" height="140" rx="8" stroke-width="0.5"/>
+<text class="th" x="122" y="46" text-anchor="middle" dominant-baseline="central">Terminal 1</text>
+<text class="ts" x="122" y="68" text-anchor="middle" dominant-baseline="central">tcpdump trên veth_hb</text>
+<text class="ts" x="122" y="86" text-anchor="middle" dominant-baseline="central">(port của ns_B)</text>
+<text class="ts" x="122" y="120" text-anchor="middle" dominant-baseline="central" fill="var(--color-text-tertiary)">quan sát xem ns_C</text>
+<text class="ts" x="122" y="138" text-anchor="middle" dominant-baseline="central" fill="var(--color-text-tertiary)">ping ns_B thấy gì</text></g>
+<g class="c-teal"><rect x="247" y="20" width="185" height="140" rx="8" stroke-width="0.5"/>
+<text class="th" x="340" y="46" text-anchor="middle" dominant-baseline="central">Terminal 2</text>
+<text class="ts" x="340" y="68" text-anchor="middle" dominant-baseline="central">tcpdump trên veth_hc</text>
+<text class="ts" x="340" y="86" text-anchor="middle" dominant-baseline="central">(port của ns_C)</text>
+<text class="ts" x="340" y="120" text-anchor="middle" dominant-baseline="central" fill="var(--color-text-tertiary)">cửa sổ quan trọng nhất</text>
+<text class="ts" x="340" y="138" text-anchor="middle" dominant-baseline="central" fill="var(--color-text-tertiary)">— ns_C không liên quan!</text></g>
+<g class="c-blue"><rect x="464" y="20" width="185" height="140" rx="8" stroke-width="0.5"/>
+<text class="th" x="557" y="46" text-anchor="middle" dominant-baseline="central">Terminal 3</text>
+<text class="ts" x="557" y="68" text-anchor="middle" dominant-baseline="central">thực thi lệnh</text>
+<text class="ts" x="557" y="86" text-anchor="middle" dominant-baseline="central">ping & fdb commands</text>
+<text class="ts" x="557" y="120" text-anchor="middle" dominant-baseline="central" fill="var(--color-text-tertiary)">ns_A ping ns_B</text>
+<text class="ts" x="557" y="138" text-anchor="middle" dominant-baseline="central" fill="var(--color-text-tertiary)">reset FDB, test lại</text></g>
+</svg>
+<div class="warn-box"><b>Yêu cầu:</b> bridge <code>br0</code> đã tạo, 3 namespace ns_A (10.0.0.1), ns_B (10.0.0.2), ns_C (10.0.0.3) đã nối vào bridge với veth pair tương ứng. Nếu chưa có, làm lab bước trước rồi quay lại đây.</div>
+`},
+{
+label:"Terminal 1 & 2: chạy tcpdump",
+html:`
+<div class="concept">Chạy tcpdump trên hai cửa sổ trước, <b>sau đó mới</b> chạy ping. Thứ tự quan trọng — nếu ping trước thì bỏ lỡ ARP.</div>
+<div class="cmd-block">
+<div class="clabel">Terminal 1 — theo dõi port của ns_B</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo tcpdump</span> <span class="fl">-i veth_hb</span> <span class="arg">-n -e</span>
+<span class="lo"># -n: không resolve DNS
+# -e: hiện MAC address (quan trọng!)</span></div></div>
+<div class="cmd-block">
+<div class="clabel">Terminal 2 — theo dõi port của ns_C (ns_C KHÔNG tham gia ping!)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo tcpdump</span> <span class="fl">-i veth_hc</span> <span class="arg">-n -e</span></div></div>
+<div class="insight">Tại sao tcpdump trên <code>veth_hc</code>? Vì <b>ns_C không liên quan</b> đến cuộc ping giữa ns_A và ns_B. Nếu bridge flood thì veth_hc <b>vẫn thấy packet</b> — đó là bằng chứng flooding. Nếu bridge đã biết MAC thì veth_hc <b>im lặng hoàn toàn</b>.</div>
+`},
+{
+label:"Lần ping 1: FDB trống → flood",
+html:`
+<div class="concept">FDB đang trống (hoặc bạn vừa reset). Bridge chưa biết ns_B ở port nào. Chạy lệnh sau rồi quan sát cả 2 terminal tcpdump:</div>
+<div class="cmd-block">
+<div class="clabel">Terminal 3 — reset FDB cho sạch, rồi ping lần 1</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">bridge fdb flush dev</span> <span class="fl">br0</span>
+<span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ping -c 1</span> <span class="fl">10.0.0.2</span></div></div>
+<div class="port-grid">
+<div class="port-card" style="border-color:#B5D4F4">
+<div class="port-name" style="color:#0C447C">Terminal 1: veth_hb</div>
+<div class="port-sees">
+<span class="warn">ARP  Who has 10.0.0.2?</span>
+      Tell 10.0.0.1
+<span class="ok">ARP  10.0.0.2 is-at</span>
+      <span class="ok">3a:b1:...</span>
+<span class="ok">ICMP echo request</span>
+<span class="ok">ICMP echo reply</span>
+</div>
+</div>
+<div class="port-card" style="border-color:#F0997B">
+<div class="port-name" style="color:#712B13">Terminal 2: veth_hc</div>
+<div class="port-sees">
+<span class="warn">ARP  Who has 10.0.0.2?</span>
+      Tell 10.0.0.1
+<span class="lo">← ns_C thấy ARP!</span>
+<span class="lo">← nhưng không thấy</span>
+<span class="lo">  ICMP sau đó</span>
+</div>
+</div>
+<div class="port-card" style="border-color:#C0DD97">
+<div class="port-name" style="color:#27500A">FDB sau ping</div>
+<div class="port-sees">
+<span class="ok">MAC_A → veth_ha</span>
+<span class="ok">MAC_B → veth_hb</span>
+<span class="lo">← bridge học được</span>
+<span class="lo">  2 MAC từ ARP</span>
+</div>
+</div>
+</div>
+<div class="insight"><b>Giải thích:</b> ARP request là broadcast (ff:ff:ff:ff:ff:ff) → bridge <b>bắt buộc phải flood</b> ra mọi port → veth_hc thấy ARP dù ns_C không liên quan. Sau khi ns_B trả ARP reply, bridge học được MAC_A và MAC_B. ICMP sau đó được unicast thẳng → veth_hc không thấy ICMP.</div>
+`},
+{
+label:"Lần ping 2: FDB đã học → unicast",
+html:`
+<div class="concept">FDB đã có MAC của ns_A và ns_B. Ping lần 2 — ARP không cần broadcast nữa vì đã có ARP cache. Bridge forward thẳng theo FDB.</div>
+<div class="cmd-block">
+<div class="clabel">Terminal 3 — ping lần 2 (không reset FDB)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">ping -c 3</span> <span class="fl">10.0.0.2</span></div></div>
+<div class="port-grid">
+<div class="port-card" style="border-color:#B5D4F4">
+<div class="port-name" style="color:#0C447C">Terminal 1: veth_hb</div>
+<div class="port-sees">
+<span class="ok">ICMP echo request</span>
+<span class="ok">ICMP echo reply</span>
+<span class="ok">ICMP echo request</span>
+<span class="ok">ICMP echo reply</span>
+<span class="ok">ICMP echo request</span>
+<span class="ok">ICMP echo reply</span>
+</div>
+</div>
+<div class="port-card" style="border-color:#9FE1CB">
+<div class="port-name" style="color:#085041">Terminal 2: veth_hc</div>
+<div class="port-sees">
+<span class="lo">(im lặng hoàn toàn)</span>
+
+
+<span class="lo">← không có packet nào!</span>
+<span class="lo">← bridge unicast thẳng</span>
+<span class="lo">  veth_ha ↔ veth_hb</span>
+</div>
+</div>
+<div class="port-card" style="border-color:#C0DD97">
+<div class="port-name" style="color:#27500A">FDB — không đổi</div>
+<div class="port-sees">
+<span class="ok">MAC_A → veth_ha</span>
+<span class="ok">MAC_B → veth_hb</span>
+<span class="lo">← aging timer đếm</span>
+<span class="lo">  ngược (300s default)</span>
+</div>
+</div>
+</div>
+<div class="insight"><b>Đây là khoảnh khắc "aha":</b> veth_hc <b>hoàn toàn im lặng</b> trong lần ping 2. Bridge không còn flood nữa — nó biết chính xác packet cần đi đâu. Nếu bạn có 100 container, một cuộc nói chuyện giữa 2 container sẽ <b>không làm phiền</b> 98 container còn lại.</div>
+`},
+{
+label:"Xem & debug FDB",
+html:`
+<div class="concept">Sau khi hiểu cơ chế, đây là bộ lệnh đầy đủ để đọc và debug FDB trong thực tế — bao gồm cả aging timer mà nhiều người không biết.</div>
+<div class="cmd-block">
+<div class="clabel">Xem toàn bộ FDB của bridge</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">bridge fdb show dev</span> <span class="fl">br0</span></div></div>
+<div class="out"><span class="hi">4a:b1:c2:d3:e4:f5 master br0</span> <span class="lo">extern_learn</span>
+<span class="lo">    → MAC của ns_A, học từ data plane</span>
+<span class="hi">6c:d2:e3:f4:a5:b6 master br0</span>
+<span class="lo">    → MAC của ns_B</span>
+<span class="hi">33:33:00:00:00:01 self permanent</span>
+<span class="lo">    → IPv6 multicast, "permanent" = không expire</span></div>
+<div class="cmd-block">
+<div class="clabel">Xem aging timer (FDB tự xóa sau bao lâu)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">cat</span> <span class="arg">/sys/class/net/br0/bridge/ageing_time</span></div></div>
+<div class="out"><span class="hi">30000</span>
+<span class="lo">← đơn vị là 1/100 giây → 300 giây = 5 phút
+   nếu MAC không gửi packet trong 5 phút → bị xóa khỏi FDB
+   lần sau sẽ flood lại để học lại</span></div>
+<div class="cmd-block">
+<div class="clabel">Thay đổi aging time (ví dụ: 60 giây)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip link set</span> <span class="fl">br0</span> <span class="arg">type bridge ageing_time</span> <span class="fl">6000</span></div></div>
+<div class="warn-box"><b>Aging timer trong Kubernetes:</b> khi Pod bị xóa và tạo lại, veth pair mới → MAC mới. Nếu aging timer còn cao và FDB chưa expire → bridge gửi packet đến port cũ (đã không còn tồn tại) → packet bị drop. Đây là một dạng lỗi networking thực tế trong K8s khi Pod restart nhanh.</div>
+`},
+{
+label:"tcpdump nâng cao",
+html:`
+<div class="concept">Một số filter tcpdump hữu ích hơn khi debug bridge trong môi trường nhiều container:</div>
+<div class="cmd-block">
+<div class="clabel">Chỉ bắt ARP để theo dõi FDB learning</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo tcpdump</span> <span class="fl">-i veth_hc</span> <span class="arg">-n -e arp</span></div></div>
+<div class="cmd-block">
+<div class="clabel">Bắt trên bridge interface trực tiếp (thấy TẤT CẢ)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo tcpdump</span> <span class="fl">-i br0</span> <span class="arg">-n -e</span></div></div>
+<div class="out"><span class="lo">← br0 thấy mọi packet đến bridge
+   bất kể flood hay unicast
+   hữu ích để verify packet có đến bridge không</span></div>
+<div class="cmd-block">
+<div class="clabel">Bắt trong namespace (thấy packet từ góc nhìn container)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="fl">ns_A</span> <span class="arg">tcpdump -i veth_a -n -e</span></div></div>
+<div class="cmd-block">
+<div class="clabel">Lọc theo MAC cụ thể (theo dõi một container)</div>
+<div class="cmd"><span class="ps">$ </span><span class="kw">sudo tcpdump</span> <span class="fl">-i br0</span> <span class="arg">-n -e ether host</span> <span class="fl">4a:b1:c2:d3:e4:f5</span></div></div>
+<div class="insight"><b>Kết hợp tư duy:</b> khi debug container networking, mình luôn dùng 3 "góc nhìn":<br>1. Trong namespace (<code>ip netns exec ns_X tcpdump -i veth_x</code>) — packet đến container không?<br>2. Trên host-side veth (<code>tcpdump -i veth_hx</code>) — packet qua bridge không?<br>3. Trên br0 (<code>tcpdump -i br0</code>) — bridge xử lý đúng không?<br>Ba tầng này đủ để isolate hầu hết lỗi mạng container.</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+  <button class="askb" onclick="sendPrompt('Tôi hiểu FDB và tcpdump rồi. Giờ hãy dạy tôi routing và iptables — làm sao để namespace ping ra được internet qua NAT MASQUERADE?')">Sang chủ đề 3: routing & iptables ↗</button>
+  <button class="askb" onclick="sendPrompt('Aging timer trong FDB ảnh hưởng đến Kubernetes như thế nào trong thực tế? Có cách nào observe lỗi này không?')">Đào sâu aging timer trong K8s ↗</button>
+</div>
+`}
+];
+
+let cur=0;
+function render(){
+  document.getElementById('sc').innerHTML=steps[cur].html;
+  document.querySelectorAll('.sn').forEach((b,i)=>b.classList.toggle('on',i===cur));
+  document.getElementById('bp').disabled=cur===0;
+  document.getElementById('bn').disabled=cur===steps.length-1;
+}
+function go(d){cur=Math.max(0,Math.min(steps.length-1,cur+d));render();}
+const nav=document.getElementById('snav');
+steps.forEach((s,i)=>{
+  const b=document.createElement('button');
+  b.className='sn'+(i===0?' on':'');
+  b.textContent=s.label;
+  b.onclick=()=>{cur=i;render();};
+  nav.appendChild(b);
+});
+render();
+</script>

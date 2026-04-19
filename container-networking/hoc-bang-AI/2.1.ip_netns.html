@@ -1,0 +1,216 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{padding:1rem 0 2rem;font-family:var(--font-sans)}
+.stepper{display:flex;gap:6px;margin-bottom:1.5rem;flex-wrap:wrap}
+.step-btn{padding:6px 14px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);font-size:12px;cursor:pointer;background:transparent;color:var(--color-text-secondary);transition:all .15s}
+.step-btn:hover{background:var(--color-background-secondary)}
+.step-btn.active{background:var(--color-background-primary);border-color:var(--color-border-primary);color:var(--color-text-primary);font-weight:500}
+.concept{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:12px 14px;margin-bottom:12px;font-size:13px;color:var(--color-text-secondary);line-height:1.7}
+.concept strong{font-weight:500;color:var(--color-text-primary)}
+.cmd-block{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);overflow:hidden;margin-bottom:10px}
+.cmd-label{font-size:11px;font-weight:500;color:var(--color-text-tertiary);padding:7px 12px 0;text-transform:uppercase;letter-spacing:.04em}
+.cmd{font-family:var(--font-mono);font-size:12px;padding:6px 12px 8px;color:var(--color-text-primary)}
+.cmd .ps{color:var(--color-text-tertiary)}
+.cmd .kw{color:#185FA5}
+.cmd .arg{color:#1D9E75}
+.cmd .flag{color:#BA7517}
+.out-block{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;margin-bottom:10px;font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary);line-height:1.8;white-space:pre-wrap}
+.out-block .hi{color:var(--color-text-primary);font-weight:500}
+.out-block .lo{color:var(--color-text-tertiary)}
+.quiz{border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-lg);padding:14px 16px;margin-top:12px}
+.quiz-q{font-size:13px;color:var(--color-text-primary);margin-bottom:10px;line-height:1.6}
+.quiz-opts{display:flex;flex-direction:column;gap:6px}
+.qopt{font-size:12px;padding:9px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);cursor:pointer;color:var(--color-text-secondary);transition:background .12s}
+.qopt:hover{background:var(--color-background-secondary)}
+.qopt.correct{background:#EAF3DE;color:#27500A;border-color:#C0DD97}
+.qopt.wrong{background:#FCEBEB;color:#791F1F;border-color:#F7C1C1}
+.feedback{font-size:12px;margin-top:8px;padding:8px 12px;border-radius:var(--border-radius-md);line-height:1.6}
+.fb-ok{background:#EAF3DE;color:#27500A}
+.fb-no{background:#FCEBEB;color:#791F1F}
+.nav{display:flex;gap:8px;margin-top:14px}
+button.nb{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 14px;color:var(--color-text-primary);cursor:pointer}
+button.nb:hover{background:var(--color-background-secondary)}
+button.nb:disabled{opacity:.35;cursor:default}
+.vis{margin-bottom:12px}
+</style>
+
+<div class="wrap">
+<h2 style="position:absolute;left:-9999px">Học ip netns từng bước: khái niệm, lệnh thực tế, quiz kiểm tra hiểu</h2>
+
+<div class="stepper" id="stepper"></div>
+<div id="content"></div>
+<div class="nav">
+  <button class="nb" id="btn-prev" onclick="go(-1)">← Trước</button>
+  <button class="nb" id="btn-next" onclick="go(1)">Tiếp →</button>
+</div>
+</div>
+
+<script>
+const steps=[
+  {
+    label:"Vấn đề cần giải",
+    render:()=>`
+<div class="concept"><strong>Linux có một "bảng network duy nhất"</strong> cho toàn hệ thống — chứa interfaces (eth0, lo...), routing table, ARP table, iptables rules. Khi bạn chạy <code>ip addr</code>, bạn đang hỏi bảng đó.<br><br>Vấn đề: nếu container cũng dùng chung bảng đó → chúng thấy nhau, xung đột IP, không thể cô lập. <strong>Cần một cơ chế tạo ra nhiều "bảng network riêng biệt".</strong></div>
+<svg width="100%" viewBox="0 0 680 180" role="img"><title>Trước namespace: mọi process chia sẻ một bảng network duy nhất</title><desc>Host process, container A, container B đều nhìn vào một global network table</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<g class="c-gray"><rect x="40" y="30" width="120" height="36" rx="6" stroke-width="0.5"/><text class="ts" x="100" y="48" text-anchor="middle" dominant-baseline="central">host process</text></g>
+<g class="c-teal"><rect x="40" y="80" width="120" height="36" rx="6" stroke-width="0.5"/><text class="ts" x="100" y="98" text-anchor="middle" dominant-baseline="central">container A</text></g>
+<g class="c-blue"><rect x="40" y="130" width="120" height="36" rx="6" stroke-width="0.5"/><text class="ts" x="100" y="148" text-anchor="middle" dominant-baseline="central">container B</text></g>
+<g class="c-coral"><rect x="380" y="60" width="260" height="90" rx="10" stroke-width="0.5"/><text class="th" x="510" y="88" text-anchor="middle" dominant-baseline="central">Global network table</text><text class="ts" x="510" y="108" text-anchor="middle" dominant-baseline="central">eth0, lo, routes, iptables...</text><text class="ts" x="510" y="126" text-anchor="middle" dominant-baseline="central">TẤT CẢ đều thấy → xung đột!</text></g>
+<line x1="160" y1="48" x2="378" y2="100" stroke="#D85A30" stroke-width="1" marker-end="url(#a)"/>
+<line x1="160" y1="98" x2="378" y2="105" stroke="#D85A30" stroke-width="1" marker-end="url(#a)"/>
+<line x1="160" y1="148" x2="378" y2="110" stroke="#D85A30" stroke-width="1" marker-end="url(#a)"/>
+</svg>
+`},
+  {
+    label:"Namespace là gì",
+    render:()=>`
+<div class="concept"><strong>Network namespace</strong> là một bản sao cô lập của toàn bộ Linux network stack. Mỗi namespace có <strong>interfaces riêng, routing table riêng, iptables rules riêng, port space riêng</strong>.<br><br>Khi bạn tạo một namespace mới → nó trống hoàn toàn: không có interface nào ngoài <code>lo</code> (loopback). Hai process trong hai namespace khác nhau <strong>không thấy nhau</strong>, giống như đang chạy trên hai máy vật lý riêng biệt.</div>
+<svg width="100%" viewBox="0 0 680 200" role="img"><title>Sau namespace: mỗi container có bảng network riêng biệt</title><desc>Host namespace, namespace A, namespace B đều có bảng network độc lập</desc>
+<defs><marker id="a2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<g class="c-gray"><rect x="30" y="20" width="180" height="60" rx="8" stroke-width="0.5"/><text class="th" x="120" y="40" text-anchor="middle" dominant-baseline="central">host namespace</text><text class="ts" x="120" y="60" text-anchor="middle" dominant-baseline="central">eth0: 192.168.1.10</text></g>
+<g class="c-teal"><rect x="250" y="20" width="180" height="60" rx="8" stroke-width="0.5"/><text class="th" x="340" y="40" text-anchor="middle" dominant-baseline="central">namespace: ns_A</text><text class="ts" x="340" y="60" text-anchor="middle" dominant-baseline="central">eth0: 10.0.0.2</text></g>
+<g class="c-blue"><rect x="470" y="20" width="180" height="60" rx="8" stroke-width="0.5"/><text class="th" x="560" y="40" text-anchor="middle" dominant-baseline="central">namespace: ns_B</text><text class="ts" x="560" y="60" text-anchor="middle" dominant-baseline="central">eth0: 10.0.0.3</text></g>
+<g class="c-gray"><rect x="30" y="110" width="620" height="60" rx="8" stroke-width="0.5"/><text class="th" x="340" y="130" text-anchor="middle" dominant-baseline="central">Linux kernel</text><text class="ts" x="340" y="150" text-anchor="middle" dominant-baseline="central">Cùng 1 kernel — nhưng tạo ra nhiều "bảng network" độc lập cho từng namespace</text></g>
+<line x1="120" y1="80" x2="170" y2="108" stroke="#888780" stroke-width="1" marker-end="url(#a2)"/>
+<line x1="340" y1="80" x2="340" y2="108" stroke="#1D9E75" stroke-width="1" marker-end="url(#a2)"/>
+<line x1="560" y1="80" x2="510" y2="108" stroke="#378ADD" stroke-width="1" marker-end="url(#a2)"/>
+</svg>
+`},
+  {
+    label:"Lệnh cơ bản",
+    render:()=>`
+<div class="concept">Ba lệnh bạn cần thuộc lòng. Tất cả đều cần <strong>sudo</strong>.</div>
+<div class="cmd-block">
+  <div class="cmd-label">Tạo namespace mới</div>
+  <div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns</span> <span class="arg">add</span> <span class="flag">ns_A</span></div>
+</div>
+<div class="cmd-block">
+  <div class="cmd-label">Liệt kê tất cả namespace</div>
+  <div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns</span> <span class="arg">list</span></div>
+</div>
+<div class="out-block"><span class="hi">ns_A</span></div>
+<div class="cmd-block">
+  <div class="cmd-label">Chạy lệnh TRONG namespace (exec)</div>
+  <div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="flag">ns_A</span> <span class="arg">ip addr</span></div>
+</div>
+<div class="out-block"><span class="lo">1: </span><span class="hi">lo</span><span class="lo">: &lt;LOOPBACK&gt; mtu 65536</span>
+<span class="lo">    link/loopback 00:00:00:00:00:00</span>
+<span class="lo">    ← chỉ có loopback, KHÔNG có eth0!</span></div>
+<div class="concept">Chú ý: namespace mới <strong>trống hoàn toàn</strong>. Ngay cả <code>lo</code> cũng chưa UP. Đây là bằng chứng rõ nhất của sự cô lập.</div>
+`},
+  {
+    label:"Namespace là file",
+    render:()=>`
+<div class="concept">Namespace không chỉ là khái niệm — nó là <strong>một file thực sự</strong> trên filesystem. Linux lưu namespace của mỗi process tại <code>/proc/PID/ns/net</code>.<br><br>Khi bạn dùng <code>ip netns add</code>, Linux tạo một bind mount tại <code>/var/run/netns/&lt;tên&gt;</code> để namespace tồn tại ngay cả khi không có process nào đang dùng nó.</div>
+<div class="cmd-block">
+  <div class="cmd-label">Xem namespace của process đang chạy</div>
+  <div class="cmd"><span class="ps">$ </span><span class="kw">ls -la</span> <span class="arg">/proc/1/ns/net</span></div>
+</div>
+<div class="out-block"><span class="lo">lrwxrwxrwx 1 root root 0 ... </span><span class="hi">/proc/1/ns/net -> net:[4026531992]</span></div>
+<div class="cmd-block">
+  <div class="cmd-label">Xem namespace sau khi tạo bằng ip netns add</div>
+  <div class="cmd"><span class="ps">$ </span><span class="kw">ls -la</span> <span class="arg">/var/run/netns/</span></div>
+</div>
+<div class="out-block"><span class="hi">ns_A</span>   <span class="lo">← bind mount, tồn tại độc lập</span></div>
+<div class="cmd-block">
+  <div class="cmd-label">So sánh namespace của 2 process</div>
+  <div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="flag">ns_A</span> <span class="arg">readlink /proc/self/ns/net</span></div>
+</div>
+<div class="out-block"><span class="hi">net:[4026532241]</span>  <span class="lo">← số khác với host (4026531992)!</span></div>
+<div class="concept">Con số khác nhau = hai namespace khác nhau. Container runtime (containerd) dùng chính cơ chế này để tạo và track namespace của từng container.</div>
+`},
+  {
+    label:"Vòng đời namespace",
+    render:()=>`
+<div class="concept">Namespace tồn tại chừng nào còn có thứ gì đó "giữ" nó: một process đang chạy trong đó, hoặc một bind mount (file) trỏ đến nó. Khi Docker xóa container → nó xóa namespace. Khi kubelet xóa Pod → CNI plugin nhận lệnh <code>DEL</code> và cleanup namespace.</div>
+<div class="cmd-block">
+  <div class="cmd-label">Xóa namespace</div>
+  <div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns</span> <span class="arg">del</span> <span class="flag">ns_A</span></div>
+</div>
+<div class="cmd-block">
+  <div class="cmd-label">Chạy process trong namespace (background)</div>
+  <div class="cmd"><span class="ps">$ </span><span class="kw">sudo ip netns exec</span> <span class="flag">ns_A</span> <span class="arg">bash</span> <span class="flag">&</span></div>
+</div>
+<div class="cmd-block">
+  <div class="cmd-label">Attach vào namespace của process đang chạy (như docker exec)</div>
+  <div class="cmd"><span class="ps">$ </span><span class="kw">sudo nsenter</span> <span class="flag">--net=/proc/&lt;PID&gt;/ns/net</span> <span class="arg">ip addr</span></div>
+</div>
+<div class="concept"><strong>nsenter</strong> là công cụ bạn dùng để "chui vào" namespace của container đang chạy mà không cần docker exec — rất hữu ích khi debug CNI.</div>
+`},
+  {
+    label:"Kiểm tra hiểu",
+    quiz:true,
+    render:()=>`
+<div class="concept" style="margin-bottom:14px">Trước khi sang chủ đề 2 (Linux bridge), hãy kiểm tra bạn đã nắm chưa:</div>
+<div class="quiz" id="q1" style="margin-bottom:12px">
+  <div class="quiz-q">1. Bạn chạy <code>sudo ip netns exec ns_A ip addr</code> và chỉ thấy <code>lo</code> — không có eth0. Điều đó có nghĩa là gì?</div>
+  <div class="quiz-opts">
+    <div class="qopt" onclick="ans(this,'q1',false)">a. Lệnh bị lỗi, cần chạy lại</div>
+    <div class="qopt" onclick="ans(this,'q1',false)">b. Namespace ns_A chưa được tạo đúng cách</div>
+    <div class="qopt" onclick="ans(this,'q1',true)">c. Namespace mới hoàn toàn cô lập — chưa có interface nào được gắn vào nó</div>
+    <div class="qopt" onclick="ans(this,'q1',false)">d. eth0 của host bị ẩn đi</div>
+  </div>
+  <div class="feedback" id="fb-q1" style="display:none"></div>
+</div>
+<div class="quiz" id="q2">
+  <div class="quiz-q">2. Container A (trong ns_A) có <code>eth0: 10.0.0.2</code>. Container B (trong ns_B) có <code>eth0: 10.0.0.3</code>. Hai cái này có xung đột nhau không?</div>
+  <div class="quiz-opts">
+    <div class="qopt" onclick="ans(this,'q2',false)">a. Có — cùng subnet nên sẽ xung đột routing</div>
+    <div class="qopt" onclick="ans(this,'q2',true)">b. Không — vì mỗi namespace có routing table riêng biệt hoàn toàn</div>
+    <div class="qopt" onclick="ans(this,'q2',false)">c. Có — kernel chỉ cho phép một IP/subnet trên toàn máy</div>
+    <div class="qopt" onclick="ans(this,'q2',false)">d. Không biết — cần xem iptables mới biết</div>
+  </div>
+  <div class="feedback" id="fb-q2" style="display:none"></div>
+</div>
+`}
+];
+
+const fb={
+  'q1':{
+    ok:'Đúng! Namespace mới giống như một máy tính vừa boot — chỉ có loopback, chưa có card mạng nào. Bước tiếp theo sẽ là "cắm" interface vào namespace này.',
+    no:'Chưa đúng. Namespace mới được tạo hoàn toàn trống — đây là hành vi bình thường và đúng. Không có interface nào ngoài lo. Đây chính là bằng chứng của sự cô lập.'
+  },
+  'q2':{
+    ok:'Chính xác! Mỗi namespace có routing table riêng. 10.0.0.2 trong ns_A và 10.0.0.3 trong ns_B sống trong "vũ trụ mạng" khác nhau hoàn toàn — không hề biết nhau tồn tại.',
+    no:'Chưa đúng. Namespace cô lập toàn bộ network stack — bao gồm routing table. Hai namespace có thể dùng cùng subnet mà không xung đột, vì chúng không nhìn thấy nhau.'
+  }
+};
+
+function ans(el,qid,correct){
+  const opts=el.parentElement.querySelectorAll('.qopt');
+  opts.forEach(o=>o.onclick=null);
+  el.classList.add(correct?'correct':'wrong');
+  const fbEl=document.getElementById('fb-'+qid);
+  fbEl.style.display='block';
+  fbEl.className='feedback '+(correct?'fb-ok':'fb-no');
+  fbEl.textContent=correct?fb[qid].ok:fb[qid].no;
+}
+
+let cur=0;
+function render(){
+  const s=steps[cur];
+  document.getElementById('content').innerHTML=s.render();
+  document.querySelectorAll('.step-btn').forEach((b,i)=>{
+    b.classList.toggle('active',i===cur);
+  });
+  document.getElementById('btn-prev').disabled=cur===0;
+  document.getElementById('btn-next').disabled=cur===steps.length-1;
+}
+
+function go(d){
+  cur=Math.max(0,Math.min(steps.length-1,cur+d));
+  render();
+}
+
+const st=document.getElementById('stepper');
+steps.forEach((s,i)=>{
+  const b=document.createElement('button');
+  b.className='step-btn'+(i===0?' active':'');
+  b.textContent=s.label;
+  b.onclick=()=>{cur=i;render();};
+  st.appendChild(b);
+});
+render();
+</script>
