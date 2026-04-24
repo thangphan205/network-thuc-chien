@@ -42,7 +42,7 @@ Multipass tận dụng các **Native Hypervisor** để đạt hiệu năng cao 
 
 - **Windows:** Hyper-V / VirtualBox.
 - **Linux:** KVM / QEMU.
-- **macOS:** HyperKit / QEMU (Tối ưu cho Apple Silicon M1/M2/M3).
+- **macOS:** QEMU (Intel) / Virtualization Framework (Tối ưu cho Apple Silicon M1/M2/M3/M4).
 
 *Kết quả: Một máy ảo Ubuntu thực thụ với Kernel riêng biệt nhưng khởi động nhanh như chớp.*
 
@@ -98,8 +98,8 @@ sudo snap install multipass
 # Tìm kiếm các phiên bản Ubuntu
 $ multipass find
 
-# Khởi chạy VM LTS (Long-term support)
-$ multipass launch lts
+# Khởi chạy VM Ubuntu 24.04 LTS (stable)
+$ multipass launch 24.04
 
 # Khởi chạy VM với cấu hình tùy chỉnh
 $ multipass launch -c 2 -m 4G -n security-lab

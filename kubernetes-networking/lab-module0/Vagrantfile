@@ -9,8 +9,8 @@ NODES = {
 }
 
 Vagrant.configure("2") do |config|
-  # Sử dụng Ubuntu 22.04 LTS
-  config.vm.box = "ubuntu/jammy64"
+  # Sử dụng Ubuntu 24.04 LTS (Noble)
+  config.vm.box = "ubuntu/noble64"
   
   # Cấu hình chung cho tất cả các máy ảo
   config.vm.provider "virtualbox" do |v|
