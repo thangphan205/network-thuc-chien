@@ -1,0 +1,360 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{padding:1rem 0 2rem;font-family:var(--font-sans)}
+.header{margin-bottom:1.25rem}
+.timer-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.timer-badge{font-size:12px;padding:4px 12px;border-radius:99px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary)}
+.overall-prog{margin-bottom:1.25rem}
+.op-label{font-size:12px;color:var(--color-text-secondary);display:flex;justify-content:space-between;margin-bottom:5px}
+.op-wrap{background:var(--color-background-secondary);border-radius:99px;height:5px;overflow:hidden}
+.op-bar{height:100%;border-radius:99px;background:#1D9E75;transition:width .3s}
+.lab-tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:1.25rem}
+.lt{padding:5px 13px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);font-size:12px;cursor:pointer;background:transparent;color:var(--color-text-secondary);white-space:nowrap;transition:all .15s}
+.lt:hover{background:var(--color-background-secondary)}
+.lt.on{background:var(--color-background-primary);border-color:var(--color-border-primary);color:var(--color-text-primary);font-weight:500}
+.lab-card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;margin-bottom:10px}
+.lab-header{padding:12px 16px;border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:10px}
+.lab-num{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;flex-shrink:0}
+.lab-title{font-size:14px;font-weight:500;color:var(--color-text-primary);flex:1}
+.lab-time{font-size:11px;color:var(--color-text-tertiary)}
+.lab-body{padding:14px 16px}
+.objective{font-size:12px;color:var(--color-text-secondary);background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:9px 12px;margin-bottom:12px;line-height:1.65}
+.objective b{font-weight:500;color:var(--color-text-primary)}
+.step-section{margin-bottom:12px}
+.step-label{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-tertiary);margin-bottom:8px}
+.step-row{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px}
+.step-num{width:20px;height:20px;border-radius:50%;font-size:10px;font-weight:500;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.step-body{flex:1}
+.step-text{font-size:13px;color:var(--color-text-secondary);line-height:1.6;margin-bottom:4px}
+.step-text b{font-weight:500;color:var(--color-text-primary)}
+.cmd-block{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:8px 12px;font-family:var(--font-mono);font-size:12px;color:var(--color-text-primary);line-height:1.85;margin-bottom:6px;position:relative}
+.cmd-note{font-size:11px;color:var(--color-text-tertiary);margin-top:3px;font-family:var(--font-sans)}
+.out-block{background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:8px 12px;font-family:var(--font-mono);font-size:11px;color:var(--color-text-secondary);line-height:1.8;margin-bottom:6px;white-space:pre-wrap}
+.hi{color:var(--color-text-primary);font-weight:500}
+.lo{color:var(--color-text-tertiary)}
+.ok{color:#1D9E75;font-weight:500}
+.warn-t{color:#BA7517;font-weight:500}
+.err-t{color:#A32D2D;font-weight:500}
+.ps{color:var(--color-text-tertiary)}
+.kw{color:#185FA5}.arg{color:#1D9E75}.fl{color:#BA7517}.cm{color:var(--color-text-tertiary)}
+.insight-box{border-left:3px solid #1D9E75;padding:9px 12px;background:var(--color-background-secondary);font-size:12px;color:var(--color-text-secondary);line-height:1.65;margin-bottom:10px}
+.insight-box b{font-weight:500;color:var(--color-text-primary)}
+.warn-box{border-left:3px solid #BA7517;padding:9px 12px;background:var(--color-background-secondary);font-size:12px;color:var(--color-text-secondary);line-height:1.65;margin-bottom:10px}
+.done-row{display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary)}
+.done-label{font-size:12px;color:var(--color-text-secondary);flex:1}
+.done-btn{font-size:11px;padding:5px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:transparent;cursor:pointer;color:var(--color-text-secondary);transition:all .12s}
+.done-btn:hover{background:var(--color-background-primary)}
+.done-btn.marked{background:#E1F5EE;color:#085041;border-color:#9FE1CB}
+.quiz-section{border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:12px 14px;margin-top:4px}
+.quiz-q{font-size:13px;color:var(--color-text-primary);margin-bottom:10px;line-height:1.6}
+.quiz-opts{display:flex;flex-direction:column;gap:6px}
+.qopt{font-size:12px;padding:8px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);cursor:pointer;color:var(--color-text-secondary);transition:background .12s;line-height:1.5}
+.qopt:hover{background:var(--color-background-secondary)}
+.qopt.qok{background:#EAF3DE;color:#27500A;border-color:#C0DD97;cursor:default}
+.qopt.qno{background:#FCEBEB;color:#791F1F;border-color:#F7C1C1;cursor:default}
+.qfb{font-size:12px;margin-top:8px;padding:8px 12px;border-radius:var(--border-radius-md);line-height:1.6}
+.qfb.qok{background:#EAF3DE;color:#27500A}
+.qfb.qno{background:#FCEBEB;color:#791F1F}
+.nav-row{display:flex;gap:8px;margin-top:10px}
+button.nb{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 14px;color:var(--color-text-primary);cursor:pointer}
+button.nb:hover{background:var(--color-background-secondary)}
+button.nb:disabled{opacity:.35;cursor:default}
+button.askb{font-size:12px;background:transparent;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:7px 13px;color:var(--color-text-primary);cursor:pointer;margin-top:10px}
+button.askb:hover{background:var(--color-background-secondary)}
+</style>
+
+<div class="wrap">
+<h2 style="position:absolute;left:-9999px">Workshop: Docker Networking — Network Modes và Troubleshooting (30 phút)</h2>
+
+<div class="overall-prog">
+  <div class="op-label"><span id="prog-txt">Lab 0 / 4 hoàn thành</span><span id="prog-pct">0%</span></div>
+  <div class="op-wrap"><div class="op-bar" id="prog-bar" style="width:0%"></div></div>
+</div>
+
+<div class="lab-tabs" id="tabs"></div>
+<div id="content"></div>
+</div>
+
+<script>
+const done=new Set();
+const quizDone={};
+
+const labs=[
+{
+  id:1,color:"#E6F1FB",textc:"#0C447C",
+  title:"Bridge mode — mặc định và bên dưới",
+  time:"~8 phút",
+  objective:"<b>Mục tiêu:</b> Thấy rằng docker0 là Linux bridge thật, mỗi container có veth pair nối vào đó. Người biết bridge/veth sẽ nhận ra ngay; người mới sẽ thấy container ping được nhau.",
+  steps:[
+    {n:1,label:"Khởi động",text:"Chạy 2 container nginx và alpine:",
+     cmd:`docker run -d --name web nginx
+docker run -d --name client alpine sleep 3600`,
+     note:""},
+    {n:2,label:"Quan sát bridge",text:"Xem docker0 là Linux bridge thật:",
+     cmd:`ip link show docker0
+bridge link show
+ip addr show docker0`,
+     note:"docker0 = Linux bridge bình thường, IP 172.17.0.1 = gateway cho containers"},
+    {n:3,label:"Xem veth pairs",text:"Mỗi container có một veth nối vào docker0:",
+     cmd:`ip link show type veth`,
+     out:`5: veth3a2b1c@if4: <BROADCAST,MULTICAST,UP,LOWER_UP>
+   link/ether ... master docker0
+7: veth8d9e0f@if6: <BROADCAST,MULTICAST,UP,LOWER_UP>
+   link/ether ... master docker0`,
+     note:"@if4 → peer là interface index 4 bên trong container"},
+    {n:4,label:"Ping giữa containers",text:"Test connectivity — cùng bridge nên thấy nhau:",
+     cmd:`WEB_IP=$(docker inspect web -f '{{.NetworkSettings.IPAddress}}')
+docker exec client ping -c 3 $WEB_IP`,
+     out:`64 bytes from 172.17.0.2: icmp_seq=1 ttl=64 time=0.08 ms`,
+     note:""},
+    {n:5,label:"Kết nối Linux knowledge",text:"Người biết bridge có thể xem FDB:",
+     cmd:`bridge fdb show dev docker0
+sudo nsenter -t $(docker inspect web -f '{{.State.Pid}}') -n ip addr`,
+     note:"nsenter → vào netns container từ host, không cần docker exec"}
+  ],
+  quiz:{q:"Container client ping web được vì lý do gì?",opts:["Chúng cùng Docker network nên Docker tự forward","Cả hai veth nối vào cùng bridge docker0, Linux bridge forward theo MAC address","Docker dùng iptables DNAT để forward ping"],ans:1,
+  ok:"Chính xác! Bridge docker0 học MAC của mỗi container qua veth pair và forward trực tiếp — giống switch vật lý. Không qua NAT.",
+  no:"Gần đúng nhưng chưa chính xác. Cơ chế là Linux bridge forward theo MAC/FDB — giống switch. Docker chỉ là lớp quản lý phía trên."}
+},
+{
+  id:2,color:"#FAECE7",textc:"#712B13",
+  title:"Host mode — không namespace, không cô lập",
+  time:"~5 phút",
+  objective:"<b>Mục tiêu:</b> Thấy rõ container host-mode dùng chung toàn bộ network stack với host. Bind port trực tiếp, thấy tất cả interface.",
+  steps:[
+    {n:1,label:"Chạy với host network",text:"Container không có namespace riêng:",
+     cmd:`docker run --rm --network host nginx`,
+     note:""},
+    {n:2,label:"So sánh interfaces",text:"Container thấy đúng interface của host:",
+     cmd:`# Trong terminal khác:
+docker run --rm --network host nicolaka/netshoot ip addr
+# So sánh với:
+ip addr`,
+     note:"Output giống hệt nhau — cùng namespace"},
+    {n:3,label:"Port binding",text:"Nginx bind thẳng vào port 80 của host:",
+     cmd:`curl localhost:80   # hoạt động ngay, không cần -p`,
+     note:"Không có iptables DNAT vì không có port mapping"},
+    {n:4,label:"Khi nào dùng host mode",text:"",
+     cmd:`# Kiểm tra: container bridge mode cần bao nhiêu hops?
+docker run --rm nicolaka/netshoot traceroute 8.8.8.8
+# So sánh với host mode:
+docker run --rm --network host nicolaka/netshoot traceroute 8.8.8.8`,
+     note:"Host mode: ít hops hơn, không NAT overhead → dùng cho high-performance networking"}
+  ],
+  quiz:{q:"Container chạy --network host bind port 80. Port đó có thể bị conflict với service nào khác không?",opts:["Không — Docker namespace cô lập port","Có — port 80 trên host bị chiếm trực tiếp, bất kỳ service nào dùng port 80 đều conflict","Chỉ conflict nếu có container bridge mode khác dùng port 80"],ans:1,
+  ok:"Đúng! Host mode dùng chung network namespace với host — port space cũng chung. Nếu host đã có service trên port 80 thì container sẽ fail to bind.",
+  no:"Chưa đúng. Host mode không có namespace riêng — port space là của host. Conflict xảy ra với bất kỳ process nào (kể cả host service) đang dùng cùng port."}
+},
+{
+  id:3,color:"#E1F5EE",textc:"#085041",
+  title:"None mode & custom bridge — cô lập và DNS",
+  time:"~7 phút",
+  objective:"<b>Mục tiêu:</b> Thấy none mode = hoàn toàn cô lập. Custom bridge = có DNS nội bộ (ping bằng tên container).",
+  steps:[
+    {n:1,label:"None mode",text:"Container hoàn toàn không có mạng:",
+     cmd:`docker run --rm --network none nicolaka/netshoot ip addr`,
+     out:`1: lo: <LOOPBACK,UP,LOWER_UP>
+   inet 127.0.0.1/8
+← chỉ có loopback, không có eth0`,
+     note:"Dùng cho batch job xử lý file, không cần network"},
+    {n:2,label:"Tạo custom bridge",text:"Custom bridge khác docker0 ở chỗ có DNS:",
+     cmd:`docker network create my-net
+docker run -d --network my-net --name svc-a nginx
+docker run -d --network my-net --name svc-b nginx`,
+     note:""},
+    {n:3,label:"DNS bằng tên container",text:"Điểm khác biệt quan trọng nhất:",
+     cmd:`# Trên docker0 mặc định: KHÔNG hoạt động
+docker run --rm nicolaka/netshoot ping -c 1 web
+
+# Trên custom bridge: HOẠT ĐỘNG
+docker run --rm --network my-net nicolaka/netshoot ping -c 2 svc-a`,
+     out:`64 bytes from svc-a (172.18.0.2): icmp_seq=1 ttl=64`,
+     note:"Docker chạy DNS server nội bộ 127.0.0.11 trong container"},
+    {n:4,label:"Verify DNS resolver",text:"",
+     cmd:`docker run --rm --network my-net nicolaka/netshoot cat /etc/resolv.conf`,
+     out:`nameserver 127.0.0.11
+options ndots:0`,
+     note:"127.0.0.11 = Docker embedded DNS server — chỉ hoạt động trên custom network"}
+  ],
+  quiz:{q:"docker-compose tự động tạo loại network nào khi bạn chạy docker-compose up? Và services giao tiếp với nhau bằng gì?",opts:["docker0 bridge mặc định — giao tiếp bằng IP","Custom bridge network — giao tiếp bằng service name (DNS)","Host network — giao tiếp qua localhost"],ans:1,
+  ok:"Chính xác! docker-compose tạo một custom bridge network riêng cho project. Services dùng service name (trong docker-compose.yml) để resolve nhau qua Docker embedded DNS.",
+  no:"Chưa đúng. docker-compose tạo custom bridge network — không phải docker0. Và vì là custom bridge, DNS nội bộ hoạt động → services giao tiếp bằng tên, không cần IP."}
+},
+{
+  id:4,color:"#EEEDFE",textc:"#3C3489",
+  title:"Troubleshooting — 4 lỗi thường gặp",
+  time:"~10 phút",
+  objective:"<b>Mục tiêu:</b> Debug 4 pattern lỗi phổ biến theo quy trình 3 tầng: trong container → veth trên host → bridge/iptables.",
+  steps:[
+    {n:1,label:"Lỗi 1: Container không ra internet",text:"Reproduce và debug:",
+     cmd:`# Reproduce: tắt ip_forward
+sudo sysctl -w net.ipv4.ip_forward=0
+docker run --rm nicolaka/netshoot ping -c 1 8.8.8.8
+# → Request timeout`,
+     note:""},
+    {n:2,label:"",text:"Debug theo 3 tầng:",
+     cmd:`# Tầng 1: Trong container — có default route không?
+docker run --rm nicolaka/netshoot ip route
+# → default via 172.17.0.1 ✓
+
+# Tầng 2: Host forward không?
+cat /proc/sys/net/ipv4/ip_forward
+# → 0 ← ĐÂY LÀ VẤN ĐỀ
+
+# Fix:
+sudo sysctl -w net.ipv4.ip_forward=1`,
+     note:"Docker bật ip_forward khi start daemon — nếu bị reset thì mọi container mất internet"},
+    {n:3,label:"Lỗi 2: Port mapping không hoạt động",text:"",
+     cmd:`docker run -d -p 8080:80 --name test-web nginx
+curl localhost:8080   # → Connection refused?
+
+# Debug: xem iptables DNAT
+sudo iptables -t nat -L DOCKER -n -v
+# → DNAT rule có không?
+
+# Verify port binding từ trong container:
+sudo nsenter -t $(docker inspect test-web -f '{{.State.Pid}}') -n ss -tlnp`,
+     note:"Nếu không có DNAT rule → docker daemon bị restart và không tự restore rules"},
+    {n:4,label:"Lỗi 3: 2 container không ping nhau",text:"",
+     cmd:`# Kiểm tra cùng network không?
+docker inspect web -f '{{.NetworkSettings.Networks}}'
+docker inspect client -f '{{.NetworkSettings.Networks}}'
+
+# Nếu khác network → connect:
+docker network connect my-net web
+
+# Verify bằng tcpdump:
+sudo tcpdump -i docker0 -n icmp`,
+     note:"Containers ở khác network không thể communicate — cần connect hoặc dùng cùng network"},
+    {n:5,label:"Lỗi 4: DNS không resolve",text:"",
+     cmd:`# Trên docker0 mặc định — tên container không resolve:
+docker exec client ping web   # → ping: bad address 'web'
+
+# Kiểm tra /etc/resolv.conf trong container:
+docker exec client cat /etc/resolv.conf
+# → nameserver 8.8.8.8 (không phải 127.0.0.11)
+
+# Fix: dùng custom network
+docker network create fixed-net
+docker network connect fixed-net web
+docker network connect fixed-net client
+docker exec client ping web   # → works!`,
+     note:"Nguyên tắc: custom bridge = DNS. docker0 = không có DNS nội bộ."},
+    {n:6,label:"Toolkit tổng hợp",text:"3 tầng debug cho mọi vấn đề network:",
+     cmd:`# Tầng 1: Trong container
+docker exec <c> ip addr && ip route && cat /etc/resolv.conf
+
+# Tầng 2: Trên host-side veth
+sudo tcpdump -i <veth-interface> -n
+
+# Tầng 3: Bridge + iptables
+bridge fdb show dev docker0
+sudo iptables -t nat -L -n -v | grep -E 'DOCKER|MASQ'`,
+     note:"3 tầng này đủ để isolate 95% lỗi Docker networking"}
+  ],
+  quiz:{q:"Container A không curl được container B mặc dù cùng chạy trên host. docker exec A -- ping <B-IP> thành công. Lỗi ở đâu?",opts:["iptables DROP rule chặn TCP nhưng cho phép ICMP","ip_forward bị tắt","DNS không resolve tên container B"],ans:0,
+  ok:"Chính xác! Ping (ICMP) được nhưng curl (TCP) không được → layer 4 bị chặn. Kiểm tra `iptables -L DOCKER-USER -n -v` và `iptables -L FORWARD -n -v` để tìm DROP rule.",
+  no:"Gần đúng nhưng chưa phải. Nếu ip_forward tắt thì ping cũng không được (cùng path). Nếu DNS không resolve thì ping bằng IP cũng không được. Vì ICMP OK nhưng TCP fail → có iptables rule filter theo protocol/port."}
+}
+];
+
+function updateProgress(){
+  const pct=Math.round(done.size/labs.length*100);
+  document.getElementById('prog-txt').textContent='Lab '+done.size+' / '+labs.length+' hoàn thành';
+  document.getElementById('prog-pct').textContent=pct+'%';
+  document.getElementById('prog-bar').style.width=pct+'%';
+}
+
+function markDone(id){
+  if(done.has(id))done.delete(id);else done.add(id);
+  updateProgress();
+  renderLab(id);
+  renderTabs();
+}
+
+function answerQuiz(el,labId,correct,ok,no){
+  el.parentElement.querySelectorAll('.qopt').forEach(o=>o.onclick=null);
+  el.classList.add(correct?'qok':'qno');
+  const fb=document.getElementById('qfb-'+labId);
+  fb.style.display='block';
+  fb.className='qfb '+(correct?'qok':'qno');
+  fb.textContent=correct?ok:no;
+  quizDone[labId]=true;
+}
+
+let curLab=1;
+
+function renderTabs(){
+  const tabs=document.getElementById('tabs');
+  tabs.innerHTML='';
+  labs.forEach(lab=>{
+    const b=document.createElement('button');
+    b.className='lt'+(lab.id===curLab?' on':'');
+    const tick=done.has(lab.id)?'✓ ':'';
+    b.textContent=tick+'Lab '+lab.id;
+    b.onclick=()=>{curLab=lab.id;renderLab(lab.id);renderTabs();};
+    tabs.appendChild(b);
+  });
+}
+
+function renderLab(id){
+  const lab=labs.find(l=>l.id===id);
+  const isDone=done.has(id);
+  let html=`
+  <div class="lab-card">
+    <div class="lab-header">
+      <div class="lab-num" style="background:${lab.color};color:${lab.textc}">${lab.id}</div>
+      <div class="lab-title">${lab.title}</div>
+      <div class="lab-time">${lab.time}</div>
+    </div>
+    <div class="lab-body">
+      <div class="objective">${lab.objective}</div>
+  `;
+
+  lab.steps.forEach(s=>{
+    html+=`<div class="step-section">`;
+    if(s.label)html+=`<div class="step-label">${s.n>1?'bước '+s.n:s.label}</div>`;
+    if(s.text)html+=`<div class="step-text">${s.text}</div>`;
+    if(s.cmd)html+=`<div class="cmd-block">${s.cmd.replace(/\n/g,'<br>')}</div>`;
+    if(s.out)html+=`<div class="out-block">${s.out}</div>`;
+    if(s.note)html+=`<div class="cmd-note">${s.note}</div>`;
+    html+=`</div>`;
+  });
+
+  const q=lab.quiz;
+  const alreadyAnswered=quizDone[id];
+  html+=`
+    <div class="quiz-section">
+      <div class="quiz-q">🧠 ${q.q}</div>
+      <div class="quiz-opts">
+  `;
+  q.opts.forEach((opt,i)=>{
+    const isCorrect=i===q.ans;
+    const cls=alreadyAnswered?(isCorrect?'qopt qok':'qopt'):'qopt';
+    const onclick=alreadyAnswered?'':'answerQuiz(this,'+id+','+(isCorrect?'true':'false')+',`'+q.ok+'`,`'+q.no+'`)';
+    html+=`<div class="${cls}" onclick="${onclick}">`;
+    html+=String.fromCharCode(97+i)+'. '+opt+'</div>';
+  });
+  html+=`</div><div class="qfb${alreadyAnswered?' qok':''}" id="qfb-${id}" style="${alreadyAnswered?'':'display:none'}">${alreadyAnswered?q.ok:''}</div></div>`;
+
+  html+=`</div>
+    <div class="done-row">
+      <span class="done-label">${isDone?'✓ Đã hoàn thành lab này':'Đánh dấu khi xong để theo dõi tiến độ'}</span>
+      <button class="done-btn${isDone?' marked':''}" onclick="markDone(${id})">${isDone?'↩ Bỏ đánh dấu':'✓ Xong rồi'}</button>
+    </div>
+  </div>`;
+
+  if(id<labs.length){
+    html+=`<button class="askb" onclick="document.querySelector('.lt:nth-child(${id+1})').click()">Sang Lab ${id+1}: ${labs[id].title} →</button>`;
+  } else {
+    html+=`<button class="askb" onclick="sendPrompt('Tôi đã xong workshop Docker networking. Hãy tổng kết và kết nối những gì tôi học được với Kubernetes CNI.')">Tổng kết & kết nối K8s CNI ↗</button>`;
+  }
+
+  document.getElementById('content').innerHTML=html;
+}
+
+renderTabs();
+renderLab(1);
+updateProgress();
+</script>

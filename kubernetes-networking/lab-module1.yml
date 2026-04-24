@@ -1,0 +1,43 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-a
+  labels:
+    app: demo
+spec:
+  containers:
+  - name: web
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-b
+  labels:
+    app: demo
+spec:
+  containers:
+  - name: netshoot
+    image: nicolaka/netshoot
+    command: ["sleep", "infinity"]
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-shared-net
+  labels:
+    app: demo
+spec:
+  containers:
+  - name: web
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+  - name: netshoot
+    image: nicolaka/netshoot
+    command: ["sleep", "infinity"]
