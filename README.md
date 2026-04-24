@@ -19,7 +19,7 @@
 | [`cumulus-linux/`](#-cumulus-linux) | 🐧 Cumulus Linux | BGP/OSPF/VXLAN với FRRouting và Cumulus |
 | [`wireshark/`](#-wireshark) | 🔬 Wireshark | Phân tích gói tin thực chiến |
 | [`opensource-tools/`](#-opensource-tools) | 🛠 Open-source Tools | Giới thiệu và hướng dẫn các công cụ hữu ích |
-| [`do-vui/`](#-do-vui) | 🎮 Đồ Vui | Các bài thực hành thú vị, CTF-style |
+| [`do-vui/`](#-do-vui) | 🎮 Đố Vui | Các bài thực hành thú vị, CTF-style |
 
 ---
 
@@ -153,7 +153,7 @@ Khóa học sử dụng **Full VM** (không phải `kind`/`minikube`) để có 
 
 ---
 
-## 🎮 Đồ Vui
+## 🎮 Đố Vui
 
 > Các bài thực hành thú vị, thử thách mạng theo phong cách CTF.
 
