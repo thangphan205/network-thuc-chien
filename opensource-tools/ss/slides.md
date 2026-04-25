@@ -15,6 +15,18 @@ style: |
   code { background: #1e2130; color: #a0e4b8; padding: 2px 6px; border-radius: 4px; }
   pre { background: #1e2130; border-left: 4px solid #63b3ed; padding: 16px; border-radius: 6px; }
   pre code { color: #a0e4b8; background: transparent; padding: 0; }
+  .hljs-keyword, .hljs-selector-tag { color: #ff79c6; }
+  .hljs-string, .hljs-addition { color: #f1fa8c; }
+  .hljs-attr, .hljs-attribute { color: #79b8ff; }
+  .hljs-number, .hljs-literal { color: #bd93f9; }
+  .hljs-comment { color: #6272a4; font-style: italic; }
+  .hljs-variable, .hljs-template-variable { color: #ffb86c; }
+  .hljs-built_in, .hljs-name, .hljs-type { color: #50fa7b; }
+  .hljs-meta { color: #ff5555; }
+  .hljs-title, .hljs-section { color: #8be9fd; }
+  .hljs-bullet, .hljs-symbol { color: #ffb86c; }
+  .hljs-params, .hljs-subst { color: #e2e8f0; }
+  .hljs-deletion { color: #ff5555; }
   table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
   th { background: #1e4976; color: #e2f0ff; padding: 10px 14px; font-weight: 600; letter-spacing: 0.03em; }
   td { padding: 8px 14px; border-bottom: 1px solid #2a3550; color: #e2e8f0; background: #1a2035; }

@@ -72,6 +72,7 @@ Multipass tận dụng các **Native Hypervisor** để đạt hiệu năng cao 
 
 # Cài đặt & Mã nguồn
 
+- **Video trình bày:** [YouTube — Multipass: VM tốc độ Container cho Network & Security Engineer](https://youtu.be/a-0UsOOSR4c)
 - **Trang chủ & Tài liệu:** [https://canonical.com/multipass](https://canonical.com/multipass)
 - **Mã nguồn (GitHub):** [canonical/multipass](https://github.com/canonical/multipass)
 
