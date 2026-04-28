@@ -63,7 +63,7 @@ style: |
 <!-- _class: title -->
 
 # 🔧 netcat (nc)
-## Dao Thụy Sĩ TCP/UDP
+## Từ Port Scanning đến thiết lập Reverse Shell
 
 **Network Thực Chiến** · Series: Debug Mạng từ A–Z · Tập 04
 
@@ -112,22 +112,22 @@ Chính vì vậy `nc` dùng được để:
 
 ## Hai phiên bản — Cú pháp khác nhau
 
-| | `netcat-traditional` | `ncat` (nmap) |
+| | `netcat-openbsd` | `ncat` (nmap) |
 |:---|:---|:---|
-| **Lệnh** | `nc` | `nc` hoặc `ncat` |
-| **Distro** | Debian/Ubuntu mặc định | CentOS/RHEL, cài qua `nmap-ncat` |
-| **Listen** | `nc -l -p 9999` hoặc `nc -l 9999` | `ncat -l 9999` |
-| **Keep-open** | ❌ Không hỗ trợ | ✅ `ncat --keep-open` |
+| **Lệnh** | `nc` | `ncat` |
+| **Ubuntu 24.04** | ✅ Mặc định | ❌ Cài thêm: `apt install ncat` |
+| **Listen** | `nc -l 9999` | `ncat -l 9999` |
+| **Keep-open** | ❌ | ✅ `ncat --keep-open` |
 | **TLS** | ❌ | ✅ `ncat --ssl` |
 
 ```bash
 # Kiểm tra đang dùng phiên bản nào
-nc --version 2>&1 | head -1
-# "Ncat: Version 7.93" → ncat (nmap)
-# "OpenBSD netcat (Debian patchlevel ...)" → netcat-traditional
+nc -h 2>&1 | head -1
+# "OpenBSD netcat (Debian patchlevel 1.219-1ubuntu2)" → netcat-openbsd ← Ubuntu 24.04 default
+# "Ncat: Version 7.94 ( https://nmap.org/ncat )"     → ncat (nmap)
 ```
 
-> Bài này dùng cú pháp tương thích cả hai. Lưu ý điểm khác biệt khi cần.
+> Bài này demo trên Ubuntu 24.04 với `netcat-openbsd`. Lưu ý điểm khác biệt khi dùng `ncat`.
 
 ---
 
@@ -160,6 +160,8 @@ nc -zv 192.168.1.1 22
 |:---|:---|
 | `Connection refused` | Host tới được, nhưng không có gì listen trên port đó |
 | `No route to host` / timeout | Firewall/Security Group đang chặn, hoặc host không tồn tại |
+
+> 💡 `nc` thay thế `telnet` cho port testing: `telnet host port` → `nc -zv host port`. Telnet không dùng trong production (plain-text, deprecated).
 
 ---
 
@@ -198,8 +200,7 @@ Tình huống: Cần verify firewall rule cho một service chưa deploy. Không
 
 ```bash
 # Terminal 1 — Bên Server (listen port 9999)
-nc -l 9999
-# (netcat-traditional: nc -l -p 9999)
+nc -l 9999        # hoặc: nc -l -p 9999 (cả hai đều dùng được)
 
 # Terminal 2 — Bên Client
 nc server_ip 9999
@@ -219,13 +220,13 @@ nc server_ip 9999
 ## Server persistent — Chấp nhận nhiều kết nối
 
 ```bash
-# netcat-traditional: chỉ accept 1 kết nối rồi thoát
+# netcat-openbsd (Ubuntu 24.04 default): chỉ accept 1 kết nối rồi thoát
 nc -l 9999         # ← thoát sau khi client disconnect
 
-# ncat: keep-open mode
+# ncat: keep-open mode (cài trước: apt install ncat)
 ncat -l 9999 --keep-open    # ← nhận kết nối tiếp theo
 
-# Workaround với netcat-traditional (loop):
+# Workaround với netcat-openbsd (dùng loop):
 while true; do nc -l 9999; done
 ```
 

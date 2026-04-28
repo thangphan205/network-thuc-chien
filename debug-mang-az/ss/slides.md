@@ -488,6 +488,5 @@ ss -tei                     # TCP internals (cwnd, rtt, retrans)
 
 **Network Thực Chiến**
 
-Tập tiếp theo: **tcpdump — Bắt gói tin như chuyên gia**
 
 > *"`ss -tlnp` là lệnh đầu tiên khi debug 'tại sao không kết nối được'."*

@@ -77,9 +77,8 @@ style: |
 4. **Query DNS server cụ thể** — `@server` và `+short`
 5. **`+trace`** — Theo dõi delegation, tìm điểm đứt gãy
 6. **TTL & cache** — DNS đang cache ở đâu?
-7. **Kubernetes / CoreDNS** — ndots, FQDN, search domain
-8. **Kịch bản thực chiến** — Website fail, IP cũ, K8s, email bounce
-9. **Lỗi DNS thường gặp** — NXDOMAIN, SERVFAIL, REFUSED
+7. **Kịch bản thực chiến** — Website fail, IP cũ, email bounce
+8. **Lỗi DNS thường gặp** — NXDOMAIN, SERVFAIL, REFUSED
 
 ---
 
@@ -219,7 +218,6 @@ dig gmail.com MX +short
 ```bash
 dig gmail.com TXT +short | grep spf
 # "v=spf1 redirect=_spf.google.com"
-
 dig google._domainkey.gmail.com TXT +short
 # "v=DKIM1; k=rsa; p=MIIBIjAN..."
 ```
@@ -372,104 +370,29 @@ google.com.     253     IN  A  142.250.196.46
 | TTL giảm dần mỗi lần query | Record đang được cache, đếm ngược đến 0 |
 | TTL = 0 | Record vừa được cache hoặc không cache |
 
+---
 **Flush cache khi cần:**
 ```bash
 # Linux (systemd-resolved)
-sudo systemd-resolve --flush-caches
+sudo resolvectl flush-caches
 
 # macOS
 sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder
 ```
 
----
+```powershell
+# Windows / Windows Server (cmd hoặc PowerShell)
+ipconfig /flushdns
 
-<!-- _class: divider -->
-
-# ☸️ Phần 7
-## Kubernetes / CoreDNS
-
----
-
-## DNS trong Kubernetes — Cấu trúc
-
-```
-Service "my-svc" trong namespace "prod":
-
-Tên ngắn:     my-svc                              ← Chỉ dùng trong cùng namespace
-Cross-ns:     my-svc.prod                         ← Từ namespace khác
-FQDN:         my-svc.prod.svc.cluster.local        ← Luôn hoạt động ở mọi nơi
-FQDN tuyệt đối: my-svc.prod.svc.cluster.local.   ← Trailing dot = absolute
-```
-
-```bash
-# Từ trong Pod — query CoreDNS
-dig kubernetes.default.svc.cluster.local
-
-# Query service cụ thể
-dig my-service.my-namespace.svc.cluster.local
-
-# Bypass search domain, query FQDN thẳng
-dig my-service.prod.svc.cluster.local.    # Trailing dot!
-
-# Hỏi thẳng CoreDNS (thường IP: 10.96.0.10)
-dig @10.96.0.10 my-service.default.svc.cluster.local
-```
-
----
-
-## ndots — Tại sao tên ngắn đôi khi không resolve?
-
-```bash
-# Xem cấu hình DNS trong Pod
-cat /etc/resolv.conf
-```
-
-```
-nameserver 10.96.0.10
-search default.svc.cluster.local svc.cluster.local cluster.local
-options ndots:5
-```
-
-**ndots:5 hoạt động như thế nào:**
-
-```
-Query "my-svc"          → < 5 dấu chấm → thử search domain trước:
-  my-svc.default.svc.cluster.local  → resolve ✅ DỪNG
-  (không thử tiếp)
-
-Query "api.example.com" → < 5 dấu chấm → thử search domain trước:
-  api.example.com.default.svc.cluster.local  → NXDOMAIN
-  api.example.com.svc.cluster.local          → NXDOMAIN
-  api.example.com.cluster.local              → NXDOMAIN
-  api.example.com.                           → resolve ✅ (nhiều query hơn!)
-
-Fix: dùng trailing dot → "api.example.com." → absolute, bỏ qua ndots
-```
-
----
-
-## Debug CoreDNS
-
-```bash
-# Kiểm tra CoreDNS đang chạy
-kubectl get pods -n kube-system -l k8s-app=kube-dns
-
-# Xem logs CoreDNS (bật log plugin trước nếu cần)
-kubectl logs -n kube-system -l k8s-app=kube-dns
-
-# Service không tìm thấy → kiểm tra tên đúng không
-kubectl get svc -A | grep my-service
-
-# Test từ debug pod (không có dig trong app pod)
-kubectl run dig-debug --image=tutum/dnsutils --rm -it -- \
-  dig my-service.default.svc.cluster.local
+# Windows Server — flush DNS Server cache (nếu máy chạy DNS Server role)
+Clear-DnsServerCache -Force
 ```
 
 ---
 
 <!-- _class: divider -->
 
-# 🔧 Phần 8
+# 🔧 Phần 7
 ## Kịch bản thực chiến
 
 ---
@@ -509,35 +432,14 @@ dig @ns1.example.com example.com +short  # IP mới: 5.6.7.8
 # → Authoritative đã update, đang chờ cache expire
 
 # Chờ hoặc flush:
-sudo systemd-resolve --flush-caches   # Linux
-sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder  # macOS
+sudo resolvectl flush-caches                                     # Linux
+sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder   # macOS
+ipconfig /flushdns                                               # Windows
 ```
 
 ---
 
-## Scenario C: "Service K8s không tìm thấy nhau qua tên"
-
-```bash
-# Test từ trong Pod
-dig kubernetes.default.svc.cluster.local
-# NXDOMAIN → CoreDNS lỗi hoặc service không tồn tại
-
-# Bước 1: Kiểm tra service có tồn tại không
-kubectl get svc -n default my-service
-
-# Bước 2: Kiểm tra CoreDNS
-kubectl get pods -n kube-system | grep coredns
-# CrashLoopBackOff → CoreDNS bị lỗi → xem logs
-
-# Bước 3: Test tên FQDN đầy đủ với trailing dot
-dig my-service.default.svc.cluster.local.
-# Thành công → vấn đề là ndots / search domain config
-# Vẫn NXDOMAIN → service không tồn tại hoặc CoreDNS lỗi
-```
-
----
-
-## Scenario D: "Email bị bounce, kiểm tra MX"
+## Scenario C: "Email bị bounce, kiểm tra MX"
 
 ```bash
 # Xem mail server của domain
@@ -561,7 +463,7 @@ dig google._domainkey.gmail.com TXT +short
 
 <!-- _class: divider -->
 
-# ⚠️ Phần 9
+# ⚠️ Phần 8
 ## Lỗi DNS thường gặp
 
 ---
@@ -600,7 +502,6 @@ dig @ns1.domain domain +short         # Hỏi thẳng authoritative
 dig +trace domain                      # Trace từng bước delegation
 dig domain MX/NS/TXT +short           # Query record type cụ thể
 dig -x ip +short                       # Reverse lookup
-dig @10.96.0.10 svc.ns.svc.cluster.local  # K8s CoreDNS debug
 ```
 
 ---
