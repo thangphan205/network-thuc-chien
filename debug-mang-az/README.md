@@ -60,26 +60,27 @@ Trước khi đụng vào bất kỳ công cụ nào, cần nắm vững **quy t
 | Tập | Chủ đề | Mô tả | Tài liệu |
 | :--- | :--- | :--- | :--- |
 | **06** | **curl — HTTP Debug từ terminal** | Headers, auth, TLS cert, redirect chain, timing breakdown, proxy debug | [📂 `../curl`](../curl) |
+| **07** | **openssl — Chẩn đoán TLS/SSL** | Debug Certificate Chain, SNI, phân tích lỗi bắt tay TLS | [📂 `../openssl`](../openssl) |
 
 ### Module 5 — Packet Capture: Nhìn thấy gói tin
 
 | Tập | Chủ đề | Mô tả | Tài liệu |
 | :--- | :--- | :--- | :--- |
-| **07** | **tcpdump — Bắt gói tin dòng lệnh** | Filter syntax, capture to file, decode TLS handshake, phân tích TCP flags | [📂 `../tcpdump`](../tcpdump) |
-| **08** | **Wireshark — Phân tích GUI** | Remote capture từ server, follow TCP stream, decode protocol | *(Đang cập nhật)* |
+| **08** | **tcpdump — Bắt gói tin dòng lệnh** | Filter syntax, capture to file, decode TLS handshake, phân tích TCP flags | [📂 `../tcpdump`](../tcpdump) |
+| **09** | **Wireshark — Phân tích GUI** | Remote capture từ server, follow TCP stream, decode protocol | *(Đang cập nhật)* |
 
 ### Module 6 — Performance: Đo hiệu năng
 
 | Tập | Chủ đề | Mô tả | Tài liệu |
 | :--- | :--- | :--- | :--- |
-| **09** | **iPerf3 — Benchmark băng thông** | TCP/UDP throughput, jitter, multiple streams, kết quả JSON | [📂 `../iperf3`](../iperf3) |
+| **10** | **iPerf3 — Benchmark băng thông** | TCP/UDP throughput, jitter, multiple streams, kết quả JSON | [📂 `../iperf3`](../iperf3) |
 
 ### Module 7 — Kubernetes: Debug mạng trong K8s
 
 | Tập | Chủ đề | Mô tả | Tài liệu |
 | :--- | :--- | :--- | :--- |
-| **10** | **netshoot — Container debug** | Pod network debug, capture trong container, kết hợp tcpdump + mtr trong K8s | *(Đang cập nhật)* |
-| **11** | **Hubble / Inspektor Gadget** | eBPF-based observability, Layer 7 tracing trong K8s | *(Đang cập nhật)* |
+| **11** | **netshoot — Container debug** | Pod network debug, capture trong container, kết hợp tcpdump + mtr trong K8s | *(Đang cập nhật)* |
+| **12** | **Hubble / Inspektor Gadget** | eBPF-based observability, Layer 7 tracing trong K8s | *(Đang cập nhật)* |
 
 ---
 
@@ -90,10 +91,10 @@ NGƯỜI MỚI BẮT ĐẦU
     → Tập 01 (ping) → Tập 02 (mtr) → Tập 03 (ss) → Tập 05 (dig)
 
 KỸ SƯ MUỐN NÂNG CẤP
-    → Tập 04 (nc) → Tập 06 (curl) → Tập 07 (tcpdump)
+    → Tập 04 (nc) → Tập 06 (curl) → Tập 07 (openssl) → Tập 08 (tcpdump)
 
 KỸ SƯ K8S / CLOUD
-    → Tất cả Module 1-6 → Tập 10 (netshoot) → Tập 11 (eBPF)
+    → Tất cả Module 1-6 → Tập 11 (netshoot) → Tập 12 (eBPF)
 ```
 
 ---

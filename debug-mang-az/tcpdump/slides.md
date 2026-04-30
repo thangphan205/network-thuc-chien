@@ -507,16 +507,12 @@ ssh user@server "sudo tcpdump -nn -i eth0 -U -w - port 8080" | wireshark -k -i -
 ```bash
 # Xác định traffic có vào không
 sudo tcpdump -nn -i any port 8080
-
 # Xem HTTP body (plaintext)
 sudo tcpdump -A -s 0 port 80 | grep -E "GET|POST|Host:|HTTP/"
-
 # Lưu pcap để phân tích sau
 sudo tcpdump -nn -i eth0 -w /tmp/capture.pcap host 10.0.0.1
-
 # Remote capture → Wireshark
 ssh user@server "sudo tcpdump -nn -i eth0 -U -w - port 8080" | wireshark -k -i -
-
 # Bắt RST — phát hiện kết nối bị reset
 sudo tcpdump -nn "tcp[tcpflags] & tcp-rst != 0"
 ```
