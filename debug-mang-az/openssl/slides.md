@@ -60,7 +60,7 @@ style: |
 <!-- _class: title -->
 
 # 🔒 openssl
-## Chẩn đoán SSL/TLS chuyên sâu từ Terminal
+## Chuẩn đoán SSL/TLS chuyên sâu từ Terminal
 
 **Network Thực Chiến** · Series: Debug Mạng từ A–Z · Tập 07
 
