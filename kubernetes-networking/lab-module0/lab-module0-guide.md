@@ -41,15 +41,54 @@ Chỉ thực hiện trên node `controlplane`.
    sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
    sudo chown $(id -u):$(id -g) $HOME/.kube/config
    ```
-4. **Cài đặt CNI Plugin (Flannel):** Vì đây là Lab về mạng, chúng ta cài Flannel (CNI đơn giản nhất) để cấp phát IP cho các Pod.
-   ```bash
-   kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
-   ```
-5. **(Quan trọng) Lấy lệnh Join:** Cuộn lên phần output của lệnh `kubeadm init`, copy lại lệnh bắt đầu bằng `kubeadm join ...` (có chứa token và hash).
+4. **(Quan trọng) Lấy lệnh Join:** Cuộn lên phần output của lệnh `kubeadm init`, copy lại lệnh bắt đầu bằng `kubeadm join ...` (có chứa token và hash).
 
 ---
 
-## 🚀 Bước 3: Đưa các Worker Nodes vào Cụm
+## 🔬 Bước 3: Quan sát trạng thái "Không có CNI"
+
+Trước khi cài CNI, hãy quan sát điều gì xảy ra — đây là **thí nghiệm đầu tiên** của khóa học.
+
+```bash
+kubectl get nodes
+```
+
+Kết quả mong đợi:
+```
+NAME           STATUS     ROLES           AGE
+controlplane   NotReady   control-plane   1m  # ← NotReady!
+```
+
+```bash
+kubectl get pods -n kube-system
+```
+
+Kết quả mong đợi:
+```
+NAME                    READY   STATUS    RESTARTS
+coredns-xxx             0/1     Pending   0        # ← Pending!
+```
+
+> **Tại sao?** Thiếu CNI = không có mạng = Node `NotReady` = CoreDNS `Pending`. Kubernetes không thể cấp phát IP hay kết nối các Pod khi chưa có CNI Plugin.
+
+---
+
+## 🚀 Bước 4: Cài đặt CNI Plugin (Flannel)
+
+Bây giờ hãy "chữa bệnh" cho cluster bằng cách cài CNI:
+
+```bash
+kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+```
+
+Theo dõi cluster chuyển sang `Ready`:
+```bash
+kubectl get nodes -w
+```
+
+---
+
+## 🚀 Bước 5: Đưa các Worker Nodes vào Cụm
 Mở 2 tab terminal mới trên máy tính của bạn để SSH vào `worker1` và `worker2`.
 
 **Trên Worker 1:**
@@ -67,7 +106,7 @@ vagrant ssh worker2
 
 ---
 
-## ✅ Bước 4: Kiểm tra cụm thành công
+## ✅ Bước 6: Kiểm tra cụm thành công
 Quay trở lại terminal đang SSH vào `controlplane`, chạy lệnh kiểm tra các Nodes:
 
 ```bash
