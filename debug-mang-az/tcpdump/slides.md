@@ -65,7 +65,7 @@ style: |
 # 📡 tcpdump
 ## Bắt gói tin như chuyên gia — dòng lệnh
 
-**Network Thực Chiến** · Series: Debug Mạng từ A–Z · Tập 04
+**Network Thực Chiến** · Series: Debug Mạng từ A–Z · Tập 08
 
 ---
 
@@ -76,7 +76,7 @@ style: |
 3. **Cheatsheet** — Filter theo host, port, protocol, boolean
 4. **Lưu & đọc file pcap** — Kết hợp với Wireshark
 5. **TCP flags filter** — Bắt SYN, RST, debug kết nối
-6. **Đọc output tcpdump** — Anatomy từng trường
+6. **Đọc output tcpdump** — Mổ xẻ từng trường
 7. **Kịch bản thực chiến** — 5 tình huống hay gặp nhất
 
 ---
@@ -296,7 +296,7 @@ sudo tcpdump "tcp[tcpflags] & tcp-fin != 0"
 
 ---
 
-## Anatomy của một dòng output
+## Mổ xẻ một dòng output
 
 ```
 14:23:45.123456 IP 10.0.0.5.54321 > 10.0.0.10.80: Flags [S], seq 1234567, win 65535, length 0

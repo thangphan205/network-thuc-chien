@@ -273,6 +273,9 @@ iperf3 -c server_ip -w 4M
 
 # Giới hạn bandwidth — verify QoS / rate limiting
 iperf3 -c server_ip -b 100M    # Chỉ gửi tối đa 100 Mbps
+
+# Bỏ qua TCP Slow Start — giúp tính throughput trung bình chính xác hơn
+iperf3 -c server_ip -O 3       # Không tính 3 giây đầu vào kết quả
 ```
 
 ---
@@ -500,7 +503,8 @@ iperf3 -s -D                      # Daemon mode (nhiều kết nối)
 
 # === TCP TEST ===
 iperf3 -c server_ip               # TCP 10s, single stream
-iperf3 -c server_ip -t 30 -P 4   # 30s, 4 luồng song song (recommended)
+iperf3 -c server_ip -t 30 -P 4   # 30s, 4 luồng song song
+iperf3 -c server_ip -P 4 -O 3     # Bỏ qua 3 giây đầu (TCP Slow Start)
 iperf3 -c server_ip -R            # Đảo chiều (download test)
 iperf3 -c server_ip -w 4M -P 4   # WAN test với window size lớn
 iperf3 -c server_ip --bidir       # Bi-directional (upload + download)
@@ -571,6 +575,6 @@ TCP Window vs RTT:
 
 **Network Thực Chiến**
 
-Tập tiếp theo: **tcpdump — Soi gói tin tận gốc**
+
 
 > *"Không đoán mò 'mạng chậm' — đo số cụ thể với `iperf3 -c server -P 4 -t 30`."*
