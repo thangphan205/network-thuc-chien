@@ -7,8 +7,51 @@
 - Simulate resource leak và dùng operation GC để dọn dẹp.
 
 ## ✅ Yêu cầu tiên quyết
-- Có quyền root trên Worker Node (Ubuntu 24.04 hoặc 26.04).
-- Cần cài CNI plugin binary và `cnitool`.
+- Có quyền root trên **1 Linux VM** (Ubuntu 24.04 hoặc 26.04).
+- **Không cần K8s cluster đầy đủ** — lab này chạy trực tiếp trên OS của VM, không dùng `kubectl`.
+- Cần cài CNI plugin binary và `cnitool` (hướng dẫn ở Bước 2–3).
+
+---
+
+## 🔬 Bước 0: Chuẩn bị VM
+
+### Trường hợp A — VM còn từ Lab trước (chưa xóa)
+
+```bash
+# Kiểm tra VM đang chạy không
+multipass list          # Multipass
+vagrant status          # Vagrant
+```
+
+Nếu VM đang `stopped`:
+```bash
+multipass start worker1           # Multipass
+vagrant up worker1                # Vagrant
+```
+
+→ **Bỏ qua phần B, đi thẳng Bước 1.**
+
+---
+
+### Trường hợp B — VM đã bị xóa (tạo lại từ đầu)
+
+Lab này chỉ cần **1 VM** — không cần init cluster hay join worker.
+
+```bash
+# Multipass (macOS / Windows / Linux) — chạy từ thư mục lab-module0/
+multipass launch 26.04 --name worker1 --cpus 2 --memory 2G --disk 10G --cloud-init k8s-cloud-init.yaml
+
+# Vagrant — chạy từ thư mục lab-module0/
+vagrant up worker1
+```
+
+Chờ VM khởi động xong:
+```bash
+multipass list          # Multipass — worker1 phải ở trạng thái Running
+vagrant status          # Vagrant — worker1 phải ở trạng thái running
+```
+
+> **Lưu ý:** `k8s-cloud-init.yaml` cài sẵn containerd, kubelet, kubeadm — nhưng lab này không dùng K8s, chỉ cần Linux thuần để thực hành CNI.
 
 ---
 
