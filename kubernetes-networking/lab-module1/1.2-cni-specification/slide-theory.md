@@ -60,7 +60,7 @@ style: |
 <!-- _class: title -->
 
 # 🔌 Tập 2: CNI Specification
-## Lý thuyết: Cơ chế ADD/DEL/GC/STATUS và cấu trúc `.conflist`
+## Lý thuyết: CNI Operations, cấu trúc `.conflist` và IPAM
 
 **Network Thực Chiến** · Series: Kubernetes Networking · Tập 02
 
@@ -83,24 +83,38 @@ kubelet  ──── (gọi theo chuẩn CNI) ────►  CNI Plugin
 
 ---
 
-# CNI v1.1.0: Các động từ (Verbs)
+# CNI v1.1.0: Operations (không phải "Verbs")
 
-CNI spec định nghĩa **5 động từ** chia thành 2 nhóm:
+Thuật ngữ chính thức trong CNI spec là **"operations"**, không phải "verbs".
+Mỗi operation được truyền vào plugin qua biến môi trường `CNI_COMMAND`.
 
-**3 verb cơ bản** (có từ đầu):
+CNI spec v1.1.0 định nghĩa **6 operations** chia thành 3 nhóm:
 
-| Verb | Khi nào gọi | Mục đích |
+**Lifecycle — quản lý vòng đời Pod:**
+
+| Operation | `CNI_COMMAND` | Mục đích |
 | :--- | :--- | :--- |
-| **ADD** | Khi tạo Pod | Cấp IP, tạo veth pair, cấu hình routing |
-| **DEL** | Khi xóa Pod | Giải phóng IP, dọn dẹp veth, xóa routes |
-| **CHECK** | kubelet sync | Xác minh cấu hình mạng Pod còn đúng không |
+| **ADD** | `ADD` | Cấp IP, tạo veth pair, cấu hình routing khi tạo Pod |
+| **DEL** | `DEL` | Giải phóng IP, dọn dẹp veth, xóa routes khi xóa Pod |
+| **CHECK** | `CHECK` | Xác minh cấu hình mạng Pod còn đúng (kubelet sync) |
 
-**2 verb mới trong v1.1.0** (giải quyết resource leak khi Node crash):
+**Maintenance — mới trong v1.1.0** (giải quyết resource leak khi Node crash):
 
-| Verb | Khi nào gọi | Mục đích |
+| Operation | `CNI_COMMAND` | Mục đích |
 | :--- | :--- | :--- |
-| **GC** | Housekeeping | Dọn dẹp tài nguyên mạng của Pod đã mất |
-| **STATUS** | Health check | Kiểm tra CNI plugin có sẵn sàng nhận lệnh không |
+| **GC** | `GC` | Dọn dẹp tài nguyên mạng của Pod đã mất |
+| **STATUS** | `STATUS` | Kiểm tra CNI plugin có sẵn sàng nhận lệnh không |
+
+---
+# CNI v1.1.0: Operations (2)
+
+**Meta — introspection:**
+
+| Operation | `CNI_COMMAND` | Mục đích |
+| :--- | :--- | :--- |
+| **VERSION** | `VERSION` | Query xem plugin hỗ trợ CNI spec version nào |
+
+> **Lưu ý:** Chính spec v1.1.0 cũng ghi nhầm "5 operations" trong phần overview nhưng thực tế document đủ 6. `VERSION` thường bị bỏ qua vì không liên quan trực tiếp đến lifecycle của Pod.
 
 
 ---
@@ -127,7 +141,7 @@ kubectl apply -f pod.yaml
     → Xác định CNI plugin nào cần gọi
        │
        ▼
-[6] kubelet EXEC binary CNI plugin với verb ADD
+[6] kubelet EXEC binary CNI plugin với CNI_COMMAND=ADD
     Truyền vào: network namespace path, Pod name, container ID
        │
        ▼
@@ -219,13 +233,13 @@ Trả về JSON kết quả tổng hợp cho kubelet
 
 ---
 
-# Verb GC: Giải pháp cho Resource Leak
+# Operation GC: Giải pháp cho Resource Leak
 
 **Vấn đề trước CNI v1.1.0:** Khi Node bị crash đột ngột:
 - Pod bị terminate nhưng CNI không kịp gọi **DEL**
 - Kết quả: IP bị giữ mãi trong `/var/lib/cni/networks/`, veth "zombie" còn tồn tại trên Node
 
-**Giải pháp — Verb GC (v1.1.0):**
+**Giải pháp — Operation GC (v1.1.0):**
 
 ```bash
 # kubelet định kỳ gọi GC với danh sách container ID còn sống
@@ -239,7 +253,7 @@ cnitool gc mylab-network \
 
 ---
 
-# Verb STATUS: Health Check
+# Operation STATUS: Health Check
 
 **STATUS** (mới từ v1.1.0) cho phép kubelet kiểm tra xem CNI plugin có **sẵn sàng** nhận lệnh không:
 
@@ -278,9 +292,10 @@ Plugin nhận config mạng qua **stdin** (JSON format từ file .conflist).
 | Khái niệm | Tóm tắt |
 | :--- | :--- |
 | **CNI** | Đặc tả giao diện giữa kubelet và network plugin |
-| **ADD/DEL** | Verb cơ bản: cấp IP khi tạo Pod, thu hồi khi xóa |
-| **GC** | Dọn dẹp resource leak sau Node crash (mới v1.1.0) |
-| **STATUS** | Health check plugin trước khi schedule Pod (mới v1.1.0) |
+| **Operations** | Thuật ngữ chính thức — truyền qua `CNI_COMMAND` env var |
+| **ADD/DEL/CHECK** | 3 lifecycle operations: cấp IP, thu hồi, kiểm tra |
+| **GC/STATUS** | 2 maintenance operations mới v1.1.0 (chống resource leak) |
+| **VERSION** | Meta operation: query spec version plugin hỗ trợ |
 | **Chained plugins** | Nhiều plugin xếp chồng trong 1 `.conflist` |
 | **IPAM** | Sub-plugin quản lý việc cấp/thu hồi IP |
 

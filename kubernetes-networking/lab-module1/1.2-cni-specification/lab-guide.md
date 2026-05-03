@@ -2,9 +2,9 @@
 
 ## 🎯 Mục tiêu
 - Hiểu cấu trúc file `.conflist` của CNI.
-- Tự tay tạo Network Namespace và gọi `cnitool ADD` để cấp IP.
+- Tự tay kích hoạt các **CNI operations** (ADD, DEL, GC, STATUS, VERSION) bằng `cnitool`.
 - Quan sát bridge, veth, IP được tạo ra như thế nào.
-- Simulate resource leak và dùng `cnitool GC` để dọn dẹp.
+- Simulate resource leak và dùng operation GC để dọn dẹp.
 
 ## ✅ Yêu cầu tiên quyết
 - Có quyền root trên Worker Node (Ubuntu 24.04 hoặc 26.04).
@@ -181,6 +181,32 @@ ls /var/lib/cni/networks/mylab-network/
 
 ---
 
+## 🔬 Bước 10: Thử nghiệm VERSION và STATUS operations
+
+**VERSION** — query xem plugin hỗ trợ CNI spec version nào:
+
+```bash
+export CNI_PATH=/opt/cni/bin
+export NETCONFPATH=/etc/cni/net.d
+
+sudo -E cnitool version mylab-network
+# Output JSON: {"cniVersion":"1.1.0","supportedVersions":["0.1.0","0.2.0","0.3.0","0.3.1","0.4.0","1.0.0","1.1.0"]}
+# → Plugin bridge hỗ trợ nhiều spec versions, backwards compatible
+```
+
+**STATUS** — kiểm tra plugin có sẵn sàng nhận lệnh không:
+
+```bash
+sudo -E cnitool status mylab-network
+# Exit code 0 = plugin OK
+# Exit code 1 = plugin lỗi (daemon crash, config sai)
+echo "Exit code: $?"
+```
+
+> **So sánh với ADD/DEL:** VERSION và STATUS là **meta operations** — không tạo/xóa network resource. kubelet dùng STATUS để kiểm tra trước khi schedule Pod lên Node.
+
+---
+
 ## ✅ Câu hỏi kiểm tra
 
 1. Sau lệnh ADD, file nào được tạo trong `/var/lib/cni/networks/`? Nó lưu gì bên trong?
@@ -188,6 +214,7 @@ ls /var/lib/cni/networks/mylab-network/
 3. Nếu gọi ADD hai lần cho cùng namespace, điều gì xảy ra?
 4. Trong Bước 9, tại sao xóa namespace trực tiếp (`ip netns del`) mà không gọi DEL lại gây ra resource leak? GC giải quyết bằng cơ chế gì?
 5. Biến `CNI_NETNS` mà kubelet truyền cho CNI plugin trỏ vào path nào trên filesystem? (Gợi ý: `/proc/<PID>/fd/` hoặc `/var/run/netns/`)
+6. Output của VERSION cho biết plugin hỗ trợ những spec version nào? Tại sao plugin cần backwards compatible với các version cũ?
 
 ---
 
