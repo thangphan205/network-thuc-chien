@@ -2,7 +2,7 @@
 # =============================================================================
 # Lab 1.3: Kube-proxy & Services
 # Script tự động hóa việc setup môi trường lab
-# Chạy: bash lab-config.sh [setup|teardown|switch-ipvs|switch-nftables]
+# Chạy: bash lab-config.sh [setup|teardown|switch-ipvs|switch-nftables|switch-iptables]
 # =============================================================================
 set -euo pipefail
 
@@ -135,66 +135,60 @@ teardown() {
 }
 
 # =============================================================================
-switch_ipvs() {
-  info "=== Chuyển kube-proxy sang IPVS mode ==="
-  warn "Lệnh này cần chạy trên Control Plane node với quyền root!"
+switch_mode() {
+  local NEW_MODE="$1"
+  info "=== Chuyển kube-proxy sang ${NEW_MODE} mode ==="
 
-  # Kiểm tra kernel module
-  info "Kiểm tra kernel modules cần thiết cho IPVS..."
-  for mod in ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh nf_conntrack; do
-    if lsmod | grep -q "$mod"; then
-      echo -e "  ${GREEN}✅${NC} $mod"
-    else
-      echo -e "  ${YELLOW}⚠️${NC} $mod (chưa load)"
-      echo "  → Chạy: sudo modprobe $mod"
-    fi
-  done
+  if [ "$NEW_MODE" = "ipvs" ]; then
+    # Load kernel modules trước
+    info "Load kernel modules cho IPVS..."
+    for mod in ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh nf_conntrack; do
+      sudo modprobe "$mod" && echo -e "  ${GREEN}✅${NC} $mod" || \
+        warn "$mod: modprobe failed (có thể đã built-in)"
+    done
+    echo ""
+  fi
 
+  # Patch chỉ field mode — không overwrite toàn bộ config
+  CURRENT_MODE=$(kubectl -n kube-system get cm kube-proxy \
+    -o jsonpath='{.data.config\.conf}' | grep '^mode:' | awk '{print $2}' | tr -d '"')
+  info "Mode hiện tại: '${CURRENT_MODE:-empty}' → '${NEW_MODE}'"
+
+  kubectl -n kube-system get cm kube-proxy -o yaml \
+    | sed "s/^mode: .*/mode: \"${NEW_MODE}\"/" \
+    | kubectl apply -f -
+
+  kubectl -n kube-system rollout restart daemonset kube-proxy
+  kubectl -n kube-system rollout status daemonset kube-proxy
+
+  # Verify
   echo ""
-  info "Patch kube-proxy ConfigMap sang IPVS mode:"
-  echo '---'
-  echo 'kubectl -n kube-system get cm kube-proxy -o yaml | \
-  sed "s/mode: \"\"/mode: \"ipvs\"/" | \
-  kubectl apply -f -'
-  echo ""
-  echo "# Sau đó restart kube-proxy DaemonSet:"
-  echo "kubectl -n kube-system rollout restart daemonset kube-proxy"
-  echo ""
-  echo "# Verify bằng ipvsadm:"
-  echo "sudo ipvsadm -Ln"
+  info "Verify mode đang chạy:"
+  kubectl -n kube-system get cm kube-proxy \
+    -o jsonpath='{.data.config\.conf}' | grep mode
+  if [ "$NEW_MODE" = "ipvs" ]; then
+    sleep 3
+    ip link show kube-ipvs0 2>/dev/null && \
+      echo -e "${GREEN}✅ kube-ipvs0 tồn tại → IPVS active${NC}" || \
+      warn "kube-ipvs0 chưa thấy — đợi thêm vài giây rồi chạy: ip link show kube-ipvs0"
+  fi
 }
+
+switch_ipvs()    { switch_mode "ipvs"; }
+switch_iptables() { switch_mode "iptables"; }
 
 # =============================================================================
-switch_nftables() {
-  info "=== Chuyển kube-proxy sang nftables mode (K8s v1.33+) ==="
-
-  kubectl -n kube-system get cm kube-proxy -o yaml | \
-    grep -A5 "mode:" || true
-
-  echo ""
-  info "Patch command:"
-  cat <<'EOF'
-kubectl -n kube-system patch cm kube-proxy --type=merge -p '
-{
-  "data": {
-    "config.conf": "apiVersion: kubeproxy.config.k8s.io/v1alpha1\nkind: KubeProxyConfiguration\nmode: nftables\n"
-  }
-}'
-kubectl -n kube-system rollout restart daemonset kube-proxy
-
-# Verify:
-kubectl -n kube-system logs -l k8s-app=kube-proxy | grep -i nftables
-EOF
-}
+switch_nftables() { switch_mode "nftables"; }
 
 # =============================================================================
 case "$ACTION" in
-  setup)          setup ;;
-  teardown)       teardown ;;
-  switch-ipvs)    switch_ipvs ;;
+  setup)           setup ;;
+  teardown)        teardown ;;
+  switch-ipvs)     switch_ipvs ;;
   switch-nftables) switch_nftables ;;
+  switch-iptables) switch_iptables ;;
   *)
-    echo "Usage: $0 [setup|teardown|switch-ipvs|switch-nftables]"
+    echo "Usage: $0 [setup|teardown|switch-ipvs|switch-nftables|switch-iptables]"
     exit 1
     ;;
 esac

@@ -83,6 +83,17 @@ http://my-service:8080
 
 **CoreDNS** là DNS server chính thức của K8s, chạy dưới dạng Deployment trong namespace `kube-system`.
 
+```bash
+kubectl get pods -n kube-system -l k8s-app=kube-dns
+# NAME                       READY   STATUS    NODE
+# coredns-xxxxxxxxx-aaaaa    1/1     Running   controlplane
+# coredns-xxxxxxxxx-bbbbb    1/1     Running   controlplane
+
+# Xem Corefile — cấu hình CoreDNS
+kubectl get cm coredns -n kube-system -o yaml
+# → Thấy zone "cluster.local", forward "." đến upstream DNS (8.8.8.8 hoặc /etc/resolv.conf của Node)
+```
+
 
 ---
 
@@ -159,7 +170,7 @@ curl https://google.com
    └─ Query: google.com.                            ✅ Trả về 142.250.x.x
 ```
 
-**Kết quả:** Truy cập 1 domain bên ngoài → mất **4 DNS queries thừa** trước khi ra được Internet!
+**Kết quả:** Truy cập 1 domain bên ngoài → mất **3 DNS queries thừa** (production với static IP). Môi trường DHCP (Vagrant, cloud VM) có thể nhiều hơn nếu Node thêm search domain từ DHCP — kiểm tra thực tế bằng `cat /etc/resolv.conf` trong Pod.
 
 > Đây là lý do tại sao microservice nhiều network calls sẽ chịu ảnh hưởng đáng kể.
 
@@ -179,8 +190,10 @@ spec:
   dnsConfig:
     options:
       - name: ndots
-        value: "2"   ← Chỉ thêm search domain nếu < 2 dấu chấm
+        value: "1"   ← Chỉ thêm search domain nếu < 1 dấu chấm (bare hostname)
 ```
+
+> `ndots:1` — `google.com` (1 dấu chấm, không < 1) → query thẳng. `web-svc` (0 dấu chấm, 0 < 1) → vẫn dùng search domain → K8s DNS hoạt động bình thường.
 
 **Option 3 (tốt nhất):** Triển khai **NodeLocal DNSCache** để cache tại local, giảm round-trip đến CoreDNS.
 
@@ -198,9 +211,10 @@ Pod → 169.254.20.10 (Local cache trên Node) → Nếu miss → CoreDNS
 - **Giảm tải CoreDNS**: Các query lặp lại được trả lời từ cache.
 
 ```bash
-# Cài đặt NodeLocal DNSCache
+# Cài đặt NodeLocal DNSCache (dùng versioned tag, không dùng master)
+K8S_VERSION=$(kubectl version --short 2>/dev/null | grep Server | awk '{print $3}')
 kubectl apply -f \
-  https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/dns/nodelocaldns/nodelocaldns.yaml
+  https://raw.githubusercontent.com/kubernetes/kubernetes/${K8S_VERSION}/cluster/addons/dns/nodelocaldns/nodelocaldns.yaml
 ```
 
 

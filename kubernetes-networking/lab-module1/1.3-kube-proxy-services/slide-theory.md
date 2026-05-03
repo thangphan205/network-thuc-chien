@@ -141,6 +141,9 @@ Khi bạn tạo Service `ClusterIP: 10.96.50.100`, kube-proxy tạo iptables rul
 -A KUBE-SEP-AAAA -j DNAT --to-destination 10.244.1.5:8080
 ```
 
+> **Tại sao 0.33 → 0.5 → 1?** Đây là xác suất có điều kiện:
+> Rule 1: 33% packet → Pod A. Rule 2: 50% của **phần còn lại** (67%) = 33% → Pod B. Rule 3: 100% còn lại = 33% → Pod C. Tổng mỗi Pod nhận đúng 1/3 tổng traffic.
+
 
 ---
 
@@ -162,6 +165,8 @@ ipvsadm -Ln
 ```
 
 Thêm vào đó, IPVS hỗ trợ nhiều thuật toán LB hơn: `rr`, `lc`, `dh`, `sh`, `sed`, `nq`.
+
+Kube-proxy tạo **interface `kube-ipvs0`** (dummy interface) và bind toàn bộ ClusterIP lên đó. `state DOWN` là bình thường — dummy interface không có physical link. Sự tồn tại của interface này là dấu hiệu IPVS mode đang chạy.
 
 
 ---
@@ -194,6 +199,17 @@ data:
 ```
 
 **Ưu điểm:** Cú pháp rõ ràng hơn, atomic rule update (không bị race condition), hiệu năng tốt hơn với tập rule lớn.
+
+```bash
+# nftables rules do kube-proxy tạo (so sánh với iptables chain rời rạc)
+sudo nft list table ip kube-proxy
+# table ip kube-proxy {
+#   set cluster-ips { ... }        ← Set chứa tất cả ClusterIP (thay vì n rules riêng lẻ)
+#   chain prerouting { ... }
+#   chain forward    { ... }
+# }
+# → Atomic update: toàn bộ table thay thế trong 1 transaction
+```
 
 
 ---
