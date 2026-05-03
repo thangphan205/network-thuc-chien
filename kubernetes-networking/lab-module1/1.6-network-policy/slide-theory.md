@@ -1,27 +1,69 @@
 ---
 marp: true
-theme: gaia
+theme: default
 paginate: true
-backgroundColor: #0f172a
-color: #e2e8f0
+style: |
+  section {
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-size: 22px;
+    background: #326ce5;
+    color: #ffffff;
+  }
+  h1 { color: #ffd700 !important; font-size: 2em; margin-bottom: 0.3em; }
+  h2 { color: #ffffff; font-size: 1.4em; border-bottom: 2px solid #ffd700; padding-bottom: 0.2em; }
+  h3 { color: #e0e7ff; font-size: 1.1em; }
+  strong { color: #fbbf24; }
+  code { background: #1e3a8a; color: #86efac; padding: 2px 6px; border-radius: 4px; }
+  pre { background: #1e3a8a; border-left: 4px solid #ffd700; padding: 16px; border-radius: 6px; }
+  pre code { color: #86efac; background: transparent; padding: 0; }
+  .hljs-keyword, .hljs-selector-tag { color: #ff79c6; }
+  .hljs-string, .hljs-addition { color: #f1fa8c; }
+  .hljs-attr, .hljs-attribute { color: #93c5fd; }
+  .hljs-number, .hljs-literal { color: #c4b5fd; }
+  .hljs-comment { color: #93c5fd; font-style: italic; }
+  .hljs-variable, .hljs-template-variable { color: #fcd34d; }
+  .hljs-built_in, .hljs-name, .hljs-type { color: #86efac; }
+  .hljs-meta { color: #fca5a5; }
+  .hljs-title, .hljs-section { color: #bfdbfe; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+  th { background: #1e3a8a; color: #ffd700; padding: 10px 14px; font-weight: 600; letter-spacing: 0.03em; }
+  td { padding: 8px 14px; border-bottom: 1px solid #3b82f6; color: #ffffff; background: #2563eb; }
+  tr:nth-child(even) td { background: #1d4ed8; }
+  tr:hover td { background: #1e40af; }
+  blockquote { border-left: 4px solid #ffd700; padding-left: 16px; color: #e0e7ff; font-style: italic; margin: 12px 0; }
+  ul li, ol li { margin-bottom: 6px; line-height: 1.6; }
+  section.title {
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 60px 80px;
+  }
+  section.title h1 { font-size: 2.8em; color: #ffd700 !important; border: none; }
+  section.title h2 { font-size: 1.3em; color: #ffffff; border: none; margin-top: 0.2em; }
+  section.title p { color: #bfdbfe; font-size: 0.9em; margin-top: 16px; }
+  section.divider {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+  section.divider h1 { font-size: 2.5em; border: none; color: #ffd700 !important; }
+  section.divider h2 { border: none; color: #ffffff; }
+  .good { color: #86efac; font-weight: bold; }
+  .bad  { color: #fca5a5; font-weight: bold; }
+  .warn { color: #fcd34d; font-weight: bold; }
 ---
+<!-- _class: title -->
 
-<style>
-h1 { color: #38bdf8; font-size: 1.5em; }
-h2 { color: #7dd3fc; }
-strong { color: #fbbf24; }
-code { background: #1e293b; color: #86efac; padding: 2px 6px; border-radius: 4px; }
-blockquote { border-left: 4px solid #38bdf8; color: #94a3b8; padding-left: 1em; }
-table { font-size: 0.78em; }
-th { background: #1e40af; color: white; }
-td { background: #1e293b; }
-pre { background: #1e293b; font-size: 0.72em; }
-</style>
+# 🔒 Tập 6: Bảo mật với NetworkPolicy
+## Lý thuyết: Default-deny, NetworkPolicy vs AdminNetworkPolicy
 
-# **Tập 6: Bảo mật với NetworkPolicy**
-### Lý thuyết: Default-deny, NetworkPolicy vs AdminNetworkPolicy
+**Network Thực Chiến** · Series: Kubernetes Networking · Tập 06
 
-**Thang** | @NetworkThucChien
 
 ---
 
@@ -38,6 +80,7 @@ logging Pod  (ns: infra)──────────► database Pod (ns: data
 ```
 
 Trong môi trường Production với nhiều team, điều này là **rủi ro bảo mật nghiêm trọng** (lateral movement sau khi attacker chiếm được 1 Pod).
+
 
 ---
 
@@ -67,6 +110,7 @@ spec:
               role: frontend # ← Và chỉ Pod có label role=frontend
 ```
 
+
 ---
 
 # Nguyên tắc Default-deny
@@ -91,6 +135,7 @@ spec:
     - Egress
 EOF
 ```
+
 
 ---
 
@@ -118,6 +163,7 @@ egress:
         protocol: TCP
 ```
 
+
 ---
 
 # AdminNetworkPolicy: Chính sách cấp Cluster
@@ -132,6 +178,7 @@ egress:
 | **Phạm vi** | Namespace | Toàn cluster |
 | **Hành động** | Allow hoặc Deny (implicit) | Allow, Deny, Pass |
 | **Priority** | Không có | Có (0-100) |
+
 
 ---
 
@@ -151,6 +198,7 @@ Nếu traffic match Rule 2 (PASS) → xem xét NetworkPolicy của namespace
    → Nếu không có NP nào     → traffic được phép (behavior mặc định)
 ```
 
+
 ---
 
 # CNI và NetworkPolicy: Ai thực thi?
@@ -166,6 +214,7 @@ Nếu traffic match Rule 2 (PASS) → xem xét NetworkPolicy của namespace
 
 > **Nếu cluster dùng Flannel thuần mà bạn apply NetworkPolicy — sẽ không có tác dụng gì!**
 
+
 ---
 
 # Tổng kết Tập 6
@@ -178,7 +227,10 @@ Nếu traffic match Rule 2 (PASS) → xem xét NetworkPolicy của namespace
 | **Lỗi DNS** | Lỗi số 1 sau khi apply NetworkPolicy: quên mở port 53 |
 | **AdminNetworkPolicy** | Policy cấp cluster, có Priority, hỗ trợ Allow/Deny/Pass |
 
+
 ---
+
+<!-- _class: title -->
 
 # 👉 Chuyển sang Lab 1.6
 

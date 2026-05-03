@@ -1,27 +1,69 @@
 ---
 marp: true
-theme: gaia
+theme: default
 paginate: true
-backgroundColor: #0f172a
-color: #e2e8f0
+style: |
+  section {
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-size: 22px;
+    background: #326ce5;
+    color: #ffffff;
+  }
+  h1 { color: #ffd700 !important; font-size: 2em; margin-bottom: 0.3em; }
+  h2 { color: #ffffff; font-size: 1.4em; border-bottom: 2px solid #ffd700; padding-bottom: 0.2em; }
+  h3 { color: #e0e7ff; font-size: 1.1em; }
+  strong { color: #fbbf24; }
+  code { background: #1e3a8a; color: #86efac; padding: 2px 6px; border-radius: 4px; }
+  pre { background: #1e3a8a; border-left: 4px solid #ffd700; padding: 16px; border-radius: 6px; }
+  pre code { color: #86efac; background: transparent; padding: 0; }
+  .hljs-keyword, .hljs-selector-tag { color: #ff79c6; }
+  .hljs-string, .hljs-addition { color: #f1fa8c; }
+  .hljs-attr, .hljs-attribute { color: #93c5fd; }
+  .hljs-number, .hljs-literal { color: #c4b5fd; }
+  .hljs-comment { color: #93c5fd; font-style: italic; }
+  .hljs-variable, .hljs-template-variable { color: #fcd34d; }
+  .hljs-built_in, .hljs-name, .hljs-type { color: #86efac; }
+  .hljs-meta { color: #fca5a5; }
+  .hljs-title, .hljs-section { color: #bfdbfe; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+  th { background: #1e3a8a; color: #ffd700; padding: 10px 14px; font-weight: 600; letter-spacing: 0.03em; }
+  td { padding: 8px 14px; border-bottom: 1px solid #3b82f6; color: #ffffff; background: #2563eb; }
+  tr:nth-child(even) td { background: #1d4ed8; }
+  tr:hover td { background: #1e40af; }
+  blockquote { border-left: 4px solid #ffd700; padding-left: 16px; color: #e0e7ff; font-style: italic; margin: 12px 0; }
+  ul li, ol li { margin-bottom: 6px; line-height: 1.6; }
+  section.title {
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 60px 80px;
+  }
+  section.title h1 { font-size: 2.8em; color: #ffd700 !important; border: none; }
+  section.title h2 { font-size: 1.3em; color: #ffffff; border: none; margin-top: 0.2em; }
+  section.title p { color: #bfdbfe; font-size: 0.9em; margin-top: 16px; }
+  section.divider {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+  section.divider h1 { font-size: 2.5em; border: none; color: #ffd700 !important; }
+  section.divider h2 { border: none; color: #ffffff; }
+  .good { color: #86efac; font-weight: bold; }
+  .bad  { color: #fca5a5; font-weight: bold; }
+  .warn { color: #fcd34d; font-weight: bold; }
 ---
+<!-- _class: title -->
 
-<style>
-h1 { color: #38bdf8; font-size: 1.5em; }
-h2 { color: #7dd3fc; }
-strong { color: #fbbf24; }
-code { background: #1e293b; color: #86efac; padding: 2px 6px; border-radius: 4px; }
-blockquote { border-left: 4px solid #38bdf8; color: #94a3b8; padding-left: 1em; }
-table { font-size: 0.78em; }
-th { background: #1e40af; color: white; }
-td { background: #1e293b; }
-pre { background: #1e293b; font-size: 0.72em; }
-</style>
+# ⚙️ Tập 3: Kube-proxy & Bài toán Services
+## Lý thuyết: EndpointSlice, iptables chains, IPVS & nftables mode
 
-# **Tập 3: Kube-proxy & Bài toán Services**
-### Lý thuyết: EndpointSlice, iptables chains, IPVS & nftables mode
+**Network Thực Chiến** · Series: Kubernetes Networking · Tập 03
 
-**Thang** | @NetworkThucChien
 
 ---
 
@@ -41,6 +83,7 @@ Client → ??? → Pod A (10.244.1.5)  [đang chạy]
 Client → ClusterIP: 10.96.50.100 → kube-proxy → Pod A / Pod B
 ```
 
+
 ---
 
 # Kube-proxy: Người dịch ClusterIP thành Pod IP
@@ -57,6 +100,7 @@ kube-proxy (trên mỗi Node)
     ├── IPVS (mode hiệu năng cao)
     └── nftables (mode mới, GA từ K8s v1.33)
 ```
+
 
 ---
 
@@ -77,6 +121,7 @@ Service: my-app
 
 > Từ K8s v1.33, `Endpoints` API cũ bị **deprecated** hoàn toàn.
 
+
 ---
 
 # iptables mode: Cơ chế DNAT
@@ -95,6 +140,7 @@ Khi bạn tạo Service `ClusterIP: 10.96.50.100`, kube-proxy tạo iptables rul
 # Chain KUBE-SEP-AAAA thực hiện DNAT đến Pod IP thực
 -A KUBE-SEP-AAAA -j DNAT --to-destination 10.244.1.5:8080
 ```
+
 
 ---
 
@@ -117,6 +163,7 @@ ipvsadm -Ln
 
 Thêm vào đó, IPVS hỗ trợ nhiều thuật toán LB hơn: `rr`, `lc`, `dh`, `sh`, `sed`, `nq`.
 
+
 ---
 
 # externalTrafficPolicy: Ẩn mình quan trọng
@@ -127,6 +174,7 @@ Thêm vào đó, IPVS hỗ trợ nhiều thuật toán LB hơn: `rr`, `lc`, `dh`
 | **Local** | Chỉ forward đến Pod **trên chính Node đó** | **Giữ source IP**, nhưng có thể mất cân bằng tải |
 
 **Use case thực tế:** Khi bạn cần biết IP thực của client (WAF, Rate-limiting theo IP), hãy dùng `externalTrafficPolicy: Local`.
+
 
 ---
 
@@ -147,6 +195,7 @@ data:
 
 **Ưu điểm:** Cú pháp rõ ràng hơn, atomic rule update (không bị race condition), hiệu năng tốt hơn với tập rule lớn.
 
+
 ---
 
 # Tổng kết Tập 3
@@ -159,7 +208,10 @@ data:
 | **IPVS vs iptables** | IPVS O(1) vs iptables O(n), phù hợp cluster lớn |
 | **externalTrafficPolicy** | Local giữ source IP, Cluster phân tải đồng đều |
 
+
 ---
+
+<!-- _class: title -->
 
 # 👉 Chuyển sang Lab 1.3
 

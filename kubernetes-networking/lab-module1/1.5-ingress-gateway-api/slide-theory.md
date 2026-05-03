@@ -1,27 +1,69 @@
 ---
 marp: true
-theme: gaia
+theme: default
 paginate: true
-backgroundColor: #0f172a
-color: #e2e8f0
+style: |
+  section {
+    font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-size: 22px;
+    background: #326ce5;
+    color: #ffffff;
+  }
+  h1 { color: #ffd700 !important; font-size: 2em; margin-bottom: 0.3em; }
+  h2 { color: #ffffff; font-size: 1.4em; border-bottom: 2px solid #ffd700; padding-bottom: 0.2em; }
+  h3 { color: #e0e7ff; font-size: 1.1em; }
+  strong { color: #fbbf24; }
+  code { background: #1e3a8a; color: #86efac; padding: 2px 6px; border-radius: 4px; }
+  pre { background: #1e3a8a; border-left: 4px solid #ffd700; padding: 16px; border-radius: 6px; }
+  pre code { color: #86efac; background: transparent; padding: 0; }
+  .hljs-keyword, .hljs-selector-tag { color: #ff79c6; }
+  .hljs-string, .hljs-addition { color: #f1fa8c; }
+  .hljs-attr, .hljs-attribute { color: #93c5fd; }
+  .hljs-number, .hljs-literal { color: #c4b5fd; }
+  .hljs-comment { color: #93c5fd; font-style: italic; }
+  .hljs-variable, .hljs-template-variable { color: #fcd34d; }
+  .hljs-built_in, .hljs-name, .hljs-type { color: #86efac; }
+  .hljs-meta { color: #fca5a5; }
+  .hljs-title, .hljs-section { color: #bfdbfe; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+  th { background: #1e3a8a; color: #ffd700; padding: 10px 14px; font-weight: 600; letter-spacing: 0.03em; }
+  td { padding: 8px 14px; border-bottom: 1px solid #3b82f6; color: #ffffff; background: #2563eb; }
+  tr:nth-child(even) td { background: #1d4ed8; }
+  tr:hover td { background: #1e40af; }
+  blockquote { border-left: 4px solid #ffd700; padding-left: 16px; color: #e0e7ff; font-style: italic; margin: 12px 0; }
+  ul li, ol li { margin-bottom: 6px; line-height: 1.6; }
+  section.title {
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 60px 80px;
+  }
+  section.title h1 { font-size: 2.8em; color: #ffd700 !important; border: none; }
+  section.title h2 { font-size: 1.3em; color: #ffffff; border: none; margin-top: 0.2em; }
+  section.title p { color: #bfdbfe; font-size: 0.9em; margin-top: 16px; }
+  section.divider {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+  section.divider h1 { font-size: 2.5em; border: none; color: #ffd700 !important; }
+  section.divider h2 { border: none; color: #ffffff; }
+  .good { color: #86efac; font-weight: bold; }
+  .bad  { color: #fca5a5; font-weight: bold; }
+  .warn { color: #fcd34d; font-weight: bold; }
 ---
+<!-- _class: title -->
 
-<style>
-h1 { color: #38bdf8; font-size: 1.5em; }
-h2 { color: #7dd3fc; }
-strong { color: #fbbf24; }
-code { background: #1e293b; color: #86efac; padding: 2px 6px; border-radius: 4px; }
-blockquote { border-left: 4px solid #38bdf8; color: #94a3b8; padding-left: 1em; }
-table { font-size: 0.78em; }
-th { background: #1e40af; color: white; }
-td { background: #1e293b; }
-pre { background: #1e293b; font-size: 0.72em; }
-</style>
+# 🚪 Tập 5: Cuộc chuyển giao Ingress & Gateway API
+## Lý thuyết: ingress-nginx nghỉ hưu & kiến trúc Role-oriented của Gateway API v1.4
 
-# **Tập 5: Cuộc chuyển giao Ingress & Gateway API**
-### Lý thuyết: ingress-nginx nghỉ hưu & kiến trúc Role-oriented của Gateway API v1.4
+**Network Thực Chiến** · Series: Kubernetes Networking · Tập 05
 
-**Thang** | @NetworkThucChien
 
 ---
 
@@ -40,6 +82,7 @@ Với ứng dụng Web hiện đại, bạn cần **Layer 7 routing**:
 - `beta.example.com` → Service C (Canary 10% traffic)
 
 **Giải pháp:** Ingress (cũ) và Gateway API (mới).
+
 
 ---
 
@@ -67,18 +110,20 @@ spec:
 
 **Vấn đề cốt lõi:** Tính năng nâng cao phải nhét vào **annotation** → không chuẩn hóa, mỗi controller (nginx, traefik, haproxy) dùng annotation khác nhau.
 
+
 ---
 
-# ingress-nginx nghỉ hưu (2026)
+# ingress-nginx đã chính thức nghỉ hưu ✅
 
-Tháng 3/2026, project `kubernetes/ingress-nginx` chính thức **kết thúc vòng đời (EOL)**. Lý do:
+Project `kubernetes/ingress-nginx` đã **archived ngày 24/3/2026** — repo read-only, không còn nhận PR hay release mới. Lý do:
 
 1. **Mô hình phân quyền thiếu rõ ràng:** Dev và Ops đều phải chỉnh sửa cùng 1 Ingress object.
 2. **Annotation hell:** Hàng trăm annotation không chuẩn hóa, vendor-lock-in.
 3. **Không hỗ trợ traffic splitting chuẩn**: A/B testing, Canary phải dùng annotation hack.
 4. **Gateway API đã GA** và giải quyết được tất cả vấn đề trên.
 
-> Khuyến nghị: Bắt đầu migrate sang **Gateway API** ngay hôm nay.
+> **ingress-nginx đã dead.** Migration sang **Gateway API** không còn là "khuyến nghị" — đây là bắt buộc.
+
 
 ---
 
@@ -100,6 +145,7 @@ Application Team (Dev)
          (Path /api → Service A, Host beta → Service B)
 ```
 
+
 ---
 
 # GatewayClass: Định nghĩa "Loại" Load Balancer
@@ -114,6 +160,7 @@ spec:
 ```
 
 Tương tự như `StorageClass` cho PVC, `GatewayClass` định nghĩa **implementation** nào sẽ xử lý Gateway.
+
 
 ---
 
@@ -135,6 +182,7 @@ spec:
         certificateRefs:
           - name: prod-tls-cert   # ← TLS cert do Ops quản lý
 ```
+
 
 ---
 
@@ -165,6 +213,7 @@ spec:
           weight: 10
 ```
 
+
 ---
 
 # So sánh: Ingress vs Gateway API
@@ -177,6 +226,7 @@ spec:
 | **Extensibility** | Annotation | Policy Attachment (chuẩn hóa) |
 | **Trạng thái** | Legacy, EOL | GA từ K8s v1.28, v1.4 đang phát triển |
 
+
 ---
 
 # Tổng kết Tập 5
@@ -188,7 +238,10 @@ spec:
 | **Gateway** | Cổng vào cluster, do Ops quản lý, gắn TLS |
 | **HTTPRoute** | Luật routing, do Dev quản lý, hỗ trợ traffic splitting |
 
+
 ---
+
+<!-- _class: title -->
 
 # 👉 Chuyển sang Lab 1.5
 
