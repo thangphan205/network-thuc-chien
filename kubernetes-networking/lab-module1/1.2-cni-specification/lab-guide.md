@@ -72,16 +72,19 @@ multipass shell worker1
 ```bash
 CNI_VERSION="v1.9.1"
 sudo mkdir -p /opt/cni/bin
-curl -L "https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-amd64-${CNI_VERSION}.tgz" \
+# Tự động detect architecture
+ARCH=$(dpkg --print-architecture)   # amd64 hoặc arm64
+curl -L "https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz" \
   | sudo tar -C /opt/cni/bin -xz
+
+# Verify đúng arch (tránh exec format error)
+file /opt/cni/bin/bridge
+# → ELF 64-bit LSB executable, x86-64     (Intel/AMD)
+# → ELF 64-bit LSB executable, ARM aarch64 (Apple Silicon / ARM server)
 
 ls /opt/cni/bin/
 # bridge, portmap, host-local, loopback, firewall...
 ```
-
-> **ARM64 (Apple Silicon):** Thay `amd64` thành `arm64` trong URL trên.
-
----
 
 ## 🔬 Bước 3: Cài cnitool
 
@@ -151,10 +154,9 @@ ip netns list
 ## 🔬 Bước 6: Gọi CNI ADD thủ công
 
 ```bash
-export CNI_PATH=/opt/cni/bin
-export NETCONFPATH=/etc/cni/net.d
-
-sudo -E cnitool add mylab-network /var/run/netns/mytest-ns
+# Dùng 'sudo env' để truyền biến môi trường (sudo -E bị ignore trên Ubuntu 26.04)
+sudo env CNI_PATH=/opt/cni/bin NETCONFPATH=/etc/cni/net.d \
+  cnitool add mylab-network /var/run/netns/mytest-ns
 # Output JSON: IP được cấp, interface info
 ```
 
@@ -174,8 +176,18 @@ ip addr show mylab0
 
 # IPAM state file — ghi nhận IP đã cấp
 ls /var/lib/cni/networks/mylab-network/
-# 10.99.0.2  ← file tên = IP đã cấp, nội dung = container ID
+# 10.99.0.2   ← tên file = IP đã cấp
+# last_reserved_ip.0  ← IPAM dùng để track IP tiếp theo
+
+# Xem container ID được lưu trong state file
+# (host-local IPAM dùng container ID để biết ai đang giữ IP này)
 cat /var/lib/cni/networks/mylab-network/10.99.0.2
+# → in ra container ID dạng hex, ví dụ: 7a3f1c2d4e5b...
+# cnitool tự sinh container ID ngẫu nhiên mỗi lần add
+
+# Container ID này tương đương với CNI_CONTAINERID mà kubelet truyền vào thực tế
+# Trong K8s: container ID = ID của pause container (lấy từ containerd/CRI)
+printf "Container ID: "; cat /var/lib/cni/networks/mylab-network/10.99.0.2; echo
 ```
 
 ---
@@ -183,7 +195,8 @@ cat /var/lib/cni/networks/mylab-network/10.99.0.2
 ## 🔬 Bước 8: Gọi DEL để giải phóng
 
 ```bash
-sudo -E cnitool del mylab-network /var/run/netns/mytest-ns
+sudo env CNI_PATH=/opt/cni/bin NETCONFPATH=/etc/cni/net.d \
+  cnitool del mylab-network /var/run/netns/mytest-ns
 
 ls /var/lib/cni/networks/mylab-network/
 # File 10.99.0.2 đã biến mất → IP đã được trả về pool
@@ -200,7 +213,8 @@ sudo ip netns del mytest-ns
 ```bash
 # Tạo lại namespace, ADD để cấp IP
 sudo ip netns add leaked-ns
-sudo -E cnitool add mylab-network /var/run/netns/leaked-ns
+sudo env CNI_PATH=/opt/cni/bin NETCONFPATH=/etc/cni/net.d \
+  cnitool add mylab-network /var/run/netns/leaked-ns
 
 # Xác nhận IP đã được cấp
 ls /var/lib/cni/networks/mylab-network/
@@ -214,12 +228,34 @@ sudo ip netns del leaked-ns
 ls /var/lib/cni/networks/mylab-network/
 # 10.99.0.2  ← vẫn còn! Đây là resource leak.
 
-# Dùng GC để dọn dẹp — truyền danh sách container ID còn sống (rỗng = không có gì)
-sudo -E CNI_PATH=/opt/cni/bin cnitool gc mylab-network
+# Gọi GC — cnitool gc yêu cầu <net> <netns>
+# Nếu chạy thiếu netns sẽ báo usage error:
+#   cnitool gc <net> <netns>
+# ubuntu@worker1:~$ sudo env CNI_PATH=/opt/cni/bin NETCONFPATH=/etc/cni/net.d \
+#   cnitool gc mylab-network
+# cnitool: Add, check, remove, gc or status network interfaces from a network namespace
 
+# Vì leaked-ns đã bị xóa, tạo anchor-ns tạm làm "valid attachment" anchor
+# GC sẽ xóa tất cả state KHÔNG thuộc netns này
+sudo ip netns add anchor-ns
+
+sudo env CNI_PATH=/opt/cni/bin NETCONFPATH=/etc/cni/net.d \
+  cnitool gc mylab-network /var/run/netns/anchor-ns
+# → anchor-ns không có attachment nào → GC dọn sạch toàn bộ stale state
+
+sudo ip netns del anchor-ns
+```
+
+> **So sánh với K8s thực tế:** `cnitool` bắt buộc truyền `<netns>` argument — đó là giới hạn của debug tool, không phải cách K8s hoạt động. Kubelet gọi GC bằng cách truyền danh sách **gcAttachments** qua stdin (không tạo namespace tạm):
+> ```json
+> {"gcAttachments": [{"containerID": "abc123", "ifname": "eth0"}, {"containerID": "def456", "ifname": "eth0"}]}
+> ```
+> Plugin nhận list này, so sánh với state file, xóa những attachment không có trong list. `anchor-ns` ở trên là workaround chỉ dùng khi debug với `cnitool`.
+
+```bash
 # Kiểm tra sau GC
 ls /var/lib/cni/networks/mylab-network/
-# (trống) ← GC đã dọn sạch IP bị leak
+# (trống) ← leaked IP đã bị xóa bởi GC
 ```
 
 ---
@@ -229,10 +265,8 @@ ls /var/lib/cni/networks/mylab-network/
 **VERSION** — query xem plugin hỗ trợ CNI spec version nào:
 
 ```bash
-export CNI_PATH=/opt/cni/bin
-export NETCONFPATH=/etc/cni/net.d
-
-sudo -E cnitool version mylab-network
+sudo env CNI_PATH=/opt/cni/bin NETCONFPATH=/etc/cni/net.d \
+  cnitool version mylab-network
 # Output JSON: {"cniVersion":"1.1.0","supportedVersions":["0.1.0","0.2.0","0.3.0","0.3.1","0.4.0","1.0.0","1.1.0"]}
 # → Plugin bridge hỗ trợ nhiều spec versions, backwards compatible
 ```
@@ -240,7 +274,8 @@ sudo -E cnitool version mylab-network
 **STATUS** — kiểm tra plugin có sẵn sàng nhận lệnh không:
 
 ```bash
-sudo -E cnitool status mylab-network
+sudo env CNI_PATH=/opt/cni/bin NETCONFPATH=/etc/cni/net.d \
+  cnitool status mylab-network
 # Exit code 0 = plugin OK
 # Exit code 1 = plugin lỗi (daemon crash, config sai)
 echo "Exit code: $?"
