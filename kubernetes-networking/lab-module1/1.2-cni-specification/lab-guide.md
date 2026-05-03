@@ -264,18 +264,23 @@ ls /var/lib/cni/networks/mylab-network/
 
 **VERSION** — query xem plugin hỗ trợ CNI spec version nào:
 
+> **Lưu ý:** `cnitool` không có subcommand `version` (chỉ hỗ trợ: add, check, remove, gc, status). Gọi plugin binary trực tiếp với `CNI_COMMAND=VERSION`:
+
 ```bash
-sudo env CNI_PATH=/opt/cni/bin NETCONFPATH=/etc/cni/net.d \
-  cnitool version mylab-network
+# Gọi bridge plugin trực tiếp — truyền config tối thiểu qua stdin
+echo '{"cniVersion":"1.1.0","name":"mylab-network","type":"bridge"}' \
+  | sudo env CNI_COMMAND=VERSION CNI_PATH=/opt/cni/bin /opt/cni/bin/bridge
 # Output JSON: {"cniVersion":"1.1.0","supportedVersions":["0.1.0","0.2.0","0.3.0","0.3.1","0.4.0","1.0.0","1.1.0"]}
 # → Plugin bridge hỗ trợ nhiều spec versions, backwards compatible
 ```
 
 **STATUS** — kiểm tra plugin có sẵn sàng nhận lệnh không:
 
+> **Lưu ý:** `cnitool status` cũng yêu cầu `<netns>` argument (giới hạn của cnitool). Gọi plugin trực tiếp:
+
 ```bash
-sudo env CNI_PATH=/opt/cni/bin NETCONFPATH=/etc/cni/net.d \
-  cnitool status mylab-network
+echo '{"cniVersion":"1.1.0","name":"mylab-network","type":"bridge"}' \
+  | sudo env CNI_COMMAND=STATUS CNI_PATH=/opt/cni/bin /opt/cni/bin/bridge
 # Exit code 0 = plugin OK
 # Exit code 1 = plugin lỗi (daemon crash, config sai)
 echo "Exit code: $?"
