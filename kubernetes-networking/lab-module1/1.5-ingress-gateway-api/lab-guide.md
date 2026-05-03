@@ -7,6 +7,54 @@
 
 ---
 
+## 🗺️ Topology Diagram
+
+**Ingress (Legacy) — L7 routing flow:**
+```
+External Client
+    │  HTTP GET /api  Host: demo.lab.local
+    ▼
+NodePort :30XXX
+    │
+    ▼
+ingress-nginx Pod  (nginx reverse proxy)
+    │  đọc Ingress object → sinh nginx.conf tự động
+    │  location /api  → proxy_pass app-v1:80
+    │  location /admin → proxy_pass app-v2:80
+    │
+    ├─► /api   ──► Service app-v1 ──► Pod app-v1 (ClusterIP)
+    └─► /admin ──► Service app-v2 ──► Pod app-v2 (ClusterIP)
+```
+
+**Gateway API (New) — Role-oriented flow:**
+```
+External Client
+    │
+    ▼
+GatewayClass (cilium)  ← Infrastructure Provider định nghĩa implementation
+    │
+    ▼
+Gateway: demo-gateway  ← Ops team: lắng nghe port 443, gắn TLS cert
+    │  parentRefs ◄────────── HTTPRoute: api-route  ← Dev team: routing rules
+    │
+    ├─► path /api  ──► app-v1 (weight 90%) ┐  traffic splitting chuẩn
+    │                  app-v2 (weight 10%) ┘  (Canary)
+    │
+    └─► path /admin ──► app-v2 (100%)
+```
+
+**So sánh phân quyền:**
+```
+Ingress (cũ)                     Gateway API (mới)
+─────────────────────────────    ──────────────────────────────────
+1 Ingress object                 GatewayClass  ← Infra Provider
+  ↑ Ops chỉnh annotation         Gateway       ← Ops team
+  ↑ Dev chỉnh routing            HTTPRoute     ← Dev team (độc lập)
+  → conflict, annotation hell    → tách rõ trách nhiệm
+```
+
+---
+
 ## 🔬 Bước 1: Tạo ứng dụng mẫu (2 services)
 
 ```bash

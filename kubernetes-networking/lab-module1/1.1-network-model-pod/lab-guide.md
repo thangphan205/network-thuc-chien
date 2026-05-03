@@ -6,6 +6,38 @@
 - Tìm `veth pair` kết nối Pod vào Node bằng kỹ thuật `@if` index.
 - Chui vào Network Namespace của Pod từ OS của Node.
 
+## 🗺️ Topology Diagram
+
+```
+┌─────────────────────────── Worker Node ────────────────────────────┐
+│                                                                      │
+│  ┌──────────────────────────────────────┐                           │
+│  │  Pod: nginx-test                     │                           │
+│  │  Network Namespace (riêng biệt)      │                           │
+│  │  ┌────────────────┐                  │                           │
+│  │  │ pause container│  ← giữ netns     │                           │
+│  │  └────────────────┘                  │                           │
+│  │  eth0: 10.244.X.X  ◄─────────────────┼──── veth pair ──────┐    │
+│  └──────────────────────────────────────┘                      │    │
+│                                                                 │    │
+│  Host Network Namespace                                         │    │
+│  ┌──────────────────────────────────────────────────────────┐  │    │
+│  │  vethXXXXXX (if index N) ◄──────────────────────────────┘  │    │
+│  │       │                                                      │    │
+│  │       ▼                                                      │    │
+│  │  cni0 / flannel.1 (bridge)  10.244.X.1                      │    │
+│  │       │                                                      │    │
+│  │       ▼                                                      │    │
+│  │  eth0 (Node NIC)  192.168.56.X                               │    │
+│  └──────────────────────────────────────────────────────────┘       │
+│                                                                      │
+│  Lab thực hành: ip netns, nsenter, @if cross-reference              │
+└──────────────────────────────────────────────────────────────────────┘
+           │
+           ▼ Packet đến Pod khác trên Worker2
+    flannel.1 ──VXLAN encap──► Node NIC ──► Network ──► Worker2
+```
+
 ## ✅ Yêu cầu tiên quyết
 - Cluster 3 nodes đang chạy (CNI đã cài).
 - SSH được vào Worker Node.

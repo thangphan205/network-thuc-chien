@@ -6,6 +6,38 @@
 - Quan sát bridge, veth, IP được tạo ra như thế nào.
 - Simulate resource leak và dùng operation GC để dọn dẹp.
 
+## 🗺️ Topology Diagram
+
+```
+                      Worker Node (Linux OS)
+┌─────────────────────────────────────────────────────────────────────┐
+│                                                                      │
+│  cnitool (debug tool)                                                │
+│      │  CNI_COMMAND=ADD                                              │
+│      │  stdin: config JSON từ /etc/cni/net.d/10-mylab.conflist      │
+│      ▼                                                               │
+│  /opt/cni/bin/bridge  ──────────────────────────────────────────┐   │
+│      │ Plugin 1: tạo bridge + veth + cấp IP qua host-local IPAM  │   │
+│      ▼                                                           │   │
+│  /opt/cni/bin/portmap                                            │   │
+│      │ Plugin 2: cấu hình iptables hostPort mapping              │   │
+│      ▼                                                           │   │
+│  Kết quả:                                                        │   │
+│  ┌─────────────────────────────────┐   ┌──────────────────────┐ │   │
+│  │  Network Namespace: mytest-ns   │   │  Host NS             │ │   │
+│  │  eth0: 10.99.0.2/24             │   │  mylab0: 10.99.0.1   │ │   │
+│  │    └──── veth pair ─────────────┼───┼──► vethXXXX          │ │   │
+│  └─────────────────────────────────┘   └──────────────────────┘ │   │
+│                                                                   │   │
+│  IPAM state: /var/lib/cni/networks/mylab-network/10.99.0.2        │   │
+│              (content = containerID)                              │   │
+└─────────────────────────────────────────────────────────────────────┘
+
+  CNI ADD → tạo veth + bridge + IP
+  CNI DEL → xóa veth + giải phóng IP
+  CNI GC  → dọn stale state khi DEL bị bỏ qua (Node crash)
+```
+
 ## ✅ Yêu cầu tiên quyết
 - Có quyền root trên **1 Linux VM** (Ubuntu 24.04 hoặc 26.04).
 - **Không cần K8s cluster đầy đủ** — lab này chạy trực tiếp trên OS của VM, không dùng `kubectl`.

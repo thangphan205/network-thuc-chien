@@ -157,6 +157,32 @@ options ndots:5
 
 ---
 
+# Tại sao K8s chọn ndots:**5** cụ thể?
+
+FQDN đầy đủ của một K8s Service có **4 dấu chấm**:
+
+```
+my-svc.default.svc.cluster.local
+      ↑      ↑   ↑       ↑
+      1      2   3       4 dấu chấm
+```
+
+`ndots:5` đảm bảo **mọi dạng tên ngắn** đều được thử qua search domain trước:
+
+| Tên gọi | Số dấu chấm | < 5? | Hành vi |
+| :--- | :---: | :---: | :--- |
+| `my-svc` | 0 | ✅ | → thử search → `my-svc.default.svc.cluster.local` |
+| `my-svc.default` | 1 | ✅ | → thử search → resolve đúng |
+| `my-svc.default.svc` | 2 | ✅ | → thử search → resolve đúng |
+| `my-svc.default.svc.cluster` | 3 | ✅ | → thử search → resolve đúng |
+| `my-svc.default.svc.cluster.local` | 4 | ✅ | → thử search → resolve đúng |
+| `api.github.com` | 2 | ✅ | → **thử search trước** → 3 NXDOMAIN thừa ⚠️ |
+
+> Nếu dùng `ndots:4`, tên `my-svc.default.svc.cluster` (3 dấu chấm, < 4) vẫn OK — nhưng K8s chọn 5 để có buffer an toàn.
+
+
+---
+
 # Minh họa: Truy cập google.com từ trong Pod
 
 ```
@@ -177,25 +203,98 @@ curl https://google.com
 
 ---
 
-# Giải pháp cho thuế ndots
+# Performance Impact: DNS Query Flood tại Scale
 
-**Option 1:** Luôn thêm dấu `.` cuối tên miền ngoại (Fully Qualified):
+**Kịch bản thực tế:** Cluster 100 Pods, mỗi Pod gọi external API 10 lần/giây:
+
 ```
-curl https://google.com.    ← Dấu chấm cuối = FQDN → Query thẳng, không search
+1 Pod × 1 call    =        4 DNS queries  (3 K8s search + 1 thật)
+100 Pods × 10/s   =  4,000 queries/giây → CoreDNS
+                                   ↑
+                        3,000 queries THỪA mỗi giây
 ```
 
-**Option 2:** Giảm `ndots` trong Pod spec:
+**Hậu quả dây chuyền:**
+
+```
+CoreDNS bị flood
+    │
+    ▼
+UDP buffer đầy → packet drop
+    │
+    ▼
+DNS timeout (5 giây mặc định)
+    │
+    ▼
+HTTP request timeout → retry storm
+    │
+    ▼
+Toàn bộ microservice bị ảnh hưởng
+```
+
+> **Incident thực tế:** Nhiều công ty gặp "mystery latency spike" khi scale lên. Root cause: CoreDNS overload do ndots:5 × số Pod tăng đột biến.
+
+
+---
+
+# Giải pháp — 3 Cấp độ Can thiệp
+
+**🔵 Cấp độ Application** — Fix ngay, không cần thay đổi infra:
+```bash
+curl https://google.com.    ← Trailing dot = FQDN → query thẳng, bỏ qua search domain
+```
+> Tradeoff: Developer phải nhớ thêm `.` — dễ quên, khó enforce ở scale lớn.
+
+**🟡 Cấp độ Infrastructure** — Fix trong Pod/Deployment YAML:
 ```yaml
 spec:
   dnsConfig:
     options:
       - name: ndots
-        value: "1"   ← Chỉ thêm search domain nếu < 1 dấu chấm (bare hostname)
+        value: "1"   ← bare hostname (0 dấu chấm, 0 < 1) vẫn dùng search; còn lại query thẳng
+```
+> `ndots:1`: `google.com` (1 dấu chấm, không < 1) → query thẳng. `web-svc` (0 dấu chấm) → vẫn resolve qua search domain → K8s DNS hoạt động bình thường.
+> Tradeoff: Cần update từng Deployment. Không giải quyết gốc rễ nếu có nhiều external calls.
+
+**🟢 Cấp độ Architecture (Production)** — NodeLocal DNSCache:
+```
+Pod → 169.254.20.10 (cache local trên Node) → CoreDNS (chỉ khi cache miss)
+```
+> Tradeoff: Cần deploy DaemonSet, phức tạp hơn — nhưng giải quyết gốc rễ cho toàn cluster.
+
+
+---
+
+# 🚀 Autopath Plugin: Giải pháp Server-Side (Option 4)
+
+**Ý tưởng:** Thay vì client gửi 4 queries riêng lẻ, CoreDNS tự thử search path **nội bộ** và trả về ngay:
+
+```
+Không có Autopath:                      Có Autopath:
+                                        Pod → google.com.default.svc.cluster.local
+Pod → google.com.default.svc...  ❌ ←────────────────────────────────────┐
+Pod → google.com.svc.cluster...  ❌       CoreDNS nhận query, biết Pod    │
+Pod → google.com.cluster.local   ❌       thuộc namespace nào → tự thử   │
+Pod → google.com.                ✅       google.com. nội bộ → trả về ✅  │
+                                                                           │
+= 4 round-trips qua mạng              = 1 round-trip (CoreDNS làm hết) ──┘
 ```
 
-> `ndots:1` — `google.com` (1 dấu chấm, không < 1) → query thẳng. `web-svc` (0 dấu chấm, 0 < 1) → vẫn dùng search domain → K8s DNS hoạt động bình thường.
+Bật Autopath trong Corefile của CoreDNS:
+```
+.:53 {
+    kubernetes cluster.local in-addr.arpa ip6.arpa {
+        pods verified
+        autopath @kubernetes   # ← thêm dòng này
+    }
+    forward . /etc/resolv.conf
+}
+```
 
-**Option 3 (tốt nhất):** Triển khai **NodeLocal DNSCache** để cache tại local, giảm round-trip đến CoreDNS.
+> **Tradeoff so sánh:**
+> - Autopath = **server-side** fix — không cần thay đổi Pod/Deployment nào cả. CoreDNS tốn thêm CPU để lookup Pod → namespace → search path.
+> - `ndots:1` = **client-side** fix — cần update từng Deployment YAML, nhưng giảm tải CoreDNS.
+> - **NodeLocal DNSCache** = giảm latency + tải, nhưng không giảm số query thừa nếu không kết hợp Autopath hoặc ndots:1.
 
 
 ---
@@ -227,6 +326,7 @@ kubectl apply -f \
 | **CoreDNS** | DNS server nội bộ K8s, ánh xạ tên Service → ClusterIP |
 | **Headless Service** | `clusterIP: None`, DNS trả về IP Pod trực tiếp |
 | **ndots:5** | Gây ra 3 DNS query thừa khi truy cập domain ngoại |
+| **Autopath plugin** | CoreDNS tự thử search path nội bộ → giảm 4 xuống 1 round-trip |
 | **NodeLocal DNSCache** | Cache DNS tại Node IP `169.254.20.10`, giảm latency |
 
 

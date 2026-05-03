@@ -86,6 +86,32 @@ Client → ClusterIP: 10.96.50.100 → kube-proxy → Pod A / Pod B
 
 ---
 
+# 5 Loại Service trong K8s
+
+Mỗi loại Service là **mở rộng của loại trước** — hiểu rõ hierarchy này trước khi đi vào kube-proxy:
+
+```
+[Headless]      clusterIP: None   → DNS trả về Pod IP trực tiếp, không VIP, không kube-proxy
+     ↓
+[ClusterIP]     VIP nội bộ        → kube-proxy DNAT, chỉ truy cập được từ trong cluster
+     ↓
+[NodePort]      ClusterIP + port  → Mở thêm port 30000–32767 trên mọi Node → external access
+     ↓
+[LoadBalancer]  NodePort + LB IP  → Cloud/MetalLB cấp External IP, BGP/ARP advertisement
+```
+
+**[ExternalName]** — đặc biệt: không VIP, không kube-proxy, DNS trả về **CNAME** đến domain ngoài:
+```yaml
+spec:
+  type: ExternalName
+  externalName: my-db.us-east-1.rds.amazonaws.com   # ← alias nội bộ cho service bên ngoài
+```
+
+> **Use case ExternalName:** migrate DB từ on-prem vào cloud — code gọi `my-db` không đổi, chỉ cần đổi `externalName` trỏ đến địa chỉ mới. Không cần deploy lại app.
+
+
+---
+
 # Kube-proxy: Người dịch ClusterIP thành Pod IP
 
 `kube-proxy` chạy trên **mọi Node**, theo dõi thay đổi từ API Server và lập trình các rule vào Linux kernel để thực hiện load balancing:
@@ -218,6 +244,7 @@ sudo nft list table ip kube-proxy
 
 | Khái niệm | Tóm tắt |
 | :--- | :--- |
+| **5 loại Service** | Headless → ClusterIP → NodePort → LoadBalancer; ExternalName là CNAME alias |
 | **ClusterIP** | IP ảo ổn định đại diện cho nhóm Pod phía sau |
 | **kube-proxy** | Lập trình iptables/IPVS/nftables để forward traffic đến Pod |
 | **EndpointSlice** | Thay thế Endpoints, chia nhỏ danh sách Pod để scale tốt hơn |

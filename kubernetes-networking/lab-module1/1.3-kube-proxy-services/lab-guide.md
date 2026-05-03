@@ -7,6 +7,54 @@
 
 ---
 
+## 🗺️ Topology Diagram
+
+**iptables mode — ClusterIP data flow:**
+```
+Client (Pod / Node)
+    │  dst: ClusterIP 10.96.X.X:80
+    ▼
+iptables nat table
+    │
+    ├─► KUBE-SERVICES  (match dst=ClusterIP)
+    │       │
+    │       ▼
+    │   KUBE-SVC-XXXX  (load balance: statistic --probability)
+    │       │
+    │       ├─ 33% ──► KUBE-SEP-AAA ──► DNAT → Pod1 10.244.1.X:80
+    │       ├─ 33% ──► KUBE-SEP-BBB ──► DNAT → Pod2 10.244.2.X:80
+    │       └─ 33% ──► KUBE-SEP-CCC ──► DNAT → Pod3 10.244.1.Y:80
+    │
+    └─► Packet đến Pod IP thực (sau DNAT)
+```
+
+**IPVS mode — so sánh:**
+```
+Client
+    │  dst: ClusterIP 10.96.X.X:80
+    ▼
+kube-ipvs0 (dummy interface, state DOWN — bình thường)
+    │  IPVS kernel hash table O(1)
+    ▼
+Virtual Server: 10.96.X.X:80  algo=rr
+    ├──► Real Server: Pod1 10.244.1.X:80  weight=1
+    ├──► Real Server: Pod2 10.244.2.X:80  weight=1
+    └──► Real Server: Pod3 10.244.1.Y:80  weight=1
+```
+
+**externalTrafficPolicy: Cluster vs Local:**
+```
+External Client  ──►  NodePort :30080
+                            │
+               ┌────────────┴────────────┐
+               │  Cluster (default)       │  Local
+               │  SNAT → forward đến      │  Chỉ Pod trên Node này
+               │  Pod bất kỳ (mất src IP) │  (giữ src IP thật)
+               └──────────────────────────┘
+```
+
+---
+
 ## 🔬 Bước 0: Chuẩn bị Cluster
 
 ### Trường hợp A — Cluster còn từ Lab trước (chưa xóa)

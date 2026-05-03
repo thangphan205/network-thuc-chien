@@ -8,6 +8,62 @@
 
 ---
 
+## 🗺️ Topology Diagram
+
+**DNS resolution flow — ndots:5 (default):**
+```
+Pod (debug-dns)
+    │  query: google.com  (1 dấu chấm < 5)
+    │  nameserver: 10.96.0.10
+    ▼
+eth0 ──► veth ──► cni0 ──► iptables DNAT ──► CoreDNS Pod
+                                                    │
+                    ┌───────────────────────────────┘
+                    │  Search domain loop:
+                    ├─ google.com.default.svc.cluster.local → NXDOMAIN ❌
+                    ├─ google.com.svc.cluster.local         → NXDOMAIN ❌
+                    ├─ google.com.cluster.local             → NXDOMAIN ❌
+                    ├─ google.com.lan  (Vagrant DHCP)       → NXDOMAIN ❌
+                    └─ google.com.                          → 142.250.x.x ✅
+                         │ forward đến upstream DNS (8.8.8.8)
+                         ▼
+                    Internet DNS → Answer
+```
+
+**NodeLocal DNSCache flow:**
+```
+Pod
+    │  query đến nameserver 10.96.0.10:53
+    ▼
+Node iptables NOTRACK rule (intercept transparent)
+    │
+    ▼
+nodelocaldns daemon  ──── cache hit? ──► return immediately (no network hop)
+    │ 10.96.0.10 + 169.254.20.10
+    │ cache miss?
+    ▼
+CoreDNS Pod (chỉ khi miss)
+    │
+    ▼
+Upstream DNS / Internet
+```
+
+**ClusterIP Service vs Headless Service:**
+```
+nslookup web-svc              nslookup headless-svc
+    │                               │
+    ▼                               ▼
+CoreDNS                         CoreDNS
+    │                               │
+    ▼                               ▼
+1 A record                    3 A records
+10.96.X.X (ClusterIP ảo)      10.244.1.X (Pod1 IP)
+                              10.244.2.X (Pod2 IP)
+                              10.244.1.Y (Pod3 IP)
+```
+
+---
+
 ## 🔬 Bước 0: Chuẩn bị Cluster
 
 ### Trường hợp A — Cluster còn từ Lab trước (chưa xóa)
