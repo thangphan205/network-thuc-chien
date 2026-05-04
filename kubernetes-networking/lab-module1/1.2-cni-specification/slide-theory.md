@@ -6,7 +6,7 @@ style: |
   section {
     font-family: 'Segoe UI', 'Noto Sans', sans-serif;
     font-size: 22px;
-    background: #326ce5;
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
     color: #ffffff;
   }
   h1 { color: #ffd700 !important; font-size: 2em; margin-bottom: 0.3em; }
@@ -24,6 +24,9 @@ style: |
   .hljs-variable, .hljs-template-variable { color: #fcd34d; }
   .hljs-built_in, .hljs-name, .hljs-type { color: #86efac; }
   .hljs-meta { color: #fca5a5; }
+  .hljs-bullet, .hljs-symbol { color: #fcd34d; }
+  .hljs-params, .hljs-subst { color: #ffffff; }
+  .hljs-deletion { color: #fca5a5; }
   .hljs-title, .hljs-section { color: #bfdbfe; }
   table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
   th { background: #1e3a8a; color: #ffd700; padding: 10px 14px; font-weight: 600; letter-spacing: 0.03em; }
@@ -53,6 +56,7 @@ style: |
   }
   section.divider h1 { font-size: 2.5em; border: none; color: #ffd700 !important; }
   section.divider h2 { border: none; color: #ffffff; }
+  a { color: #ffd700; text-decoration: underline; }
   .good { color: #86efac; font-weight: bold; }
   .bad  { color: #fca5a5; font-weight: bold; }
   .warn { color: #fcd34d; font-weight: bold; }
@@ -79,6 +83,34 @@ kubelet  ──── (gọi theo chuẩn CNI) ────►  CNI Plugin
 ```
 
 > CNI định nghĩa **giao diện giao tiếp** giữa Container Runtime (kubelet) và Network Plugin.
+
+
+---
+
+# CNI: Mô hình Stateless Binary — Không phải Daemon
+
+CNI plugin = **binary file thuần** trong `/opt/cni/bin/`. Không có process nào chạy nền.
+
+```
+Kubelet cần ADD:          Kubelet cần DEL:
+  fork + exec               fork + exec
+  /opt/cni/bin/bridge       /opt/cni/bin/bridge  ← process MỚI hoàn toàn
+  ↓ env vars                ↓ env vars
+  ↓ config (stdin)          ↓ config (stdin)
+  ↓ plugin chạy             ↓ plugin chạy
+  ↓ trả JSON (stdout)       ↓ trả kết quả
+  plugin process exit ✅    plugin process exit ✅
+```
+
+**So sánh với CRI (containerd):**
+
+| | **CRI (containerd)** | **CNI plugin** |
+| :--- | :--- | :--- |
+| Mô hình | gRPC daemon, Unix socket | Stateless binary, exec mỗi lần |
+| Process | 1 process chạy mãi | 1 process/operation, exit sau khi xong |
+| State | Trong memory | Phải ghi ra file (`/var/lib/cni/networks/`) |
+
+> **Hệ quả:** Vì plugin không có memory state, nếu DEL không chạy (Node crash), IP bị giữ mãi trong file. Đây là lý do CNI v1.1.0 thêm operation **GC** — dọn state file không còn chủ.
 
 
 ---
@@ -155,6 +187,43 @@ kubectl apply -f pod.yaml
 
 ---
 
+# CRI ↔ CNI: Ai tạo Network Namespace?
+
+Nhầm lẫn phổ biến: **CNI plugin tạo network namespace** — SAI. Thứ tự thực tế:
+
+```
+kubectl apply -f pod.yaml
+       │
+       ▼
+[kubelet] ──gRPC──► [containerd (CRI daemon)]
+                         │
+                    1. Tạo pause container
+                    2. Tạo Network Namespace  ← CRI làm, không phải CNI!
+                         │
+                    Path: /proc/<PID>/fd/4
+                         │
+[kubelet] ◄──────── "Xong. netns = /proc/123/fd/4"
+       │
+       ▼
+[kubelet] ──exec──► [/opt/cni/bin/bridge]   ← stateless binary
+                    CNI_NETNS=/proc/123/fd/4  ← nhận path từ kubelet
+                    CNI_COMMAND=ADD
+                         │
+                    Vào netns, tạo eth0
+                    Cấp IP qua IPAM
+                    Thêm routes
+```
+
+---
+
+# Tóm tắt trách nhiệm:
+- **CRI (containerd):** tạo và sở hữu Network Namespace, tạo pause container
+- **CNI plugin:** nhận netns path đã có sẵn, chỉ cấu hình interface/IP/routes bên trong
+- **kubelet:** orchestrator — gọi CRI trước, sau đó gọi CNI với path từ CRI
+
+
+---
+
 # Cấu trúc File `.conflist` — Chained Plugins
 
 `/etc/cni/net.d/10-flannel.conflist` (ví dụ thực tế):
@@ -215,6 +284,41 @@ kubelet gọi ADD
     ▼
 Trả về JSON kết quả tổng hợp cho kubelet
 ```
+
+
+---
+
+# DEL Flow & Error Recovery trong Chained Plugins
+
+**DEL khi Pod bị xóa — thứ tự NGƯỢC với ADD:**
+
+```
+Pod bị xóa
+    │
+    ▼
+[Plugin 3: firewall] DEL  → xóa iptables anti-spoof rules
+    ▼
+[Plugin 2: portmap]  DEL  → xóa hostPort iptables rules
+    ▼
+[Plugin 1: bridge]   DEL  → xóa veth pair, trả IP về IPAM pool
+    ▼
+kubelet báo containerd: destroy pause container + network namespace
+```
+
+**Nếu ADD thất bại giữa chừng — kubelet tự động rollback:**
+
+```
+[Plugin 1: bridge]  ADD ✅  tạo veth, cấp IP 10.99.0.2
+[Plugin 2: portmap] ADD ❌  FAIL! (config sai, iptables lỗi...)
+
+Kubelet detect failure → gọi DEL theo thứ tự ngược:
+  [Plugin 2: portmap] DEL  (no-op, chưa cấu hình gì)
+  [Plugin 1: bridge]  DEL  ✅ giải phóng 10.99.0.2, xóa veth
+
+→ Không có partial state leak!
+```
+
+> **DEL phải idempotent** — plugin phải xử lý được khi netns đã bị xóa (kubelet gọi DEL sau crash để clean IPAM state dù netns không còn tồn tại). Pattern: thử xóa resource, nếu không tồn tại → return success, không return error.
 
 
 ---
@@ -292,11 +396,14 @@ Plugin nhận config mạng qua **stdin** (JSON format từ file .conflist).
 | Khái niệm | Tóm tắt |
 | :--- | :--- |
 | **CNI** | Đặc tả giao diện giữa kubelet và network plugin |
+| **Stateless binary** | Exec mới mỗi operation, không phải daemon — state phải lưu ra file |
+| **CRI tạo netns** | containerd tạo network namespace; CNI nhận path có sẵn, chỉ cấu hình bên trong |
 | **Operations** | Thuật ngữ chính thức — truyền qua `CNI_COMMAND` env var |
 | **ADD/DEL/CHECK** | 3 lifecycle operations: cấp IP, thu hồi, kiểm tra |
+| **DEL idempotent** | Plugin phải xử lý được khi netns đã không còn — không return error |
 | **GC/STATUS** | 2 maintenance operations mới v1.1.0 (chống resource leak) |
 | **VERSION** | Meta operation: query spec version plugin hỗ trợ |
-| **Chained plugins** | Nhiều plugin xếp chồng trong 1 `.conflist` |
+| **Chained plugins** | Nhiều plugin xếp chồng — ADD fail → kubelet rollback DEL ngược chiều |
 | **IPAM** | Sub-plugin quản lý việc cấp/thu hồi IP |
 
 > **Bài Lab 1.2:** Tự tay viết `.conflist` và gọi ADD/DEL bằng `cnitool` trực tiếp!

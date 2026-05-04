@@ -6,7 +6,7 @@ style: |
   section {
     font-family: 'Segoe UI', 'Noto Sans', sans-serif;
     font-size: 22px;
-    background: #326ce5;
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
     color: #ffffff;
   }
   h1 { color: #ffd700 !important; font-size: 2em; margin-bottom: 0.3em; }
@@ -24,6 +24,9 @@ style: |
   .hljs-variable, .hljs-template-variable { color: #fcd34d; }
   .hljs-built_in, .hljs-name, .hljs-type { color: #86efac; }
   .hljs-meta { color: #fca5a5; }
+  .hljs-bullet, .hljs-symbol { color: #fcd34d; }
+  .hljs-params, .hljs-subst { color: #ffffff; }
+  .hljs-deletion { color: #fca5a5; }
   .hljs-title, .hljs-section { color: #bfdbfe; }
   table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
   th { background: #1e3a8a; color: #ffd700; padding: 10px 14px; font-weight: 600; letter-spacing: 0.03em; }
@@ -53,6 +56,7 @@ style: |
   }
   section.divider h1 { font-size: 2.5em; border: none; color: #ffd700 !important; }
   section.divider h2 { border: none; color: #ffffff; }
+  a { color: #ffd700; text-decoration: underline; }
   .good { color: #86efac; font-weight: bold; }
   .bad  { color: #fca5a5; font-weight: bold; }
   .warn { color: #fcd34d; font-weight: bold; }
@@ -180,11 +184,11 @@ sudo crictl ps | grep pause
 
 ```
 ┌─── Pod Network Namespace ───┐    ┌─── Host Network Namespace ───┐
-│                              │    │                               │
+│                             │    │                              │
 │  eth0 (10.244.0.5)          │    │  cali3a8f2b4c (Node side)    │
 │  ↑ Bên trong Pod thấy nó    │    │  ↑ Trên Node, `ip link show` │
-│                              │    │                               │
-└──────────────────────────────┘    └───────────────────────────────┘
+│                             │    │                              │
+└─────────────────────────────┘    └──────────────────────────────┘
          └──────── veth pair ────────┘
               (Virtual Ethernet)
 ```
@@ -193,6 +197,29 @@ sudo crictl ps | grep pause
 - Một đầu trong Pod (gọi là `eth0`)
 - Một đầu ngoài Node (gọi là `cali...`, `veth...`)
 - Packet vào một đầu → **ngay lập tức xuất hiện** ở đầu kia
+
+---
+
+## ⚠️ "Namespace" — 2 khái niệm hoàn toàn khác nhau
+
+Cùng 1 từ, 2 tầng kỹ thuật khác nhau — đây là nguồn gốc nhầm lẫn phổ biến nhất:
+
+| | **Kubernetes Namespace** | **Linux Network Namespace** |
+| :--- | :--- | :--- |
+| **Là gì** | Phân vùng logic cho K8s resources | Cô lập kernel: interfaces, routing table, iptables |
+| **Lệnh** | `kubectl get ns` · `kubectl -n prod` | `ip netns list` · `ip netns exec` |
+| **Tạo bởi** | Admin/Dev (`kubectl create namespace`) | CNI plugin (tự động khi Pod được schedule) |
+| **Cô lập mạng?** | ❌ Không — chỉ cô lập resource view | ✅ Có — Pod có riêng eth0, routing table, iptables |
+
+```
+K8s Namespace "production":            Linux Network Namespace (của Pod):
+  kubectl -n production get pods    ←→  /var/run/netns/cni-abc12345-...
+  ↑ Gom nhóm resources cho dễ quản lý   ↑ Cô lập kernel thật sự
+  ↑ Pod khác namespace vẫn ping được    ↑ Pod có ip riêng, route riêng, iptables riêng
+```
+
+> **Quy tắc nhớ:** Nói về **Pod networking** (IP, route, interface) → luôn là **Linux Network Namespace**.
+> Nói về `kubectl -n`, phân quyền, resource isolation → luôn là **Kubernetes Namespace**.
 
 ---
 
@@ -252,7 +279,8 @@ sudo nsenter -t $PID -n ss -tlnp
 | **4 nguyên tắc K8s** | No-NAT Pod-to-Pod, no-NAT Node-to-Pod, IP cố định, IP riêng |
 | **Pause container** | Giữ Network NS ngay cả khi app container restart |
 | **veth pair** | "Dây cáp ảo" nối Pod NS với Host NS |
-| **ip netns** | Xem và thao tác trong network namespace trên Node |
+| **K8s Namespace** | Phân vùng logic resources — `kubectl -n` — KHÔNG cô lập mạng |
+| **Linux Network Namespace** | Cô lập kernel thật sự — `ip netns` — tạo ra mạng riêng cho Pod |
 | **nsenter** | Dùng tools của Node để debug network trong Pod |
 
 ---

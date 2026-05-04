@@ -6,7 +6,7 @@ style: |
   section {
     font-family: 'Segoe UI', 'Noto Sans', sans-serif;
     font-size: 22px;
-    background: #326ce5;
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
     color: #ffffff;
   }
   h1 { color: #ffd700 !important; font-size: 2em; margin-bottom: 0.3em; }
@@ -56,6 +56,7 @@ style: |
   }
   section.divider h1 { font-size: 2.5em; border: none; color: #ffd700 !important; }
   section.divider h2 { border: none; color: #ffffff; }
+  a { color: #ffd700; text-decoration: underline; }
   .good { color: #86efac; font-weight: bold; }
   .bad  { color: #fca5a5; font-weight: bold; }
   .warn { color: #fcd34d; font-weight: bold; }
@@ -63,8 +64,9 @@ style: |
 
 <!-- _class: title -->
 
-# 🚀 Lộ trình Thực chiến
-## Kubernetes Networking
+## Phần 1: Linux Networking (Done)
+## Phần 2: Container Networking (Done)
+# Phần 3: Kubernetes Networking
 
 **Network Thực Chiến** · Kiến trúc mạng, Data Plane, Linux Kernel, eBPF & CNI
 
