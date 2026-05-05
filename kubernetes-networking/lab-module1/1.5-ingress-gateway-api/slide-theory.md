@@ -71,6 +71,31 @@ style: |
 
 ---
 
+# 🗺️ Bức tranh toàn cảnh: Traffic trong Kubernetes
+
+Có **3 hướng traffic** cần phân biệt trước khi học Ingress:
+
+```
+                    ┌─────────────── Kubernetes Cluster ────────────────┐
+                    │                                                   │
+Internet ──────────►  [Ingress / Gateway API]  ──────► Pod             │
+                    │                                                   │
+                    │  Pod ──► [Egress / NetworkPolicy] ──► Internet   │
+                    │                                                   │
+                    │  Pod ◄──────── East-West ────────► Pod           │
+                    └───────────────────────────────────────────────────┘
+```
+
+| Hướng | Cơ chế kiểm soát | Tập học |
+| :--- | :--- | :--- |
+| **Vào cluster (Ingress)** | Ingress resource, Gateway API | **Tập 5 — bài này** |
+| **Ra ngoài (Egress)** | NetworkPolicy egress, Egress Gateway | Tập 6 |
+| **Pod ↔ Pod (East-West)** | Service + NetworkPolicy | Tập 3-4 |
+
+> **Tập 5 tập trung North-South VÀO** — traffic từ Internet đến đúng Pod.
+
+---
+
 # Vấn đề: Làm sao traffic từ ngoài vào Pod?
 
 Services kiểu `LoadBalancer` và `NodePort` hoạt động ở **Layer 4** (TCP/UDP):
@@ -114,6 +139,33 @@ spec:
 
 **Vấn đề cốt lõi:** Tính năng nâng cao phải nhét vào **annotation** → không chuẩn hóa, mỗi controller (nginx, traefik, haproxy) dùng annotation khác nhau.
 
+---
+
+# Ingress hoạt động như thế nào?
+
+**Ingress resource ≠ Ingress Controller** — đây là 2 thứ hoàn toàn khác nhau:
+
+```
+kubectl apply ingress.yaml
+      │
+      ▼  lưu vào etcd
+Ingress object (K8s API)       ← chỉ là khai báo ý định routing
+      │
+      │  Watch liên tục (controller loop)
+      ▼
+Ingress Controller Pod         ← thực thi routing (nginx/traefik đang chạy)
+  ┌───────────────────────────────┐
+  │ phát hiện Ingress thay đổi    │
+  │ → regenerate nginx.conf       │
+  │ → nginx -s reload             │
+  └──────────────┬────────────────┘
+                 │ HTTP proxy_pass
+                 ▼
+           Backend Service → Pod
+```
+
+> ⚠️ Không cài Ingress Controller → `kubectl apply ingress.yaml` thành công,
+> nhưng **traffic không đi đâu cả**.
 
 ---
 
@@ -164,6 +216,19 @@ spec:
 ```
 
 Tương tự như `StorageClass` cho PVC, `GatewayClass` định nghĩa **implementation** nào sẽ xử lý Gateway.
+
+**Ai implement Gateway API?**
+
+```
+Gateway API Spec (K8s SIG Network — chuẩn chung)
+    ├── Envoy Gateway   ← CNCF project, self-contained, Lab 1.5 này dùng
+    ├── Cilium          ← khi dùng Cilium CNI (Module 2 sẽ học)
+    ├── NGINX GF        ← từ F5/NGINX Inc.
+    ├── Traefik         ← phổ biến trong homelab/community
+    └── Istio           ← service mesh, L7 đầy đủ nhất
+```
+
+> Cùng 1 HTTPRoute YAML — chạy được trên **bất kỳ implementation nào** ở trên.
 
 
 ---
@@ -217,6 +282,65 @@ spec:
           weight: 10
 ```
 
+
+---
+
+# ReferenceGrant: Cross-namespace an toàn
+
+HTTPRoute ở `my-app` muốn dùng Gateway ở `infra` → **bị chặn mặc định**:
+
+```yaml
+# ❌ Chỉ có HTTPRoute này → status: Accepted=False
+spec:
+  parentRefs:
+    - name: prod-gateway
+      namespace: infra   # ← cross-namespace reference
+```
+
+Ops team phải tạo `ReferenceGrant` trong namespace **`infra`**:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-my-app
+  namespace: infra           # ← phải nằm trong namespace CỦA Gateway
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: my-app      # ← cho phép từ namespace này
+  to:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+```
+
+> `ReferenceGrant` = "Ops team ký phê duyệt" cho Dev team được dùng Gateway.
+
+---
+
+# Debug Gateway API: Status Conditions
+
+Ingress lỗi → `kubectl describe ingress` → xem **Events**
+Gateway API lỗi → xem **`status.conditions`** trên từng object:
+
+```bash
+# Kiểm tra Gateway
+kubectl get gateway prod-gw -o yaml | grep -A 8 "conditions:"
+# Accepted: True     — controller đã nhận Gateway
+# Programmed: False  — bare metal không có External IP (bình thường!)
+
+# Kiểm tra HTTPRoute
+kubectl get httproute api-route -o yaml | grep -A 8 "conditions:"
+# Accepted: True     — gateway đã chấp nhận route này
+# ResolvedRefs: True — backend services tìm thấy
+```
+
+| Condition | `False` → Nguyên nhân thường gặp |
+| :--- | :--- |
+| `Accepted=False` | Sai `parentRef` hoặc thiếu **ReferenceGrant** |
+| `ResolvedRefs=False` | Sai tên service, sai port, sai namespace |
+| `Programmed=False` | Data plane chưa sync hoặc không có External IP |
 
 ---
 

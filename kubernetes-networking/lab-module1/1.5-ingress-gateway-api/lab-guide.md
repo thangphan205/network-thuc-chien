@@ -86,31 +86,33 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: app-admin
+  name: app-v2
 spec:
   selector:
     matchLabels:
-      app: app-admin
+      app: app-v2
   template:
     metadata:
       labels:
-        app: app-admin
+        app: app-v2
     spec:
       containers:
       - name: http-echo
         image: hashicorp/http-echo
-        args: ["-text=Hello from Admin"]
+        args: ["-text=Hello from App v2 (Admin)"]
         ports:
         - containerPort: 5678
 EOF
 
-kubectl expose deployment app-v1 --port=5678 --name=app-v1-svc
-kubectl expose deployment app-admin --port=5678 --name=app-admin-svc
+kubectl expose deployment app-v1 --port=5678 --name=app-v1
+kubectl expose deployment app-v2 --port=5678 --name=app-v2
 
 # Verify
-kubectl get pods
-# app-v1-xxx    1/1  Running
-# app-admin-xxx 1/1  Running
+kubectl get pods,svc
+# app-v1-xxx   1/1  Running
+# app-v2-xxx   1/1  Running
+# app-v1       ClusterIP
+# app-v2       ClusterIP
 ```
 
 ---
@@ -118,10 +120,16 @@ kubectl get pods
 ## 🔬 Bước 2: Cài ingress-nginx
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.2/deploy/static/provider/baremetal/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/baremetal/deploy.yaml
 
 # Chờ controller ready
 kubectl rollout status deployment ingress-nginx-controller -n ingress-nginx
+
+# Verify IngressClass đã được đăng ký (controller tự tạo khi start)
+kubectl get ingressclass
+# NAME    CONTROLLER             PARAMETERS   AGE
+# nginx   k8s.io/ingress-nginx   <none>       2m
+# → IngressClass "nginx" phải tồn tại trước khi tạo Ingress với ingressClassName: nginx
 ```
 
 ---
@@ -146,14 +154,14 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: app-v1-svc
+                name: app-v1
                 port:
                   number: 5678
           - path: /admin
             pathType: Prefix
             backend:
               service:
-                name: app-admin-svc
+                name: app-v2
                 port:
                   number: 5678
 EOF
@@ -339,6 +347,13 @@ kubectl get pods -n envoy-gateway-system
 # envoy-default-prod-gw-xxx      2/2 Running   ← data plane proxy cho Gateway "prod-gw"
 ```
 
+```bash
+# Verify: Listener-level Programmed=True trước khi tạo HTTPRoute
+kubectl describe gateway prod-gw | grep -A 15 "Conditions:"
+# Tìm đoạn listener "http" có Programmed: True → OK để tiếp tục
+# (Gateway-level Programmed=False là bình thường trên bare metal — do không có External IP)
+```
+
 ---
 
 ## 🔬 Bước 7: Tạo HTTPRoute (Dev team — không cần chỉnh Gateway)
@@ -360,14 +375,14 @@ spec:
             type: PathPrefix
             value: /app
       backendRefs:
-        - name: app-v1-svc
+        - name: app-v1
           port: 5678
     - matches:
         - path:
             type: PathPrefix
             value: /admin
       backendRefs:
-        - name: app-admin-svc
+        - name: app-v2
           port: 5678
 EOF
 
@@ -401,10 +416,10 @@ curl -H "Host: myapp.local" http://localhost:8080/app
 
 # Test /admin
 curl -H "Host: myapp.local" http://localhost:8080/admin
-# → Hello from Admin
+# → Hello from App v2 (Admin)
 
-# Dừng port-forward khi xong
-kill $(lsof -ti :8080) 2>/dev/null || true
+# Dừng port-forward khi xong (job control, hoạt động trên cả Linux và macOS)
+kill %1 2>/dev/null || pkill -f "port-forward.*envoy" || true
 ```
 
 ---
@@ -443,8 +458,8 @@ nginx.ingress.kubernetes.io/            spec.rules[].filters[]:
 
 ```bash
 # App resources
-kubectl delete deployment app-v1 app-admin
-kubectl delete svc app-v1-svc app-admin-svc
+kubectl delete deployment app-v1 app-v2
+kubectl delete svc app-v1 app-v2
 
 # Ingress resources
 kubectl delete ingress my-ingress
@@ -458,5 +473,5 @@ kubectl delete gatewayclass eg
 kubectl delete namespace envoy-gateway-system
 
 # Dừng port-forward nếu còn chạy
-kill $(lsof -ti :8080) 2>/dev/null || true
+kill %1 2>/dev/null || pkill -f "port-forward.*envoy" || true
 ```
