@@ -163,8 +163,8 @@ kubectl apply -f \
   https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 
 # Calico — BGP, Network Policy (Tập 11-26)
-kubectl apply -f \
-  https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml
+curl -s https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml | \
+  sed "s|192.168.0.0/16|10.244.0.0/16|g" | kubectl apply -f -
 
 # Cilium — eBPF, Hubble observability (Tập 27-43)
 helm repo add cilium https://helm.cilium.io/
@@ -221,7 +221,7 @@ multipass exec k8s-master -- sudo kubeadm init \
   --node-name=k8s-master
 
 # Rejoin workers
-JOIN_CMD=$(multipass exec k8s-master -- sudo kubeadm token create --print-join-command)
+JOIN_CMD=$(multipass exec k8s-master -- sudo kubeadm token create --print-join-command | tr -d '\r')
 multipass exec k8s-worker1 -- sudo $JOIN_CMD
 multipass exec k8s-worker2 -- sudo $JOIN_CMD
 

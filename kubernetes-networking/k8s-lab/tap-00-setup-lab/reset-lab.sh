@@ -27,8 +27,10 @@ else
     echo -n "  → resetting $NODE: "
     multipass exec "$NODE" -- sudo kubeadm reset -f 2>/dev/null || echo "skip (not joined)"
     multipass exec "$NODE" -- sudo rm -rf /etc/cni/net.d /var/lib/cni /var/lib/kubelet 2>/dev/null || true
-    echo "done"
+    multipass exec "$NODE" -- sudo reboot &
+    echo "done (rebooting)"
   done
+  wait
 
   info "Cluster reset. Reinit với:"
   echo "  MASTER_IP=\$(multipass info k8s-master | awk '/IPv4/ {print \$2}')"

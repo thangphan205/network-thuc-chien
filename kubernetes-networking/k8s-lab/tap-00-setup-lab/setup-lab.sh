@@ -75,7 +75,7 @@ multipass exec k8s-master -- bash -c '
 
 # ── Join workers ─────────────────────────────────────────────────────────────
 info "Joining workers..."
-JOIN_CMD=$(multipass exec k8s-master -- sudo kubeadm token create --print-join-command)
+JOIN_CMD=$(multipass exec k8s-master -- sudo kubeadm token create --print-join-command | tr -d '\r')
 
 multipass exec k8s-worker1 -- sudo $JOIN_CMD &
 multipass exec k8s-worker2 -- sudo $JOIN_CMD &
@@ -89,7 +89,6 @@ multipass exec k8s-master -- kubectl label node k8s-worker2 node-role.kubernetes
 info "Copying kubeconfig to ~/.kube/k8s-lab-config..."
 mkdir -p ~/.kube
 multipass exec k8s-master -- cat ~/.kube/config > ~/.kube/k8s-lab-config
-sed -i '' "s/127.0.0.1/$MASTER_IP/g" ~/.kube/k8s-lab-config
 
 # ── Install CNI ──────────────────────────────────────────────────────────────
 case "$CNI" in
@@ -100,8 +99,7 @@ case "$CNI" in
     ;;
   calico)
     info "Installing Calico CNI..."
-    multipass exec k8s-master -- kubectl apply -f \
-      https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml
+    multipass exec k8s-master -- bash -c 'curl -s https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml | sed "s|192.168.0.0/16|10.244.0.0/16|g" | kubectl apply -f -'
     ;;
   cilium)
     info "Installing Cilium CNI..."

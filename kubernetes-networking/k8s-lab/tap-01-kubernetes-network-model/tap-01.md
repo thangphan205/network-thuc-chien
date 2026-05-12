@@ -54,7 +54,7 @@ Sau tập 1, bạn sẽ:
 - Quan sát trạng thái `NotReady` khi cluster chưa có CNI
 - Hiểu tại sao CNI tồn tại và vai trò của nó
 
-**Prerequisites:** Đã cài Multipass + tạo 3 VM Ubuntu 26.04 theo `_setup.md`
+**Prerequisites:** Đã cài Multipass + tạo 3 VM Ubuntu 26.04 theo `../tap-00-setup-lab/lab-guide.md`
 
 ---
 
