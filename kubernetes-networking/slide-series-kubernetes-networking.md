@@ -77,7 +77,7 @@ style: |
 **Network Thực Chiến** · 45 Tập · 4 Phần · Flannel → Calico → Cilium
 <br />
 
-![height:200px](https://upload.wikimedia.org/wikipedia/commons/3/39/Kubernetes_logo_without_workmark.svg)
+<div style="display:flex; flex-direction:row; align-items:center; gap:32px; margin-top:16px;"><img src="https://upload.wikimedia.org/wikipedia/commons/3/39/Kubernetes_logo_without_workmark.svg" height="70" style="background:#fff; border-radius:12px; padding:12px;"><img src="https://github.com/flannel-io/flannel/blob/master/logos/flannel-horizontal-color.png?raw=true" height="50" style="background:#fff; border-radius:12px; padding:12px;"><img src="https://www.tigera.io/app/uploads/2026/01/Calico-logo-2026-white-text.svg" height="50" style="background:#fff; border-radius:12px; padding:12px;"><img src="https://raw.githubusercontent.com/cilium/cilium/main/Documentation/images/logo-dark.png" height="50" style="background:#fff; border-radius:12px; padding:12px;"></div>
 
 ---
 

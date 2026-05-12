@@ -40,7 +40,7 @@ style: |
 
 <!-- _class: ep -->
 
-# Lab Environment
+# Tập 0: Setup Lab Environment
 ## Kubernetes Networking — 45 tập thực hành
 
 Cluster chạy local · Ubuntu 26.04 · Kubernetes 1.32 · Multipass
@@ -55,11 +55,11 @@ Cluster chạy local · Ubuntu 26.04 · Kubernetes 1.32 · Multipass
 ┌─────────────────────────────────────────────────────────────┐
 │  macOS / Windows Host  (kubectl, helm, multipass CLI)       │
 │                                                             │
-│  ┌──────────────────┐  ┌────────────────┐  ┌────────────┐  │
-│  │   k8s-master     │  │  k8s-worker1   │  │ k8s-worker2│  │
-│  │  control-plane   │  │    worker      │  │   worker   │  │
-│  │  2 CPU · 4 GB    │  │  2 CPU · 2 GB  │  │ 2 CPU·2 GB │  │
-│  └──────────────────┘  └────────────────┘  └────────────┘  │
+│  ┌──────────────────┐  ┌────────────────┐  ┌────────────┐   │
+│  │   k8s-master     │  │  k8s-worker1   │  │ k8s-worker2│   │
+│  │  control-plane   │  │    worker      │  │   worker   │   │
+│  │  2 CPU · 4 GB    │  │  2 CPU · 2 GB  │  │ 2 CPU·2 GB │   │
+│  └──────────────────┘  └────────────────┘  └────────────┘   │
 │         Ubuntu 26.04 LTS · containerd · kubelet             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -271,13 +271,14 @@ multipass exec k8s-master -- sudo systemctl restart containerd
 
 ---
 
-<!-- _class: ep -->
 
 # Cluster sẵn sàng
 
 Một cluster · dùng cho toàn bộ 45 tập · đổi CNI bằng `reset-lab.sh`
 
-```
+```bash
+
 ./setup-lab.sh      ← chạy một lần duy nhất
 kubectl get nodes   ← kiểm tra
+
 ```
