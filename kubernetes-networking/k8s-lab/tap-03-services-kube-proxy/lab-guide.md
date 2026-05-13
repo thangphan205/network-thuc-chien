@@ -82,18 +82,20 @@ Bây giờ chúng ta sẽ chui xuống `worker1` để xem `kube-proxy` đã "ph
 
 Khi iptables thực hiện DNAT, nó lưu lại "nhật ký" ở trong module `conntrack` để khi gói tin quay về, nó biết đường dịch ngược lại (từ IP Thật -> IP Ảo).
 
-**Trên Terminal đang SSH vào `worker1`:**
+**Trên Terminal đang SSH vào `controlplane`:**
 
-1. Gọi lệnh curl vào ClusterIP từ `worker1`:
+1. Gọi lệnh curl vào ClusterIP từ `pod-a` (Pod chúng ta đã tạo ở Tập 2):
    ```bash
-   curl -s http://10.96.123.45 > /dev/null
+   kubectl exec pod-a -- curl -s http://10.96.123.45 > /dev/null
    ```
 
-2. Ngay lập tức, xem bản ghi conntrack của IP này:
+**Ngay lập tức, chuyển sang Terminal đang SSH vào `worker1` (nơi đang chạy pod-a):**
+
+2. Xem bản ghi conntrack của IP VIP này:
    ```bash
    sudo conntrack -L | grep 10.96.123.45
    ```
-   *Nhận xét:* Bạn sẽ thấy một bản ghi ESTABLISHED, trong đó `dst=10.96.123.45` đã được chuyển ngầm (UNREPLIED dst) thành `10.244.x.x` (IP thực của Pod).
+   *Nhận xét:* Bạn sẽ thấy một bản ghi ESTABLISHED, trong đó `src=10.244.1.x` (IP của pod-a), và `dst=10.96.123.45` đã được chuyển ngầm (UNREPLIED dst) thành `10.244.y.y` (IP thực của 1 trong 3 Pod Nginx).
 
 ---
 

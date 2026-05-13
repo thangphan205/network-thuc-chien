@@ -149,7 +149,7 @@ kubelet lưu kết quả → Pod có IP ✅
 ## Lab Setup: Cài cnitool và CNI plugins
 
 ```bash
-multipass shell k8s-worker1
+# Mở Terminal SSH vào worker1
 
 # Cài CNI plugins binary (bridge, portmap, host-local, firewall...)
 CNI_VERSION="v1.5.1"

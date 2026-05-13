@@ -127,19 +127,14 @@ kubectl -n kube-system get configmap coredns -o yaml | grep -A30 "Corefile"
 ## Lab: Đo số DNS query bằng tcpdump
 
 ```bash
-multipass shell k8s-worker1
+# Mở Terminal 1 (Control Plane) - Bắt traffic DNS rác từ bên trong pod-a
+kubectl exec -it pod-a -- tcpdump -i any -n udp port 53
 
-# Bắt tất cả DNS traffic đến CoreDNS
-sudo tcpdump -i any -n udp port 53 &
-TCPDUMP_PID=$!
-
-# Chạy curl vào external domain từ Pod (trong namespace khác)
+# Mở Terminal 2 (Control Plane) - Gọi domain bên ngoài
 kubectl exec pod-a -- curl -s -o /dev/null https://httpbin.org/ip
 
-# Dừng tcpdump và đếm
-kill $TCPDUMP_PID
-
-# Sẽ thấy 4 DNS queries cho httpbin.org (3 NXDOMAIN + 1 SUCCESS)
+# Quay lại Terminal 1 để đếm số dòng
+# Sẽ thấy 4 DNS queries gửi đi cho httpbin.org (3 NXDOMAIN vô ích + 1 SUCCESS)
 ```
 
 ---
@@ -188,7 +183,7 @@ kubectl -n kube-system get daemonset nodelocaldns
 # nodelocaldns   3         3         3
 
 # Kiểm tra interface 169.254.20.10 xuất hiện trên worker
-multipass exec k8s-worker1 -- ip addr show nodelocaldns
+multipass exec worker1 -- ip addr show nodelocaldns
 # nodelocaldns: inet 169.254.20.10/32 scope host
 
 # Pods sau này tạo mới sẽ dùng 169.254.20.10 thay vì 10.96.0.10

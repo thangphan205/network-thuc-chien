@@ -94,4 +94,3 @@ Chúng ta sẽ cài đặt Flannel, một CNI rất đơn giản và phổ biế
 
 Bạn vừa chứng kiến quy trình hoàn thiện một cụm Kubernetes. CNI plugin không phải là phép màu, nó thực chất chỉ là một tiến trình tự động thực hiện các thao tác Linux cơ bản: **tạo virtual network interfaces (cni0, flannel.1)** và **thêm các rules vào bảng định tuyến (routing table)** để đảm bảo tuân thủ 4 nguyên tắc Kubernetes Network Model.
 
-Bạn có thể chạy kịch bản tự động kiểm tra ở file `./test-lab.sh`.
