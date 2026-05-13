@@ -121,8 +121,7 @@ Local: traffic đến Node có Pod → forward thẳng
 ## Lab: Deploy Service và trace iptables
 
 ```bash
-multipass shell k8s-master
-
+# Đứng tại terminal của controlplane
 # Deploy nginx với 3 replicas
 kubectl create deployment nginx --image=nginx --replicas=3
 kubectl expose deployment nginx --port=80 --type=ClusterIP
@@ -141,9 +140,7 @@ kubectl get endpoints nginx
 ## Lab: Trace iptables DNAT
 
 ```bash
-# SSH vào worker node để xem iptables
-multipass shell k8s-worker1
-
+# Đứng tại terminal của worker1
 # Tìm KUBE-SVC chain của service nginx
 sudo iptables -t nat -L KUBE-SERVICES -n | grep 10.96.123.45
 # KUBE-SVC-XXXXXX  tcp  --  0.0.0.0/0  10.96.123.45  /* nginx */
@@ -189,15 +186,15 @@ kubectl get svc nginx-np
 # NAME       TYPE       CLUSTER-IP    EXTERNAL-IP   PORT(S)        AGE
 # nginx-np   NodePort   10.96.200.1   <none>        80:31234/TCP   10s
 
-# Lấy IP của một worker node
-WORKER1_IP=$(multipass info k8s-worker1 | grep IPv4 | awk '{print $2}')
+# Lấy IP của một worker node (đứng tại terminal máy macOS/host)
+WORKER1_IP=$(multipass info worker1 | grep IPv4 | awk '{print $2}')
 
-# Curl từ macOS host (không cần vào VM!)
+# Curl từ macOS host
 curl http://$WORKER1_IP:31234
 # <!DOCTYPE html>... nginx response ✅
 
 # Kể cả curl vào worker2 (không có Pod nginx) cũng hoạt động
-WORKER2_IP=$(multipass info k8s-worker2 | grep IPv4 | awk '{print $2}')
+WORKER2_IP=$(multipass info worker2 | grep IPv4 | awk '{print $2}')
 curl http://$WORKER2_IP:31234  # Vẫn OK — kube-proxy forward đến Node có Pod
 ```
 
