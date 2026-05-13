@@ -50,50 +50,7 @@ Chỉ thực hiện trên node `controlplane`.
 
 ---
 
-## 🔬 Bước 3: Quan sát trạng thái "Không có CNI"
-
-Trở lại shell của `controlplane`, trước khi cài CNI, hãy quan sát điều gì xảy ra — đây là **thí nghiệm đầu tiên** của khóa học.
-
-```bash
-kubectl get nodes
-```
-
-Kết quả mong đợi:
-```
-NAME           STATUS     ROLES           AGE
-controlplane   NotReady   control-plane   1m  # ← NotReady!
-```
-
-```bash
-kubectl get pods -n kube-system
-```
-
-Kết quả mong đợi:
-```
-NAME                    READY   STATUS    RESTARTS
-coredns-xxx             0/1     Pending   0        # ← Pending!
-```
-
-> **Tại sao?** Thiếu CNI = không có mạng = Node `NotReady` = CoreDNS `Pending`. Kubernetes không thể cấp phát IP hay kết nối các Pod khi chưa có CNI Plugin.
-
----
-
-## 🚀 Bước 4: Cài đặt CNI Plugin (Flannel)
-
-Bây giờ hãy "chữa bệnh" cho cluster bằng cách cài CNI:
-
-```bash
-kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
-```
-
-Theo dõi cluster chuyển sang `Ready`:
-```bash
-kubectl get nodes -w
-```
-
----
-
-## 🚀 Bước 5: Đưa các Worker Nodes vào Cụm
+## 🚀 Bước 3: Đưa các Worker Nodes vào Cụm
 Mở terminal mới trên máy tính host của bạn.
 
 **Trên Worker 1:**
@@ -109,16 +66,23 @@ multipass exec worker2 -- sudo kubeadm join <IP_CỦA_CONTROLPLANE>:6443 --token
 
 ---
 
-## ✅ Bước 6: Kiểm tra cụm thành công
+## ✅ Bước 4: Kiểm tra cụm và gán nhãn (Label)
 Quay trở lại terminal đang SSH vào `controlplane`, chạy lệnh kiểm tra các Nodes:
 
 ```bash
-kubectl get nodes -o wide
+kubectl get nodes
 ```
-*Kết quả mong đợi:* Cả 3 nodes (controlplane, worker1, worker2) đều ở trạng thái **Ready**. (Trạng thái Ready chứng tỏ CNI Flannel đã khởi động thành công và mạng giữa các node đã thông).
+*Kết quả mong đợi:* Cả 3 nodes (controlplane, worker1, worker2) đều xuất hiện nhưng ở trạng thái **NotReady**. Mặc định, 2 node worker sẽ có ROLES là `<none>`.
 
-**Chúc mừng!** Bạn đã sở hữu một cụm Kubernetes thực thụ với toàn quyền truy cập ở mức OS. Bạn có thể giữ cụm này để thực hiện Lab Module 1 và các module tiếp theo.
+*(Tùy chọn)* Để danh sách Node hiển thị đẹp và chuyên nghiệp hơn, bạn có thể gán nhãn (Role) cho 2 worker bằng lệnh sau:
+```bash
+kubectl label node worker1 node-role.kubernetes.io/worker=
+kubectl label node worker2 node-role.kubernetes.io/worker=
+```
+Chạy lại `kubectl get nodes`, bạn sẽ thấy cột ROLES hiện chữ `worker` rất đẹp mắt!
 
+> **Đừng lo lắng!** Việc các Node ở trạng thái `NotReady` là hoàn toàn bình thường vì cụm của chúng ta chưa được cài đặt mạng (CNI). 
+> 👉 Hãy chuyển sang bài **Lab Tập 1 (tap-01)** để tìm hiểu lý do tại sao Kubernetes lại cần CNI và cách "chữa bệnh" cho cụm nhé!
 ---
 
 ## 🧹 Quản lý vòng đời Lab

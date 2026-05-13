@@ -111,21 +111,21 @@ Router phải biết `10.244.1.5` ở đâu → cần routing hoặc encapsulati
 
 ```bash
 # Quan sát trạng thái cluster chưa cài CNI
-multipass exec k8s-master -- kubectl get nodes
+multipass exec controlplane -- kubectl get nodes
 # NAME          STATUS     ROLES           AGE
-# k8s-master    NotReady   control-plane   3m
-# k8s-worker1   NotReady   <none>          90s
-# k8s-worker2   NotReady   <none>          85s
+# controlplane    NotReady   control-plane   3m
+# worker1   NotReady   <none>          90s
+# worker2   NotReady   <none>          85s
 ```
 
 **Tại sao NotReady?**
 ```bash
-multipass exec k8s-master -- kubectl describe node k8s-master | grep -A5 Conditions
+multipass exec controlplane -- kubectl describe node controlplane | grep -A5 Conditions
 # NetworkPlugin is not installed — kubelet đang chờ CNI plugin
 
 # Thử tạo Pod
-multipass exec k8s-master -- kubectl run test --image=nginx
-multipass exec k8s-master -- kubectl get pod test
+multipass exec controlplane -- kubectl run test --image=nginx
+multipass exec controlplane -- kubectl get pod test
 # NAME   READY   STATUS    AGE
 # test   0/1     Pending   30s  ← Không schedule được vì Node NotReady
 ```
@@ -138,7 +138,7 @@ multipass exec k8s-master -- kubectl get pod test
 
 ```bash
 # SSH vào master
-multipass shell k8s-master
+multipass shell controlplane
 
 # Kiểm tra network interfaces hiện tại (chưa có CNI)
 ip link show
@@ -171,9 +171,9 @@ kubectl apply -f \
 watch kubectl get nodes
 # Sau ~30 giây:
 # NAME          STATUS   ROLES           AGE
-# k8s-master    Ready    control-plane   5m   ← Ready!
-# k8s-worker1   Ready    <none>          4m
-# k8s-worker2   Ready    <none>          4m
+# controlplane    Ready    control-plane   5m   ← Ready!
+# worker1   Ready    <none>          4m
+# worker2   Ready    <none>          4m
 
 # Xem interface mới xuất hiện sau khi Flannel cài
 ip link show
