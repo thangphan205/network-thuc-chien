@@ -50,12 +50,14 @@ Bài lab này sẽ giúp bạn dùng "kính lúp" soi vào bên trong `kube-prox
 
 Bây giờ chúng ta sẽ chui xuống `worker1` để xem `kube-proxy` đã "phù phép" bảng iptables ra sao.
 
-**Trên Terminal đang SSH vào `worker1`:**
+**Trên Terminal đang SSH vào `controlplane`:**
 
-1. Lấy danh sách IP thật của 3 Pod Nginx (Endpoints):
+1. Lấy danh sách IP thật của 3 Pod Nginx (Endpoints) để ghi nhớ:
    ```bash
-   multipass exec controlplane -- kubectl get endpoints nginx
+   kubectl get endpoints nginx
    ```
+
+**Sau đó, chuyển sang Terminal đang SSH vào `worker1`:**
 
 2. Truy tìm luật iptables bắt đầu từ chuỗi `KUBE-SERVICES`:
    ```bash

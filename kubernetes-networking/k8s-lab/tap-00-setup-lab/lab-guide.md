@@ -51,18 +51,28 @@ Chỉ thực hiện trên node `controlplane`.
 ---
 
 ## 🚀 Bước 3: Đưa các Worker Nodes vào Cụm
-Mở terminal mới trên máy tính host của bạn.
 
 **Trên Worker 1:**
+Mở terminal mới, truy cập vào `worker1`:
 ```bash
-multipass exec worker1 -- sudo kubeadm join <IP_CỦA_CONTROLPLANE>:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
+multipass shell worker1
+
+# Sau đó chạy lệnh join:
+sudo kubeadm join <IP_CỦA_CONTROLPLANE>:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
 ```
+*(Chạy xong có thể gõ `exit` để thoát)*
 
 **Trên Worker 2:**
+Truy cập vào `worker2`:
 ```bash
-multipass exec worker2 -- sudo kubeadm join <IP_CỦA_CONTROLPLANE>:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
+multipass shell worker2
+
+# Sau đó chạy lệnh join:
+sudo kubeadm join <IP_CỦA_CONTROLPLANE>:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
 ```
-*Lưu ý: Bạn dán nguyên lệnh join đã copy ở Bước 2 thay thế vào phía trên.*
+*(Chạy xong có thể gõ `exit` để thoát)*
+
+*Lưu ý: Bạn dán nguyên lệnh join đã copy ở Bước 2 thay thế vào lệnh bên trên.*
 
 ---
 

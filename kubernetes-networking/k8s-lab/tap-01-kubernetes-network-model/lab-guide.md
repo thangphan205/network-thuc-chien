@@ -10,22 +10,22 @@
 
 ## 🔬 Thí nghiệm 1: Trạng thái "Vô danh" của Cluster
 
-1. Mở Terminal và kiểm tra trạng thái của các Nodes thông qua `controlplane`:
+1. Mở Terminal và truy cập vào node `controlplane`:
    ```bash
-   multipass exec controlplane -- kubectl get nodes
+   multipass shell controlplane
+   kubectl get nodes
    ```
    *Kết quả mong đợi:* Cả 3 nodes đều ở trạng thái `NotReady`. Kubelet đang chờ CNI plugin.
 
 2. Cố gắng tạo một Pod xem điều gì sẽ xảy ra:
    ```bash
-   multipass exec controlplane -- kubectl run test-pod --image=nginx
-   multipass exec controlplane -- kubectl get pod test-pod
+   kubectl run test-pod --image=nginx
+   kubectl get pod test-pod
    ```
    *Kết quả mong đợi:* Pod sẽ ở trạng thái `Pending` mãi mãi vì Scheduler không thể gán Pod vào bất kỳ Node nào (do Node NotReady).
 
-3. Vào shell của Node `controlplane` để xem lý do chi tiết:
+3. Vẫn ở shell của `controlplane`, xem lý do chi tiết:
    ```bash
-   multipass shell controlplane
    kubectl describe node controlplane | grep -A5 Conditions
    ```
    *Bạn sẽ thấy thông báo: `NetworkPluginNotReady message: network plugin is not ready: cni config uninitialized`*
@@ -45,20 +45,20 @@ Thoát khỏi shell của `controlplane` bằng lệnh `exit`.
 
 Chúng ta sẽ cài đặt Flannel, một CNI rất đơn giản và phổ biến dùng cơ chế VXLAN.
 
-1. Cài đặt Flannel từ máy host (nếu bạn đã lấy kubeconfig về máy) hoặc từ `controlplane`:
+1. Cài đặt Flannel từ `controlplane`:
    ```bash
-   multipass exec controlplane -- kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+   kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
    ```
 
 2. Theo dõi trạng thái Cluster thay đổi. Các Node sẽ lần lượt chuyển sang `Ready`:
    ```bash
-   multipass exec controlplane -- kubectl get nodes -w
+   kubectl get nodes -w
    ```
    *Bấm `Ctrl+C` để thoát khi cả 3 node đã `Ready`.*
 
 3. Kiểm tra lại trạng thái của Pod `test-pod` vừa nãy:
    ```bash
-   multipass exec controlplane -- kubectl get pod test-pod
+   kubectl get pod test-pod
    ```
    *Bây giờ Pod đã chuyển sang `Running` vì Node đã sẵn sàng, và Pod đã được cấp 1 địa chỉ IP trong dải `10.244.x.x`.*
 
@@ -66,8 +66,9 @@ Chúng ta sẽ cài đặt Flannel, một CNI rất đơn giản và phổ biế
 
 ## 🕵️‍♂️ Thí nghiệm 3: "Dấu vết" của CNI để lại
 
-1. Vào lại shell của `controlplane`:
+1. Quay lại shell của `controlplane` (nếu bạn vừa thoát ra):
    ```bash
+   # Nếu bạn vẫn đang ở trong controlplane thì bỏ qua lệnh này
    multipass shell controlplane
    ```
 

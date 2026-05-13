@@ -43,7 +43,7 @@ style: |
 # Tập 0: Setup Lab Environment
 ## Kubernetes Networking — 45 tập thực hành
 
-Cluster chạy local · Ubuntu 26.04 · Kubernetes 1.32 · Multipass
+Cluster chạy local · Ubuntu 26.04 · Kubernetes 1.36 · Multipass
 
 ---
 
@@ -150,7 +150,27 @@ kubectl get nodes
 
 ---
 
-## Bước 3 — Cài CNI theo tập học
+## Bước 3 — Join Worker Nodes vào Cụm
+
+Chạy lệnh `kubeadm join` (được in ra ở cuối Bước 2) trên các worker:
+
+```bash
+# Trên Worker 1
+multipass shell worker1
+sudo kubeadm join <IP_CỦA_CONTROLPLANE>:6443 \
+  --token <token> --discovery-token-ca-cert-hash sha256:<hash>
+
+# Trên Worker 2
+multipass shell worker2
+sudo kubeadm join <IP_CỦA_CONTROLPLANE>:6443 \
+  --token <token> --discovery-token-ca-cert-hash sha256:<hash>
+```
+
+> Quay lại controlplane chạy `kubectl get nodes` sẽ thấy 3 nodes (NotReady).
+
+---
+
+## Bước 4 — Cài CNI theo tập học
 
 ```bash
 # Flannel — đơn giản, VXLAN overlay (Tập 6-10)
@@ -172,7 +192,10 @@ helm install cilium cilium/cilium \
 ```bash
 # Sau khi cài CNI → nodes chuyển Ready
 kubectl get nodes
-# controlplane    Ready   control-plane   5m
+# NAME           STATUS   ROLES           AGE   VERSION
+# controlplane   Ready    control-plane   5m    v1.36.x
+# worker1        Ready    <none>          3m    v1.36.x
+# worker2        Ready    <none>          3m    v1.36.x
 ```
 
 ---
@@ -188,9 +211,11 @@ kubectl get pods -A
 multipass shell controlplane
 multipass shell worker1
 
-# Chạy lệnh trực tiếp từ macOS (không cần SSH)
-multipass exec controlplane -- crictl pods
-multipass exec controlplane -- ip route show
+# Login shell và chạy lệnh bên trong VM
+multipass shell controlplane
+
+crictl pods
+ip route show
 
 # Thông tin IP các node
 multipass list
@@ -222,19 +247,21 @@ kubectl apply -f <CNI-manifest>
 ## Troubleshooting
 
 ```bash
+# Truy cập shell của node (ví dụ controlplane)
+multipass shell controlplane
+
 # Kiểm tra cloud-init còn chạy không
-multipass exec controlplane -- cloud-init status
+cloud-init status
 # status: running  → chờ thêm
 # status: done     → OK
 # status: error    → xem log bên dưới
 
 # Xem log cloud-init
-multipass exec controlplane -- \
-  sudo tail -50 /var/log/cloud-init-output.log
+sudo tail -50 /var/log/cloud-init-output.log
 
 # containerd không chạy
-multipass exec controlplane -- systemctl status containerd
-multipass exec controlplane -- sudo systemctl restart containerd
+systemctl status containerd
+sudo systemctl restart containerd
 
 # Nếu lỗi sai sót quá nặng → reset làm lại
 ./reset-lab.sh
