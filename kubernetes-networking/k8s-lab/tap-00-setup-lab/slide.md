@@ -56,9 +56,9 @@ Cluster chạy local · Ubuntu 26.04 · Kubernetes 1.32 · Multipass
 │  macOS / Windows Host  (kubectl, helm, multipass CLI)       │
 │                                                             │
 │  ┌──────────────────┐  ┌────────────────┐  ┌────────────┐   │
-│  │   k8s-master     │  │  k8s-worker1   │  │ k8s-worker2│   │
+│  │   controlplane   │  │    worker1     │  │   worker2  │   │
 │  │  control-plane   │  │    worker      │  │   worker   │   │
-│  │  2 CPU · 4 GB    │  │  2 CPU · 2 GB  │  │ 2 CPU·2 GB │   │
+│  │ 2 CPU · 2 GB RAM │  │ 1 CPU · 1.5 GB │  │1 CPU·1.5 GB│   │
 │  └──────────────────┘  └────────────────┘  └────────────┘   │
 │         Ubuntu 26.04 LTS · containerd · kubelet             │
 └─────────────────────────────────────────────────────────────┘
@@ -92,16 +92,16 @@ multipass version
 
 ```
 tap-00-setup-lab/
-├── k8s-node.yaml     ← cloud-init: "bản thiết kế" mỗi VM
-├── setup-lab.sh      ← dựng toàn bộ cluster (1 lệnh)
-└── reset-lab.sh      ← reset cluster hoặc xóa VMs
+tap-00-setup-lab/
+├── k8s-cloud-init.yaml ← cloud-init: "bản thiết kế" mỗi VM
+├── setup-lab.sh        ← tạo VMs tự động
+└── reset-lab.sh        ← xóa toàn bộ VMs
 ```
 
-**`k8s-node.yaml`** — chạy tự động khi VM boot:
+**`k8s-cloud-init.yaml`** — chạy tự động khi VM boot:
 - Tắt swap, load kernel modules (`overlay`, `br_netfilter`)
 - Cài `containerd` + bật `SystemdCgroup`
-- Cài `kubelet`, `kubeadm`, `kubectl` v1.32
-- Pre-pull `nicolaka/netshoot` để lab nhanh hơn
+- Cài `kubelet`, `kubeadm`, `kubectl` v1.36
 
 > Không cần SSH vào cài tay. VM boot xong → sẵn sàng join cluster.
 
@@ -109,49 +109,44 @@ tap-00-setup-lab/
 
 <!-- _class: lab -->
 
-## Bước 1 — Dựng cluster
+## Bước 1 — Tạo máy ảo bằng Script
 
 ```bash
 cd tap-00-setup-lab/
 
-# Dựng cluster không cài CNI (cài sau theo từng tập)
+# Tạo 3 VMs (chưa init K8s)
 ./setup-lab.sh
-
-# Hoặc dựng kèm CNI ngay
-./setup-lab.sh flannel   # Tập 6-10: Flannel
-./setup-lab.sh calico    # Tập 11-26: Calico
-./setup-lab.sh cilium    # Tập 27-43: Cilium
 ```
 
 Script tự động:
-1. Launch 3 VMs song song (~3-5 phút)
-2. Chờ `cloud-init` hoàn thành trên cả 3 node
-3. `kubeadm init` → join workers → label nodes
-4. Copy `kubeconfig` về `~/.kube/k8s-lab-config`
+1. Launch 3 VMs: `controlplane`, `worker1`, `worker2` (~3-5 phút)
+2. Chờ `cloud-init` hoàn thành quá trình cài đặt ngầm.
 
 ---
 
-## Bước 2 — Kết nối từ macOS
+## Bước 2 — Khởi tạo Control Plane
+
+Truy cập vào controlplane và chạy lệnh khởi tạo:
 
 ```bash
-# Sau khi setup-lab.sh xong:
-export KUBECONFIG=~/.kube/k8s-lab-config
+# Shell vào node controlplane
+multipass shell controlplane
+
+# Khởi tạo K8s
+sudo kubeadm init --apiserver-advertise-address=<IP_CỦA_CONTROLPLANE> --pod-network-cidr=10.244.0.0/16
+
+# Copy cấu hình kubeconfig
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
 
 # Verify
-kubectl get nodes -o wide
-# NAME          STATUS     ROLES           AGE   VERSION
-# k8s-master    NotReady   control-plane   3m    v1.32.x
-# k8s-worker1   NotReady   worker          90s   v1.32.x
-# k8s-worker2   NotReady   worker          85s   v1.32.x
+kubectl get nodes
+# NAME           STATUS     ROLES           AGE   VERSION
+# controlplane   NotReady   control-plane   3m    v1.36.x
 ```
 
 > **NotReady** là đúng — cluster chưa có CNI. Cài CNI theo tập học, nodes sẽ chuyển `Ready`.
-
-```bash
-# Persist vào shell
-echo 'export KUBECONFIG=~/.kube/k8s-lab-config' >> ~/.zshrc
-source ~/.zshrc
-```
 
 ---
 
@@ -177,7 +172,7 @@ helm install cilium cilium/cilium \
 ```bash
 # Sau khi cài CNI → nodes chuyển Ready
 kubectl get nodes
-# k8s-master    Ready   control-plane   5m
+# controlplane    Ready   control-plane   5m
 ```
 
 ---
@@ -190,18 +185,18 @@ kubectl get nodes -o wide
 kubectl get pods -A
 
 # Shell vào node
-multipass shell k8s-master
-multipass shell k8s-worker1
+multipass shell controlplane
+multipass shell worker1
 
 # Chạy lệnh trực tiếp từ macOS (không cần SSH)
-multipass exec k8s-master -- crictl pods
-multipass exec k8s-master -- ip route show
+multipass exec controlplane -- crictl pods
+multipass exec controlplane -- ip route show
 
 # Thông tin IP các node
 multipass list
-# k8s-master   Running  192.168.64.10
-# k8s-worker1  Running  192.168.64.11
-# k8s-worker2  Running  192.168.64.12
+# controlplane   Running  192.168.64.10
+# worker1        Running  192.168.64.11
+# worker2        Running  192.168.64.12
 ```
 
 ---
@@ -209,23 +204,14 @@ multipass list
 ## Đổi CNI giữa các module
 
 ```bash
-# Reset cluster — GIỮ VMs (không cần tải lại Ubuntu)
+# Xóa toàn bộ VMs
 ./reset-lab.sh
 
-# Sau đó reinit với CNI mới
-MASTER_IP=$(multipass info k8s-master | awk '/IPv4/ {print $2}')
+# Khởi tạo lại VMs mới (rất nhanh vì image Ubuntu đã được cache)
+./setup-lab.sh
 
-multipass exec k8s-master -- sudo kubeadm init \
-  --apiserver-advertise-address=$MASTER_IP \
-  --pod-network-cidr=10.244.0.0/16 \
-  --node-name=k8s-master
-
-# Rejoin workers
-JOIN_CMD=$(multipass exec k8s-master -- sudo kubeadm token create --print-join-command | tr -d '\r')
-multipass exec k8s-worker1 -- sudo $JOIN_CMD
-multipass exec k8s-worker2 -- sudo $JOIN_CMD
-
-# Cài CNI mới
+# Sau đó thực hiện lại Bước 2 (kubeadm init/join)
+# Rồi tiến hành cài CNI mới
 kubectl apply -f <CNI-manifest>
 ```
 
@@ -237,21 +223,20 @@ kubectl apply -f <CNI-manifest>
 
 ```bash
 # Kiểm tra cloud-init còn chạy không
-multipass exec k8s-master -- cloud-init status
+multipass exec controlplane -- cloud-init status
 # status: running  → chờ thêm
 # status: done     → OK
 # status: error    → xem log bên dưới
 
 # Xem log cloud-init
-multipass exec k8s-master -- \
+multipass exec controlplane -- \
   sudo tail -50 /var/log/cloud-init-output.log
 
 # containerd không chạy
-multipass exec k8s-master -- systemctl status containerd
-multipass exec k8s-master -- sudo systemctl restart containerd
+multipass exec controlplane -- systemctl status containerd
+multipass exec controlplane -- sudo systemctl restart containerd
 
-# kubeadm init lỗi "port already in use"
-# → cluster đã init trước đó, reset trước
+# Nếu lỗi sai sót quá nặng → reset làm lại
 ./reset-lab.sh
 ```
 
@@ -261,10 +246,10 @@ multipass exec k8s-master -- sudo systemctl restart containerd
 
 ```bash
 # Xóa toàn bộ VMs
-./reset-lab.sh --purge
+./reset-lab.sh
 
 # Tạo lại từ đầu (nhanh hơn lần đầu vì Ubuntu image đã cached)
-./setup-lab.sh flannel
+./setup-lab.sh
 ```
 
 > Cloud-init image `26.04` được Multipass cache sau lần tải đầu tiên — recreate cluster chỉ mất ~2 phút thay vì 5 phút.
