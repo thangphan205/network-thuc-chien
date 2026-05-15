@@ -124,100 +124,16 @@ kubectl -n kube-system get configmap coredns -o yaml | grep -A30 "Corefile"
 
 <!-- _class: lab -->
 
-## Lab: Đo số DNS query bằng tcpdump
+## 🔬 Lab Time: Tối ưu hoá K8s DNS
 
-```bash
-# Mở Terminal 1 (Control Plane) - Bắt traffic DNS rác từ bên trong pod-a
-kubectl exec -it pod-a -- tcpdump -i any -n udp port 53
+Chúng ta sẽ thực hành các bước sau trong phần Lab:
 
-# Mở Terminal 2 (Control Plane) - Gọi domain bên ngoài
-kubectl exec pod-a -- curl -s -o /dev/null https://httpbin.org/ip
+1. **Phân tích "Thuế ndots":** Dùng `tcpdump` để đo lường số lượng DNS query thừa khi truy cập external domain.
+2. **Tối ưu DNS với FQDN & dnsConfig:** Áp dụng giải pháp giảm tải DNS bằng FQDN và cấu hình `ndots:2`.
+3. **Triển khai NodeLocal DNSCache:** Cài đặt DaemonSet DNS Cache trên từng Node và xác minh hiệu quả.
+4. **Kiểm tra Headless Service:** Quan sát cách phân giải IP của các Pod đứng sau Headless Service mà không thông qua ClusterIP.
 
-# Quay lại Terminal 1 để đếm số dòng
-# Sẽ thấy 4 DNS queries gửi đi cho httpbin.org (3 NXDOMAIN vô ích + 1 SUCCESS)
-```
-
----
-
-## Lab: So sánh với FQDN và dnsPolicy
-
-```bash
-# Cách fix nhanh: thêm dấu chấm cuối (FQDN)
-kubectl exec pod-a -- bash -c 'time nslookup httpbin.org. $(cat /etc/resolv.conf | grep nameserver | awk "{print \$2}")'
-# 1 query, nhanh hơn 4x
-
-# Cấu hình ndots nhỏ hơn cho Pod cụ thể
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Pod
-metadata:
-  name: pod-ndots2
-spec:
-  dnsConfig:
-    options:
-    - name: ndots
-      value: "2"       # Giảm từ 5 xuống 2
-  containers:
-  - name: netshoot
-    image: nicolaka/netshoot
-    command: ["sleep", "infinity"]
-EOF
-
-kubectl exec pod-ndots2 -- cat /etc/resolv.conf
-# options ndots:2  ← Đã giảm!
-
-# Bây giờ api.external.com (2 dấu chấm = ndots) → đi thẳng external
-```
-
----
-
-## Lab: Triển khai NodeLocal DNSCache
-
-```bash
-# NodeLocal DNSCache chạy tại 169.254.20.10 (link-local) trên mỗi Node
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/dns/nodelocaldns/nodelocaldns.yaml
-
-# Verify: DaemonSet chạy trên tất cả nodes
-kubectl -n kube-system get daemonset nodelocaldns
-# NAME           DESIRED   CURRENT   READY
-# nodelocaldns   3         3         3
-
-# Kiểm tra interface 169.254.20.10 xuất hiện trên worker
-multipass exec worker1 -- ip addr show nodelocaldns
-# nodelocaldns: inet 169.254.20.10/32 scope host
-
-# Pods sau này tạo mới sẽ dùng 169.254.20.10 thay vì 10.96.0.10
-# Cache local → P99 latency giảm 10-50x cho DNS hits
-```
-
----
-
-## Headless Service & StatefulSet DNS
-
-```bash
-# Tạo Headless Service (không có ClusterIP)
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Service
-metadata:
-  name: nginx-headless
-spec:
-  clusterIP: None    # ← Headless
-  selector:
-    app: nginx
-  ports:
-  - port: 80
-EOF
-
-# DNS query vào Headless → trả về Pod IPs (không phải VIP)
-kubectl exec pod-a -- nslookup nginx-headless.default.svc.cluster.local
-# Server: 10.96.0.10
-# Address: 10.96.0.10#53
-# 
-# Name: nginx-headless.default.svc.cluster.local
-# Address: 10.244.1.5   ← IP Pod 1
-# Address: 10.244.2.7   ← IP Pod 2 (nhiều A records)
-```
+👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
 ---
 

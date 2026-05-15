@@ -134,59 +134,15 @@ multipass exec controlplane -- kubectl get pod test
 
 <!-- _class: lab -->
 
-## Lab: Tạo cluster & quan sát network namespace
+## 🔬 Lab Time: Khám phá Network Model
 
-```bash
-# SSH vào master
-multipass shell controlplane
+Chúng ta sẽ thực hành các bước sau trong phần Lab:
 
-# Kiểm tra network interfaces hiện tại (chưa có CNI)
-ip link show
-# 1: lo: <LOOPBACK,UP,LOWER_UP>
-# 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP>   ← IP thật của VM
-# (Không có cni0, flannel.1, cilium_host... vì chưa cài CNI)
+1. **Quan sát Cluster nguyên thủy:** Xem K8s hành xử thế nào khi chưa có CNI (Node `NotReady`, Pod `Pending`).
+2. **Cài đặt CNI (Flannel):** Cấp mạng cho Cluster và đưa các Node về trạng thái `Ready`.
+3. **Phân tích "Dấu vết" của CNI:** Quan sát sự xuất hiện của các card mạng ảo (`cni0`, `flannel.1`) và bảng định tuyến (routing table).
 
-# Kiểm tra routing table
-ip route show
-# default via 192.168.64.1 dev eth0
-# 192.168.64.0/24 dev eth0
-# (Không có route đến 10.244.x.x vì chưa có CNI)
-
-# Xem kubelet log - thấy CNI error
-sudo journalctl -u kubelet --since "5 min ago" | grep -i "cni\|network"
-# Error: network plugin is not ready: cni config uninitialized
-# Error: failed to find plugin "flannel" in path [/opt/cni/bin]
-```
-
----
-
-## Lab: Network namespace của container chờ CNI
-
-```bash
-# Cài Flannel để nodes Ready (tập sau sẽ giải thích chi tiết)
-kubectl apply -f \
-  https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
-
-# Theo dõi quá trình CNI được cài
-watch kubectl get nodes
-# Sau ~30 giây:
-# NAME          STATUS   ROLES           AGE
-# controlplane    Ready    control-plane   5m   ← Ready!
-# worker1   Ready    <none>          4m
-# worker2   Ready    <none>          4m
-
-# Xem interface mới xuất hiện sau khi Flannel cài
-ip link show
-# ...
-# 3: flannel.1: <BROADCAST,MULTICAST,UP,LOWER_UP>  ← CNI tạo ra
-# 4: cni0: <BROADCAST,MULTICAST,UP,LOWER_UP>       ← Bridge cho Pods
-
-# Xem routes mới
-ip route show
-# 10.244.0.0/24 dev cni0  ← Pod subnet của node này
-# 10.244.1.0/24 via 10.244.1.0 dev flannel.1  ← Route đến worker1
-# 10.244.2.0/24 via 10.244.2.0 dev flannel.1  ← Route đến worker2
-```
+👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
 ---
 

@@ -83,7 +83,7 @@ brew install multipass
 
 # Verify
 multipass version
-# multipass  1.14.x
+# multipass  1.16.x
 ```
 
 ---
@@ -91,7 +91,6 @@ multipass version
 ## Cấu trúc lab files
 
 ```
-tap-00-setup-lab/
 tap-00-setup-lab/
 ├── k8s-cloud-init.yaml ← cloud-init: "bản thiết kế" mỗi VM
 ├── setup-lab.sh        ← tạo VMs tự động

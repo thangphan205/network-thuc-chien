@@ -118,85 +118,16 @@ Local: traffic đến Node có Pod → forward thẳng
 
 <!-- _class: lab -->
 
-## Lab: Deploy Service và trace iptables
+## 🔬 Lab Time: Khám phá Kube-Proxy & Services
 
-```bash
-# Đứng tại terminal của controlplane
-# Deploy nginx với 3 replicas
-kubectl create deployment nginx --image=nginx --replicas=3
-kubectl expose deployment nginx --port=80 --type=ClusterIP
-kubectl get svc nginx
-# NAME    TYPE        CLUSTER-IP     PORT(S)   AGE
-# nginx   ClusterIP   10.96.123.45   80/TCP    30s
+Chúng ta sẽ thực hành các bước sau trong phần Lab:
 
-# Xem endpoint IPs (Pod IPs thật)
-kubectl get endpoints nginx
-# NAME    ENDPOINTS
-# nginx   10.244.1.5:80,10.244.1.6:80,10.244.2.7:80
-```
+1. **Quan sát ClusterIP Service:** Phân tích tại sao ClusterIP chỉ hoạt động với giao thức TCP/UDP mà không thể `ping` được.
+2. **Theo dõi dấu vết iptables:** Lần theo đường đi của gói tin từ chuỗi `KUBE-SERVICES` đến các rules DNAT do kube-proxy tạo ra.
+3. **Phân tích Connection Tracking:** Dùng `conntrack` để quan sát trạng thái của kết nối sau khi đã thực hiện DNAT.
+4. **Kiểm thử NodePort Service:** Phân tích cách Traffic được định tuyến khi truy cập NodePort từ bên ngoài Cluster.
 
----
-
-## Lab: Trace iptables DNAT
-
-```bash
-# Đứng tại terminal của worker1
-# Tìm KUBE-SVC chain của service nginx
-sudo iptables -t nat -L KUBE-SERVICES -n | grep 10.96.123.45
-# KUBE-SVC-XXXXXX  tcp  --  0.0.0.0/0  10.96.123.45  /* nginx */
-
-# Xem SVC chain (chọn endpoint ngẫu nhiên)
-sudo iptables -t nat -L KUBE-SVC-XXXXXX -n
-# Chain KUBE-SVC-XXXXXX
-#  1  KUBE-SEP-AAA  all  0.0.0.0/0   0.0.0.0/0  statistic mode random probability 0.33
-#  2  KUBE-SEP-BBB  all  0.0.0.0/0   0.0.0.0/0  statistic mode random probability 0.50
-#  3  KUBE-SEP-CCC  all  0.0.0.0/0   0.0.0.0/0  (else)
-
-# Xem SEP chain (DNAT thực sự)
-sudo iptables -t nat -L KUBE-SEP-AAA -n
-# DNAT  tcp  --  0.0.0.0/0  0.0.0.0/0  to:10.244.1.5:80  ← IP Pod thật
-```
-
----
-
-## Lab: conntrack - xem state sau DNAT
-
-```bash
-# Gửi request đến ClusterIP từ trong cluster
-kubectl exec pod-a -- curl -s http://10.96.123.45/
-
-# Ngay lập tức (trên worker node có pod-a) xem conntrack
-sudo conntrack -L | grep 10.96.123.45
-# tcp  ESTABLISHED src=10.244.1.5 dst=10.96.123.45 sport=43210 dport=80
-#      [UNREPLIED]  src=10.244.X.Y dst=10.244.1.5 sport=80 dport=43210
-#      ← dst đã được DNAT từ 10.96.123.45 → 10.244.X.Y (Pod IP thật)
-
-# Đếm số connection đến service
-sudo conntrack -L | grep 10.96.123.45 | wc -l
-```
-
----
-
-## Lab: NodePort expose và test
-
-```bash
-# Tạo NodePort service
-kubectl expose deployment nginx --port=80 --type=NodePort --name=nginx-np
-kubectl get svc nginx-np
-# NAME       TYPE       CLUSTER-IP    EXTERNAL-IP   PORT(S)        AGE
-# nginx-np   NodePort   10.96.200.1   <none>        80:31234/TCP   10s
-
-# Lấy IP của một worker node (đứng tại terminal máy macOS/host)
-WORKER1_IP=$(multipass info worker1 | grep IPv4 | awk '{print $2}')
-
-# Curl từ macOS host
-curl http://$WORKER1_IP:31234
-# <!DOCTYPE html>... nginx response ✅
-
-# Kể cả curl vào worker2 (không có Pod nginx) cũng hoạt động
-WORKER2_IP=$(multipass info worker2 | grep IPv4 | awk '{print $2}')
-curl http://$WORKER2_IP:31234  # Vẫn OK — kube-proxy forward đến Node có Pod
-```
+👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
 ---
 

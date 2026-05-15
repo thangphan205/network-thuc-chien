@@ -64,12 +64,14 @@ Hợp đồng gồm:
 4. Plugin báo lỗi qua STDERR + exit code != 0
 ```
 
-**4 động từ (verbs):**
+**6 động từ (operations) chính:**
 
 | Verb | Khi nào | Tác dụng |
 | :--- | :--- | :--- |
 | `ADD` | Pod tạo mới | Cắm mạng, gán IP, cài routes |
 | `DEL` | Pod xóa | Gỡ network, release IP về pool |
+| `CHECK` | Pod đang chạy | Kiểm tra cấu hình mạng có chuẩn không |
+| `VERSION` | Plugin load | Lấy thông tin phiên bản CNI được hỗ trợ |
 | `GC` | Periodic cleanup | Xóa stale network objects |
 | `STATUS` | Health check | Kiểm tra plugin ready |
 
@@ -146,122 +148,16 @@ kubelet lưu kết quả → Pod có IP ✅
 
 <!-- _class: lab -->
 
-## Lab Setup: Cài cnitool và CNI plugins
+## 🔬 Lab Time: Thực hành với CNI & cnitool
 
-```bash
-# Mở Terminal SSH vào worker1
+Chúng ta sẽ thực hành các bước sau trong phần Lab:
 
-# Cài CNI plugins binary (bridge, portmap, host-local, firewall...)
-CNI_VERSION="v1.5.1"
-mkdir -p /opt/cni/bin
-curl -L "https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-amd64-${CNI_VERSION}.tgz" | \
-  sudo tar -C /opt/cni/bin -xz
+1. **Chuẩn bị môi trường:** Cài đặt bộ công cụ `cnitool` và tải các CNI plugins nhị phân.
+2. **Gọi CNI ADD thủ công:** Cấu hình file JSON và dùng `cnitool` cấp IP/Network cho một Namespace hoàn toàn độc lập với Kubernetes.
+3. **Thực thi CNI DEL:** Quan sát cách mạng và IP được dọn dẹp khỏi Namespace.
+4. **Vị trí của CNI trong thực tế:** Tìm hiểu các file cấu hình của Flannel trên worker node.
 
-ls /opt/cni/bin/
-# bridge  firewall  host-local  ipvlan  loopback  macvlan  portmap  ...
-
-# Cài cnitool
-sudo apt-get install -y golang-go
-go install github.com/containernetworking/cni/cnitool@latest
-sudo cp ~/go/bin/cnitool /usr/local/bin/
-```
-
----
-
-## Lab: Gọi CNI ADD thủ công
-
-```bash
-# Tạo CNI config
-sudo mkdir -p /etc/cni/net.d
-cat | sudo tee /etc/cni/net.d/10-mynet.conflist << 'EOF'
-{
-  "cniVersion": "1.1.0",
-  "name": "mynet",
-  "plugins": [
-    {
-      "type": "bridge",
-      "bridge": "mybridge0",
-      "isGateway": true,
-      "ipam": {
-        "type": "host-local",
-        "subnet": "10.99.0.0/24",
-        "rangeStart": "10.99.0.10",
-        "rangeEnd": "10.99.0.50",
-        "gateway": "10.99.0.1"
-      }
-    },
-    { "type": "loopback" }
-  ]
-}
-EOF
-
-# Tạo network namespace để test
-sudo ip netns add cni-test
-
-# Gọi ADD — cắm mạng vào namespace cni-test
-sudo CNI_PATH=/opt/cni/bin cnitool add mynet /var/run/netns/cni-test
-# {
-#   "cniVersion": "1.1.0",
-#   "interfaces": [{"name": "mybridge0"}, {"name": "veth..."}],
-#   "ips": [{"address": "10.99.0.10/24", "gateway": "10.99.0.1"}],
-#   "routes": [{"dst": "0.0.0.0/0", "gw": "10.99.0.1"}]
-# }
-
-# Verify: xem mạng đã được cắm
-sudo ip netns exec cni-test ip addr
-# eth0: inet 10.99.0.10/24
-sudo ip netns exec cni-test ip route
-# default via 10.99.0.1 dev eth0
-```
-
----
-
-## Lab: Gọi CNI DEL và cleanup
-
-```bash
-# Xem bridge và veth đã tạo
-ip link show mybridge0
-ip link show type veth
-
-# Gọi DEL — gỡ mạng và release IP
-sudo CNI_PATH=/opt/cni/bin cnitool del mynet /var/run/netns/cni-test
-
-# Verify: interface đã bị xóa
-sudo ip netns exec cni-test ip addr
-# (chỉ còn loopback)
-
-# Gọi ADD lần 2 — IP có được tái sử dụng không?
-sudo CNI_PATH=/opt/cni/bin cnitool add mynet /var/run/netns/cni-test
-# "address": "10.99.0.10/24" ← Cùng IP được tái sử dụng!
-
-# Cleanup hoàn toàn
-sudo ip netns del cni-test
-sudo ip link del mybridge0 2>/dev/null || true
-```
-
----
-
-## Vị trí CNI trong thực tế
-
-```bash
-# CNI config của Flannel (xem trên worker node)
-ls /etc/cni/net.d/
-# 10-flannel.conflist  ← Tên bắt đầu bằng số = thứ tự ưu tiên
-
-cat /etc/cni/net.d/10-flannel.conflist
-# {"cniVersion":"1.0.0", "name":"cbr0",
-#  "plugins":[
-#    {"type":"flannel","delegate":{"hairpinMode":true,"isDefaultGateway":true}},
-#    {"type":"portmap","capabilities":{"portMappings":true}}
-#  ]}
-
-# CNI binaries Flannel cài
-ls /opt/cni/bin/
-# flannel  bridge  portmap  host-local ...
-
-# Log của kubelet khi gọi CNI
-sudo journalctl -u kubelet | grep -i "cni\|add\|del" | tail -20
-```
+👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
 ---
 
@@ -281,12 +177,14 @@ Periodic   → kubelet → CNI GC  → stale cleanup
 /var/run/netns/     ← Network namespaces của containers
 ```
 
-**Môi trường biến khi gọi CNI:**
+**Môi trường biến (Env Variables) khi gọi CNI:**
 ```bash
-CNI_COMMAND=ADD|DEL|GC|STATUS
+CNI_COMMAND=ADD|DEL|CHECK|VERSION|GC|STATUS
 CNI_NETNS=/var/run/netns/<id>
 CNI_CONTAINERID=<container-id>
 CNI_IFNAME=eth0
+CNI_PATH=/opt/cni/bin   # Nơi chứa các CNI plugin binary
+CNI_ARGS=FOO=BAR        # (Optional) Các tham số extra
 ```
 
 > **Phần tiếp theo (Tập 6):** Flannel — CNI đơn giản nhất giải bài toán flat network như thế nào?

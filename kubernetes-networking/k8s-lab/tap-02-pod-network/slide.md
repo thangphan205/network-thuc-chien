@@ -64,13 +64,13 @@ Hầu hết tutorial nói "Pod là container" — không đúng hoàn toàn.
 ```
 ┌─────────────────────────────────────────────────────┐
 │                      POD                            │
-│  ┌──────────────┐    ┌──────────────┐              │
-│  │ pause/infra  │    │  app (nginx) │              │
-│  │  container   │    │  container   │  Chia sẻ:   │
-│  │              │    │              │  ─ eth0      │
-│  │ Giữ ns sống  │    │ join ns của  │  ─ lo        │
-│  │ khi app crash│    │    pause     │  ─ IP addr   │
-│  └──────────────┘    └──────────────┘  ─ Port space│
+│  ┌──────────────┐    ┌──────────────┐               │
+│  │ pause/infra  │    │  app (nginx) │               │
+│  │  container   │    │  container   │  Chia sẻ:     │
+│  │              │    │              │  ─ eth0       │
+│  │ Giữ ns sống  │    │ join ns của  │  ─ lo         │
+│  │ khi app crash│    │    pause     │  ─ IP addr    │
+│  └──────────────┘    └──────────────┘  ─ Port space │
 │             Network Namespace                       │
 └─────────────────────────────────────────────────────┘
 ```
@@ -105,97 +105,16 @@ Hầu hết tutorial nói "Pod là container" — không đúng hoàn toàn.
 
 <!-- _class: lab -->
 
-## Lab Setup: Tạo Pod để quan sát
+## 🔬 Lab Time: Khám phá Pod Network
 
-```bash
-multipass shell controlplane
+Chúng ta sẽ thực hành các bước sau trong phần Lab:
 
-# Tạo 2 Pods trên worker nodes khác nhau
-kubectl run pod-a --image=nicolaka/netshoot --overrides='{"spec":{"nodeName":"worker1"}}' \
-  -- sleep infinity
-kubectl run pod-b --image=nicolaka/netshoot --overrides='{"spec":{"nodeName":"worker2"}}' \
-  -- sleep infinity
+1. **Khởi tạo Pod:** Tạo các Pod thử nghiệm trên các Worker Node khác nhau.
+2. **Khám phá Pause Container:** Tìm PID của pause container và dùng `nsenter` để thâm nhập vào network namespace của Pod.
+3. **Phân tích veth pair:** Quan sát "dây cáp ảo" nối giữa Pod và `cni0` bridge trên Node.
+4. **Kiểm chứng tính bền vững:** Giả lập crash ứng dụng để chứng minh Pause container giữ cho IP của Pod không bị mất.
 
-kubectl wait --for=condition=Ready pod/pod-a pod/pod-b --timeout=60s
-
-# Xem IP của từng Pod
-kubectl get pods -o wide
-# NAME    READY   STATUS    NODE          IP
-# pod-a   1/1     Running   worker1       10.244.1.X
-# pod-b   1/1     Running   worker2       10.244.2.X
-```
-
----
-
-## Lab: Tìm pause container và inspect namespace
-
-```bash
-# SSH vào worker1
-multipass shell worker1
-
-# Tìm pause container (sandbox) của pod-a
-PAUSE_ID=$(sudo crictl pods --name pod-a -q)
-
-# Lấy PID của pause container
-PAUSE_PID=$(sudo crictl inspectp $PAUSE_ID | python3 -c "import sys,json; print(json.load(sys.stdin)['info']['pid'])")
-echo "Pause PID: $PAUSE_PID"
-
-# Inspect network namespace của Pod từ Node (không cần exec vào Pod)
-sudo nsenter -t $PAUSE_PID -n ip addr
-# 1: lo: <LOOPBACK,UP,LOWER_UP> ...
-# 3: eth0@if8: <BROADCAST,MULTICAST,UP,LOWER_UP>
-#     inet 10.244.1.5/24 brd 10.244.1.255 scope global eth0
-
-sudo nsenter -t $PAUSE_PID -n ip route
-# default via 10.244.1.1 dev eth0
-# 10.244.0.0/16 via 10.244.1.1 dev eth0  ← anchor route do CNI cài
-# 10.244.1.0/24 dev eth0 scope link
-```
-
----
-
-## Lab: Xem veth pair toàn cảnh
-
-```bash
-# Trên worker1: tìm veth pair
-ip link show type veth
-# 8: veth3a1b2c@if3: <BROADCAST,MULTICAST,UP,LOWER_UP>
-#    link/ether ... promiscuity 1
-#    master cni0  ← Gắn vào bridge cni0
-
-# Số 8 (host side) = @if3 trong Pod (interface index 3 = eth0 trong Pod)
-# Verify: nsenter thấy eth0@if8 ↔ host thấy veth...@if3
-
-# Xem bridge cni0 có những veth nào
-ip link show master cni0
-# 8: veth3a1b2c@if3: <BROADCAST,MULTICAST,UP,LOWER_UP> master cni0
-# (Mỗi Pod chạy trên node này có 1 veth gắn vào cni0)
-
-# Ping từ Node vào Pod IP (không cần NAT)
-ping -c 3 10.244.1.5
-# PING 10.244.1.5: 3 packets transmitted, 3 received ← Nguyên tắc 2 hoạt động!
-```
-
----
-
-## Lab: Chứng minh pause giữ namespace
-
-```bash
-# Trên terminal của controlplane: Xem IP và Restarts
-kubectl get pod pod-a -o wide
-
-# Giả lập crash: Bắn bỏ tiến trình chính của ứng dụng
-kubectl exec pod-a -- kill 1
-
-# Ngay lập tức kiểm tra lại IP
-kubectl get pod pod-a -o wide
-# IP vẫn là 10.244.1.X ← Network namespace chưa mất!
-
-# Vài giây sau, K8s tự restart container
-kubectl get pod pod-a
-# NAME    READY   STATUS    RESTARTS
-# pod-a   1/1     Running   1        ← Restart nhưng IP giữ nguyên
-```
+👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
 ---
 
