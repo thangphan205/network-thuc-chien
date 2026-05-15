@@ -89,110 +89,15 @@ Node 1 routing table: 10.244.2.0/24 via 192.168.64.11 dev eth0
 
 <!-- _class: lab -->
 
-## Lab: Reset cluster và cài Flannel
+## 🔬 Lab Time: Thực hành với Flannel CNI (VXLAN Mode)
 
-```bash
-# Reset cluster để bắt đầu với không có CNI
-# (Nếu đang chạy từ Tập 1 với Flannel, skip bước reset này)
-multipass exec k8s-master -- sudo kubeadm reset -f
-multipass exec k8s-worker1 -- sudo kubeadm reset -f
-multipass exec k8s-worker2 -- sudo kubeadm reset -f
+Chúng ta sẽ thực hành các bước sau trong phần Lab:
 
-# Re-init cluster
-MASTER_IP=$(multipass info k8s-master | grep IPv4 | awk '{print $2}')
-multipass exec k8s-master -- sudo kubeadm init \
-  --apiserver-advertise-address=$MASTER_IP \
-  --pod-network-cidr=10.244.0.0/16
+1. **Quan sát Cluster trắng:** Xem xét trạng thái bế tắc của các Node khi chưa được cài đặt mạng.
+2. **Cài đặt Flannel:** Triển khai CNI Flannel và quan sát các card mạng ảo `flannel.1` xuất hiện cùng các luật định tuyến mới.
+3. **Kiểm chứng Cross-Node:** Tạo các Pod trên những Worker Node khác nhau và xác minh khả năng giao tiếp xuyên Node thành công nhờ VXLAN tunnel.
 
-# Setup kubeconfig
-multipass exec k8s-master -- bash -c '
-  mkdir -p $HOME/.kube
-  sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config
-  sudo chown $(id -u):$(id -g) $HOME/.kube/config'
-
-# Join workers
-JOIN_CMD=$(multipass exec k8s-master -- sudo kubeadm token create --print-join-command)
-multipass exec k8s-worker1 -- sudo $JOIN_CMD
-multipass exec k8s-worker2 -- sudo $JOIN_CMD
-```
-
----
-
-## Lab: Quan sát trước khi cài Flannel
-
-```bash
-multipass shell k8s-master
-
-# Node NotReady
-kubectl get nodes
-# NAME          STATUS     ROLES           AGE
-# k8s-master    NotReady   control-plane   2m
-# k8s-worker1   NotReady   <none>          45s
-# k8s-worker2   NotReady   <none>          40s
-
-# Không có route đến Pod subnets
-multipass exec k8s-worker1 -- ip route show
-# default via 192.168.64.1 dev eth0
-# 192.168.64.0/24 dev eth0
-# (Không có 10.244.x.x routes!)
-
-# Cài Flannel
-kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
-
-# Theo dõi quá trình
-watch -n2 kubectl get nodes,pods -n kube-flannel
-```
-
----
-
-## Lab: Quan sát sau khi cài Flannel
-
-```bash
-# Sau ~60 giây: Nodes Ready
-kubectl get nodes
-# NAME          STATUS   ROLES           AGE
-# k8s-master    Ready    control-plane   4m
-# k8s-worker1   Ready    <none>          3m
-# k8s-worker2   Ready    <none>          3m
-
-# Interface mới trên worker1
-multipass exec k8s-worker1 -- ip link show
-# flannel.1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450  ← VXLAN tunnel
-# cni0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450       ← Pod bridge
-
-# Routes mới
-multipass exec k8s-worker1 -- ip route show
-# 10.244.0.0/24 via 10.244.0.0 dev flannel.1  ← Route đến master
-# 10.244.1.0/24 dev cni0                      ← Local pod subnet
-# 10.244.2.0/24 via 10.244.2.0 dev flannel.1  ← Route đến worker2
-```
-
----
-
-## Lab: Test cross-node pod communication
-
-```bash
-# Deploy 2 pods trên 2 node khác nhau
-kubectl run pod-a --image=nicolaka/netshoot \
-  --overrides='{"spec":{"nodeName":"k8s-worker1"}}' -- sleep infinity
-kubectl run pod-b --image=nicolaka/netshoot \
-  --overrides='{"spec":{"nodeName":"k8s-worker2"}}' -- sleep infinity
-
-kubectl wait --for=condition=Ready pod/pod-a pod/pod-b --timeout=60s
-
-# Lấy IPs
-POD_A_IP=$(kubectl get pod pod-a -o jsonpath='{.status.podIP}')
-POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
-echo "Pod A: $POD_A_IP (worker1), Pod B: $POD_B_IP (worker2)"
-
-# Test ping cross-node
-kubectl exec pod-a -- ping -c 3 $POD_B_IP
-# PING 10.244.2.X: 3 packets, 3 received ✅ (qua VXLAN tunnel)
-
-# Đo latency — sẽ thấy VXLAN overhead
-kubectl exec pod-a -- ping -c 10 $POD_B_IP | tail -3
-# rtt min/avg/max/mdev = 0.4/0.6/0.8/0.1 ms
-```
+👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
 ---
 

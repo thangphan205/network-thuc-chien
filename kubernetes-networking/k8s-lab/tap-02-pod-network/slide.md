@@ -126,6 +126,7 @@ Chúng ta sẽ thực hành các bước sau trong phần Lab:
 | **veth pair** | "Dây cáp ảo" — 1 đầu trong Pod ns, 1 đầu ở root ns |
 | **cni0 bridge** | Switch ảo trên Node — kết nối tất cả Pods trên node |
 | **`nsenter -n`** | Công cụ debug — vào ns Pod mà không cần `exec` |
+| **Route `/16` trong Pod** | Anchor route CNI cài để bảo vệ traffic K8s khỏi bị default route đè |
 
 **Lệnh debug hay dùng:**
 ```bash

@@ -93,7 +93,7 @@ Khi iptables thực hiện DNAT, nó lưu lại "nhật ký" ở trong module `c
 
 **Ngay lập tức, chuyển sang Terminal đang SSH vào `worker1` (nơi đang chạy pod-a):**
 
-2. Xem bản ghi conntrack của IP VIP này:
+2. Xem bản ghi conntrack của IP VIP này — chạy trong vòng vài giây sau lệnh curl, vì entry chỉ tồn tại tạm thời:
    ```bash
    sudo conntrack -L | grep 10.96.123.45
    ```

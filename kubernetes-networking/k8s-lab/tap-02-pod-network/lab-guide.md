@@ -132,5 +132,5 @@ Qua bài lab này, bạn đã tự tay khám phá:
 ---
 
 ## 🤔 Câu hỏi thảo luận
-Đọc phần **Tập 2** trong file `../questions.md` để đọc giải thích đầy đủ cho câu hỏi: *Tại sao trong Pod chỉ có 1 interface eth0 mà lại tạo các route /16?*
+Đọc phần **Tập 2** trong file `../0-questions.md` để đọc giải thích đầy đủ cho câu hỏi: *Tại sao trong Pod chỉ có 1 interface eth0 mà lại tạo các route /16?*
 

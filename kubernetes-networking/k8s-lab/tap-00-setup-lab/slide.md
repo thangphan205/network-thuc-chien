@@ -118,7 +118,7 @@ cd tap-00-setup-lab/
 ```
 
 Script tự động:
-1. Launch 3 VMs: `controlplane`, `worker1`, `worker2` (~3-5 phút)
+1. Launch 3 VMs: `controlplane`, `worker1`, `worker2` (~5-10 phút)
 2. Chờ `cloud-init` hoàn thành quá trình cài đặt ngầm.
 
 ---
@@ -210,9 +210,7 @@ kubectl get pods -A
 multipass shell controlplane
 multipass shell worker1
 
-# Login shell và chạy lệnh bên trong VM
-multipass shell controlplane
-
+# Ví dụ: chạy lệnh sau khi đã vào node
 crictl pods
 ip route show
 

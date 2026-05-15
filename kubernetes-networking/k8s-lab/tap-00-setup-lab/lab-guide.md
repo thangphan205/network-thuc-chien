@@ -3,7 +3,7 @@
 Để quan sát được bản chất cách Kubernetes thao tác với Linux Networking, chúng ta cần một cụm K8s thực thụ (thay vì Minikube hay Docker Desktop). Bài lab này hướng dẫn bạn dựng một cụm K8s 3 node siêu nhanh bằng **Multipass** và **Kubeadm**. Giải pháp này đặc biệt tối ưu và hỗ trợ tốt cho macOS sử dụng chip Apple Silicon (M1/M2/M3) và cả chip Intel.
 
 ## 🛠 Yêu cầu hệ thống
-1. Máy tính macOS.
+1. Máy tính macOS hoặc Windows 10+.
 2. Máy tính host cần tối thiểu 8GB RAM (khoảng 5GB sẽ được cấp cho 3 VMs).
 3. (Tùy chọn) Đã cài đặt sẵn **Multipass**. Nếu chưa có, script sẽ tự động cài đặt.
 
