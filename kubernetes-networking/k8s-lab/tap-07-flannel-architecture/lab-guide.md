@@ -17,8 +17,7 @@ flanneld không dùng etcd riêng — nó đọc trực tiếp từ K8s API.
 1. Xem `podCIDR` được cấp cho từng Node — đây là dữ liệu flanneld đọc để biết subnet nào thuộc về Node nào:
    ```bash
    multipass shell controlplane
-   kubectl get nodes -o custom-columns=\
-     'NAME:.metadata.name,PODCIDR:.spec.podCIDR,IP:.status.addresses[0].address'
+   kubectl get nodes -o custom-columns='NAME:.metadata.name,PODCIDR:.spec.podCIDR,IP:.status.addresses[0].address'
    ```
    *Kết quả mong đợi:*
    ```
@@ -128,30 +127,139 @@ Vẫn ở `worker1`, trace đường đi của packet từ pod-a đến pod-b (t
 
 ## 🔬 Thí nghiệm 4: Quan sát log flanneld khi cluster thay đổi
 
+### 🎯 Mục tiêu
+
+Chứng minh rằng **flanneld hoạt động theo mô hình event-driven**: nó liên tục lắng nghe (watch) Kubernetes API, và **chỉ** phản ứng khi có thay đổi thực sự về trạng thái node/subnet. Không có controller nào polling định kỳ — đây là điểm khác biệt cốt lõi của kiến trúc Kubernetes.
+
+### 📖 Lý thuyết nền: Kubernetes Watch API
+
+```
+flanneld                     kube-apiserver                  etcd
+   │                               │                            │
+   │── GET /api/v1/nodes?watch=true ──▶│                            │
+   │                               │◀── Watch stream (keep-alive) ──│
+   │                               │                            │
+   │     [node worker2 changes]    │                            │
+   │◀── MODIFIED event ────────────│                            │
+   │                               │                            │
+   │  → update route table         │                            │
+   │  → update ARP/FDB             │                            │
+   │  → log "Handling add subnet"  │                            │
+```
+
+`flanneld` mở **một kết nối HTTP streaming duy nhất** đến API server. Mọi thay đổi về node được đẩy xuống ngay lập tức — không cần polling.
+
+---
+
+### 🧪 Các bước thực hành
+
 **Trên `controlplane`:**
 
 ```bash
 multipass shell controlplane
 ```
 
-1. Xem log của flanneld DaemonSet:
-   ```bash
-   kubectl -n kube-flannel logs daemonset/kube-flannel-ds --since=5m | grep -E "subnet|Handling|Adding|Updating"
-   ```
-   *Nhận xét:* Log sẽ cho thấy flanneld watch K8s API và cập nhật routes khi có thay đổi.
+#### Bước 1 — Quan sát log baseline của flanneld
 
-2. Trigger cập nhật giả bằng cách touch annotation:
-   ```bash
-   kubectl annotate node worker2 \
-     flannel.alpha.coreos.com/public-ip=$(kubectl get node worker2 \
-     -o jsonpath='{.metadata.annotations.flannel\.alpha\.coreos\.com/public-ip}') \
-     --overwrite
-   ```
+```bash
+kubectl -n kube-flannel logs daemonset/kube-flannel-ds --since=5m \
+  | grep -E "subnet|Handling|Adding|Updating"
+```
 
-3. Xem log ngay sau đó — bạn sẽ thấy `"Handling add subnet event"`:
-   ```bash
-   kubectl -n kube-flannel logs daemonset/kube-flannel-ds --since=30s
-   ```
+Expected output (luôn xuất hiện 2 dòng header trước nội dung log):
+```
+Found 3 pods, using pod/kube-flannel-ds-km75p
+Defaulted container "kube-flannel" out of: kube-flannel, install-cni-plugin (init), install-cni (init)
+```
+
+**Giải thích 2 dòng header:**
+
+| Dòng | Ý nghĩa |
+|---|---|
+| `Found 3 pods, using pod/...` | DaemonSet có 3 pods (1 per node). kubectl chọn pod đầu tiên |
+| `Defaulted container "kube-flannel"` | Pod này có 3 containers; kubectl mặc định lấy container chính |
+
+> Nếu log trống (chỉ có 2 dòng header, không có nội dung) → cluster đang ổn định, không có thay đổi trong 5 phút qua. **Đây là hành vi bình thường.**
+
+---
+
+#### Bước 2 — Hiểu tại sao "touch annotation" không trigger event
+
+Chạy lệnh ghi đè annotation với **cùng giá trị**:
+
+```bash
+kubectl annotate node worker2 \
+  flannel.alpha.coreos.com/public-ip=$(kubectl get node worker2 \
+  -o jsonpath='{.metadata.annotations.flannel\.alpha\.coreos\.com/public-ip}') \
+  --overwrite
+```
+
+Expected output:
+```
+node/worker2 annotated
+```
+
+Kiểm tra log ngay sau đó:
+```bash
+kubectl -n kube-flannel logs daemonset/kube-flannel-ds --since=30s \
+  | grep -E "subnet|Handling|Adding|Updating"
+```
+
+Expected output: *(chỉ 2 dòng header, không có event nào)*
+```
+Found 3 pods, using pod/kube-flannel-ds-km75p
+Defaulted container "kube-flannel" out of: kube-flannel, install-cni-plugin (init), install-cni (init)
+```
+
+> **⚠️ Tại sao log trống?**
+> Kubernetes API server so sánh giá trị cũ và mới trước khi lưu. Nếu **resourceVersion** và **giá trị** không đổi, etcd không ghi, watch stream không phát sự kiện, flanneld không nhận được gì.
+> → Đây chứng minh Flannel chỉ phản ứng với **thay đổi thực sự**, không bị kích hoạt bởi no-op.
+
+---
+
+#### Bước 3 — Trigger event thực bằng `cordon` + `uncordon`
+
+Mở **2 terminal** vào `controlplane`:
+
+**Terminal 1** — Watch log liên tục:
+```bash
+kubectl -n kube-flannel logs -f -l app=flannel \
+  --max-log-requests=4 | grep -E "subnet|Handling|Adding"
+```
+
+**Terminal 2** — Thay đổi trạng thái node thực sự:
+```bash
+kubectl cordon worker2
+sleep 3
+kubectl uncordon worker2
+```
+
+Expected output Terminal 2:
+```
+node/worker2 cordoned
+node/worker2 uncordoned
+```
+
+Expected output Terminal 1 (xuất hiện ngay sau khi `uncordon`):
+```
+I0518 13:05:42.123456       1 subnet.go:152] "Handling add subnet event" subnet="10.244.2.0/24" network="10.244.0.0/16"
+```
+
+> **Tại sao `cordon/uncordon` hoạt động?**
+> - `cordon` → set `spec.unschedulable = true` → API server lưu vào etcd → phát MODIFIED event
+> - `uncordon` → set `spec.unschedulable = false` → một thay đổi khác → flanneld nhận và reprocess subnet của worker2
+> - Không xóa pod nào đang chạy — **an toàn để thử nghiệm**
+
+---
+
+### 📝 Tổng kết thí nghiệm 4
+
+| Hành động | etcd thay đổi? | flanneld nhận event? | Log xuất hiện? |
+|---|---|---|---|
+| `annotate --overwrite` (cùng giá trị) | ❌ Không | ❌ Không | ❌ Trống |
+| `cordon` / `uncordon` | ✅ Có | ✅ Có | ✅ "Handling add subnet event" |
+
+**Kết luận:** flanneld là một **reconciliation loop thuần túy** — chỉ làm việc khi được "thức dậy" bởi sự kiện thực từ API. Đây là lý do Flannel có footprint thấp và không gây tải cho hệ thống khi cluster ổn định.
 
 ---
 
@@ -163,3 +271,13 @@ Kiến trúc Flannel là **3 tầng rõ ràng**:
 3. **CNI plugin** (bridge binary) đọc `subnet.env` khi Pod tạo, gán IP — đây là "tay chân"
 
 Ba bảng `route → ARP → FDB` trên mỗi Node là cơ chế Flannel tìm đường đến VTEP đích mà không cần bất kỳ controller nào xử lý trong realtime.
+
+
+
+Cơm thêm: 
+
+1. max-pods:
+```bash
+kubectl get node worker1 -o jsonpath='{.status.allocatable.pods}'
+# → 110
+```

@@ -103,10 +103,9 @@ Yêu cầu: Tất cả Nodes phải cùng L2 segment (cùng broadcast domain)
 
 Chúng ta sẽ thực hành:
 
-1. **Switch mode:** Sửa ConfigMap và restart flanneld để chuyển VXLAN → host-gw.
-2. **Quan sát thay đổi:** `flannel.1` biến mất, routes thay đổi, MTU tăng lên 1500.
-3. **Verify bằng tcpdump:** Không còn UDP 8472 — packet đi thẳng.
-4. **Benchmark:** Dùng `iperf3` đo throughput và latency hai mode.
+1. **Switch mode:** Sửa ConfigMap và restart flanneld để chuyển VXLAN → host-gw trên `controlplane`.
+2. **Quan sát thay đổi:** Dọn dẹp `flannel.1` cũ, kiểm tra routing table mới và MTU 1500 trên `worker1`.
+3. **Benchmark:** Dùng `iperf3` đo throughput và latency để thấy sức mạnh của host-gw mode.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 

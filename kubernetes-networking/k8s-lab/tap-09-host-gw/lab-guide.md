@@ -8,7 +8,7 @@ Tập này chứng minh bằng thực nghiệm rằng host-gw mode nhanh hơn VX
 
 ---
 
-## 🚀 Thí nghiệm 1: Switch từ VXLAN sang host-gw
+## 🔬 Thí nghiệm 1: Switch từ VXLAN sang host-gw
 
 **SSH vào `controlplane`:**
 
@@ -49,6 +49,14 @@ multipass shell controlplane
    kubectl -n kube-flannel rollout restart daemonset kube-flannel-ds
    kubectl -n kube-flannel rollout status daemonset kube-flannel-ds
    ```
+   *Kết quả mong đợi:*
+   ```text
+   daemonset.apps/kube-flannel-ds restarted
+   Waiting for daemon set "kube-flannel-ds" rollout to finish: 0 of 3 updated pods are available...
+   Waiting for daemon set "kube-flannel-ds" rollout to finish: 1 of 3 updated pods are available...
+   Waiting for daemon set "kube-flannel-ds" rollout to finish: 2 of 3 updated pods are available...
+   daemon set "kube-flannel-ds" successfully rolled out
+   ```
    *Chờ đến khi tất cả Pods restart xong (~30 giây).*
 
 ---
@@ -61,11 +69,17 @@ multipass shell controlplane
 multipass shell worker1
 ```
 
-1. Kiểm tra `flannel.1` đã biến mất chưa:
+1. Kiểm tra interface `flannel.1` cũ:
    ```bash
    ip link show | grep flannel
    ```
-   *Kết quả mong đợi:* **Không có output** — `flannel.1` đã bị xóa hoàn toàn! VTEP không cần thiết nữa vì không có encapsulation.
+   > [!NOTE]
+   > **Lưu ý thực tế:** Khi chuyển đổi backend (từ VXLAN sang `host-gw`), tiến trình `flanneld` mới sẽ bỏ qua interface ảo `flannel.1` cũ chứ không tự động xóa nó khỏi kernel Linux.
+   > 
+   > Để dọn dẹp sạch sẽ hệ thống, bạn cần SSH vào các node và chạy lệnh xóa thủ công interface `flannel.1` cũ này:
+   ```bash
+   sudo ip link delete flannel.1
+   ```
 
 2. Kiểm tra routing table mới:
    ```bash
@@ -77,48 +91,17 @@ multipass shell worker1
    10.244.1.0/24 dev cni0                     ← Local subnet
    10.244.2.0/24 via 192.168.64.12 dev eth0   ← Route thẳng đến worker2
    ```
-   *Nhận xét:* Routes giờ chỉ đến `eth0` (physical), không còn `flannel.1` (tunnel). Mỗi Node bây giờ hoạt động như một router biết cách forward Pod traffic.
+   *Nhận xét:* Routes giờ chỉ đến `eth0` (physical), không còn `flannel.1` (tunnel). Mỗi Node bây giờ hoạt động như một router biết cách forward Pod traffic trực tiếp qua L2.
 
 3. Kiểm tra MTU của bridge:
    ```bash
    ip link show cni0 | grep mtu
    ```
-   *Kết quả:* `cni0: mtu 1500` — Tăng từ 1450 lên 1500! Pod giờ có full MTU.
+   *Kết quả:* `cni0: mtu 1500` — Tăng từ 1450 lên 1500! Pod giờ có full MTU 1500 mà không bị bớt 50 bytes tunnel overhead.
 
 ---
 
-## 🔬 Thí nghiệm 3: Verify bằng tcpdump — không còn UDP 8472
-
-**Mở 2 terminal:**
-
-**Terminal 1 — `worker1`, bắt traffic:**
-```bash
-multipass shell worker1
-
-# Nghe cả VXLAN (8472) và ICMP thẳng
-sudo tcpdump -i eth0 -n '(udp port 8472) or icmp'
-```
-
-**Terminal 2 — `controlplane`, tạo traffic:**
-```bash
-multipass shell controlplane
-POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
-kubectl exec pod-a -- ping -c 5 $POD_B_IP
-```
-
-**Quay lại Terminal 1:**
-- Sẽ **không thấy** dòng `> 8472: VXLAN` nào
-- Thay vào đó thấy ICMP trực tiếp:
-  ```
-  12:35:00 IP 10.244.1.5 > 10.244.2.7: ICMP echo request
-  ```
-*Nhận xét:* Packet không bị bọc trong UDP nữa — source IP là Pod IP thật, không phải Node IP.
-
-Bấm `Ctrl+C` để dừng tcpdump.
-
----
-
-## 🏁 Thí nghiệm 4: Benchmark throughput với iperf3
+## 🔬 Thí nghiệm 3: Benchmark throughput với iperf3
 
 **Trên `controlplane`:**
 
