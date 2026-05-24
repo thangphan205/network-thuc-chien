@@ -96,6 +96,7 @@ Khi Kubelet gọi CNI Binary (ví dụ: gọi file `/opt/cni/bin/bridge`), nó t
 *   `CNI_CONTAINERID`: ID độc nhất của container.
 *   `CNI_NETNS`: Đường dẫn tới Network Namespace (`/var/run/netns/...`).
 *   `CNI_IFNAME`: Tên card mạng muốn đặt bên trong container (mặc định: `eth0`).
+*   `CNI_PATH`: Đường dẫn tới thư mục chứa các CNI binary (ví dụ: `/opt/cni/bin`). Kubelet (và `cnitool`) dùng biến này để tìm file thực thi cần gọi.
 
 ### 2. Cấu hình mạng mô tả qua JSON (`STDIN`)
 *   Truyền cấu hình dạng JSON (như file `.conflist` bạn vừa viết) mô tả loại card mạng (`bridge`), dải IP muốn cấp (`subnet`), gateway,... qua ngõ STDIN.
@@ -109,7 +110,7 @@ Trong một cụm K8s thực tế, quy trình cắm mạng diễn ra tự độn
 ```
                        Pod mới được khởi tạo
                                  │
-                         [ Kubelet (OS) ]
+                         [ Kubelet ]
                                  │
              (1) Gọi binary /opt/cni/bin/bridge (ADD)
              (Truyền JSON qua STDIN + các biến CNI_*)
@@ -131,7 +132,7 @@ Trong một cụm K8s thực tế, quy trình cắm mạng diễn ra tự độn
 
 ## Key Takeaways — Bài học cốt lõi
 
-*   **Đơn giản & Độc lập**: Đặc tả CNI được thiết kế cực kỳ tối giản. Bạn có thể sử dụng các CNI binaries này để tự xây dựng mạng cho các container Docker/Podman bình thường mà không cần có Kubernetes.
+*   **Đơn giản & Độc lập**: Đặc tả CNI được thiết kế cực kỳ tối giản. Bạn có thể sử dụng các CNI binaries này để tự xây dựng mạng cho các Linux container (Podman, containerd, hay netns thuần) mà không cần có Kubernetes.
 *   **Vòng đời ngắn (Stateless)**: CNI plugins hoạt động theo kiểu "gọi xong rồi biến mất" (Stateless). Chúng chỉ khởi chạy, thực hiện cấu hình Linux (tạo card mạng, gán IP, route) trong vài mili-giây rồi tự chấm dứt tiến trình.
 *   **Hành trình tiếp theo**: Bây giờ bạn đã hiểu gốc rễ cách cắm mạng. Trong các tập tiếp theo, chúng ta sẽ bắt đầu mổ xẻ sâu kiến trúc của ba ông lớn CNI trong thế giới Production: **Flannel → Calico → Cilium**!
 
