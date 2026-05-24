@@ -126,8 +126,6 @@ cd tap-00-setup-lab/
 
 ---
 
----
-
 ## Bước 2 — Khởi tạo Control Plane
 
 Truy cập vào controlplane và chạy lệnh khởi tạo:
