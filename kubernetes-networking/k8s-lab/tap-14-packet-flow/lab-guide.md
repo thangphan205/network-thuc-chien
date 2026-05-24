@@ -2,6 +2,53 @@
 
 Tập này dùng iptables LOG để trace từng packet qua các Calico chains và quan sát conntrack state machine.
 
+### Sơ đồ Packet Flow di chuyển qua các thành phần của Calico:
+
+#### 1. Trường hợp cùng một Node (Same-Node Packet Flow)
+```mermaid
+graph TD
+  subgraph Node_1 [Cùng một Node]
+    PodA[Pod A eth0: 10.244.1.5]
+    vethA[vethA in Root NS]
+    Routing[Linux Routing Table]
+    vethB[vethB in Root NS]
+    PodB[Pod B eth0: 10.244.1.6]
+    
+    PodA -->|1. Gửi Packet| vethA
+    vethA -->|2. Egress Check: cali-from-wl-dispatch| Routing
+    Routing -->|3. Route: 10.244.1.6/32 via vethB| vethB
+    vethB -->|4. Ingress Check: cali-to-wl-dispatch| PodB
+  end
+```
+
+#### 2. Trường hợp khác Node (Cross-Node Packet Flow)
+```mermaid
+graph TD
+  subgraph Node_1 [Node 1 - Source]
+    PodA[Pod A eth0: 10.244.1.5]
+    vethA[vethA in Root NS]
+    Routing1[Routing Table Node 1]
+    Phys1[eth0 Node 1]
+    
+    PodA -->|1. Gửi Packet| vethA
+    vethA -->|2. Egress Check: cali-from-wl-dispatch| Routing1
+    Routing1 -->|3. Route: 10.244.2.0/24 via Node 2| Phys1
+  end
+
+  subgraph Node_2 [Node 2 - Destination]
+    Phys2[eth0 Node 2]
+    Routing2[Routing Table Node 2]
+    vethB[vethB in Root NS]
+    PodB[Pod B eth0: 10.244.2.7]
+    
+    Phys2 -->|4. Nhận Encapsulated Packet| Routing2
+    Routing2 -->|5. Route: 10.244.2.7/32 via vethB| vethB
+    vethB -->|6. Ingress Check: cali-to-wl-dispatch| PodB
+  end
+  
+  Phys1 -->|Đường truyền vật lý / Overlay Tunnel (VXLAN/BGP)| Phys2
+```
+
 ## 🛠 Yêu cầu chuẩn bị
 - Cụm K8s với Calico đang chạy iptables mode (không phải eBPF) từ Tập 11-13.
 - Nếu đang ở eBPF mode, chạy: `kubectl patch felixconfiguration default --type merge --patch '{"spec":{"bpfEnabled":false}}'`

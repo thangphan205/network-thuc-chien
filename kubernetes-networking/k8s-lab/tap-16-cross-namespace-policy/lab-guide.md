@@ -133,8 +133,9 @@ multipass shell controlplane
 4. Test: Prometheus cũng vào được (đúng, nhưng vì lý do sai):
    ```bash
    kubectl -n monitoring exec prometheus -- nc -zv $BACKEND_IP 9090
-   # Connection succeeded! ✅ (nhưng policy quá rộng)
+   # Connection succeeded! ✅ (nhưng lý do thông mạng là sai)
    ```
+   > **Phân tích bản chất:** Prometheus vào được thực tế là do điều kiện thứ nhất (`namespaceSelector` match namespace `monitoring`) mở toang cho tất cả, chứ không phải do điều kiện thứ hai match được nó! Trong K8s NetworkPolicy, luật `- podSelector` khi viết độc lập (không đi kèm `namespaceSelector` trong cùng một phần tử danh sách) sẽ chỉ áp dụng kiểm tra Pod có nhãn đó chạy **ở nội bộ namespace của Policy đó** (ở đây là namespace `production`). Nó không có tác dụng kiểm tra Pod ở namespace khác!
 
 ---
 

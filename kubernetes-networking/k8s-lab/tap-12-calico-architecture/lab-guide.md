@@ -2,6 +2,16 @@
 
 Tập này giải phẫu từng thành phần của Calico và trace luồng từ NetworkPolicy CR → iptables rule trên Node.
 
+### Sơ đồ luồng đồng bộ cấu hình trong cụm Calico:
+```mermaid
+sequenceDiagram
+  autonumber
+  K8s API Server->>Typha (Optional): Watch event thay đổi NetworkPolicy / Pods / Nodes
+  Typha (Optional)->>Felix: Fan-out các sự kiện cập nhật cấu hình tới từng Node
+  Felix->>Linux Kernel: Dịch NetworkPolicy thành iptables rules hoặc eBPF maps ở kernel cấp Node
+  BIRD->>Các Peer Nodes: Quảng bá route IP của Pod qua BGP (định tuyến L3)
+```
+
 ## 🛠 Yêu cầu chuẩn bị
 - Cụm K8s với Calico đang chạy (từ Tập 11).
 - `calicoctl` chưa cài — sẽ cài trong lab này.
@@ -20,8 +30,8 @@ multipass shell controlplane
 
    **Terminal 1 — Watch Felix log trên worker1:**
    ```bash
-   kubectl -n calico-system logs -f daemonset/calico-node -c calico-node \
-     --node-name=worker1 2>&1 | grep -i "policy\|endpoint\|felix"
+   POD_NAME=$(kubectl -n calico-system get pods -l k8s-app=calico-node --field-selector spec.nodeName=worker1 -o jsonpath='{.items[0].metadata.name}')
+   kubectl -n calico-system logs -f $POD_NAME -c calico-node 2>&1 | grep -i "policy\|endpoint\|felix"
    ```
 
 2. **Terminal 2 — Apply NetworkPolicy mới:**

@@ -154,10 +154,8 @@ kill $TCPDUMP_PID
 
 3. Xem BGP peer từ worker1:
    ```bash
-   calicoctl node status --node=worker1 2>/dev/null || \
-     kubectl exec -n calico-system -it daemonset/calico-node -c calico-node \
-       --overrides='{"spec":{"nodeName":"worker1"}}' \
-       -- calico-node -bird-live 2>/dev/null | head -20
+   # calicoctl node status bắt buộc chạy local trên node để đọc Unix Socket BIRD
+   multipass exec worker1 -- sudo calicoctl node status
    ```
 
 ---

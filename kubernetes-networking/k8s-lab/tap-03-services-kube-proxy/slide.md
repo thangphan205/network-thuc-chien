@@ -31,124 +31,97 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 3
-## Services & kube-proxy: ClusterIP, NodePort, LoadBalancer từ góc nhìn packet
+<br />
+<br />
 
-**Phần 0 — Nền tảng K8s Networking** · `#kube-proxy` `#iptables` `#IPVS` `#services`
+# Tập 3 - Services & kube-proxy
+## Sự thật về ảo ảnh ClusterIP & Mổ xẻ bảng iptables
 
----
+**Phần 0 — Nền tảng K8s Networking** · `#Service` `#ClusterIP` `#kube-proxy` `#iptables`
+<br />
 
-## Mục tiêu tập này
-
-- Giải thích tại sao ClusterIP không `ping` được nhưng `curl` được
-- Trace packet qua iptables chains của kube-proxy
-- So sánh iptables mode vs IPVS mode vs nftables mode (K8s v1.33+)
-- Dùng `conntrack` xem trạng thái connection sau DNAT
-
-**Prerequisites:** Cluster từ Tập 1, pods từ Tập 2 đang chạy
+![height:200px](https://upload.wikimedia.org/wikipedia/commons/3/39/Kubernetes_logo_without_workmark.svg)
 
 ---
 
-## ClusterIP: Virtual IP không có interface
+## 🗺 Lộ trình bài học: Lab First - Slide Second
 
-```bash
-kubectl get svc kubernetes
-# NAME         TYPE        CLUSTER-IP   PORT(S)   AGE
-# kubernetes   ClusterIP   10.96.0.1    443/TCP   1h
-```
+Hôm nay chúng ta sẽ giải mã một trong những ảo ảnh lớn nhất của Kubernetes:
 
-**`10.96.0.1` không tồn tại ở đâu:**
-```bash
-# Thử ping
-ping 10.96.0.1     → timeout (ICMP không được NAT)
-
-# Thử curl
-curl https://10.96.0.1:443  → response! (TCP được kube-proxy xử lý)
-```
-
-**Tại sao?** kube-proxy dùng iptables `DNAT` để rewrite destination IP.
-ICMP không qua conntrack → không DNAT → timeout.
-TCP qua conntrack → DNAT thành công → kết nối được.
-
----
-
-## Kiến trúc kube-proxy iptables mode
-
-```
-Packet đến ClusterIP 10.96.X.X:PORT
-    │
-    ▼ iptables nat PREROUTING
-KUBE-SERVICES
-    │
-    ├── match 10.96.X.X → KUBE-SVC-XXXXXXXXXXXXXXXX
-    │                           │
-    │              ┌────────────┼────────────┐
-    │              ▼            ▼            ▼
-    │        KUBE-SEP-AAA  KUBE-SEP-BBB  KUBE-SEP-CCC
-    │         (Pod 1 IP)   (Pod 2 IP)    (Pod 3 IP)
-    │           DNAT          DNAT          DNAT
-    │
-    └── match !local → KUBE-NODEPORTS (NodePort traffic)
-```
-
-**Thuật toán chọn endpoint:** `statistic mode random probability 0.33` — round-robin ngẫu nhiên.
-
----
-
-## 3 loại Service: ClusterIP, NodePort, LoadBalancer
-
-| Loại | Scope | Cơ chế | Dùng khi |
-| :--- | :--- | :--- | :--- |
-| **ClusterIP** | Trong cluster | iptables DNAT | Internal service |
-| **NodePort** | Mọi Node IP:Port | iptables + DNAT | Dev/test expose |
-| **LoadBalancer** | External LB IP | Cloud LB controller | Production |
-| **Headless** | DNS → Pod IPs | Không VIP | StatefulSet, direct |
-
-**externalTrafficPolicy: Local vs Cluster:**
-```
-Cluster (default): traffic đến bất kỳ Node nào → kube-proxy forward đến Pod bất kỳ
-                   → 1 hop thêm, src IP bị SNAT (mất IP client gốc)
-
-Local: traffic đến Node có Pod → forward thẳng
-       → không thêm hop, giữ src IP client thật
-       → nhưng Node không có Pod → traffic bị drop
-```
+*   **PHẦN 1: Thực hành đột nhập (Lab First)**
+    - Chứng kiến cú lừa kinh điển: IP ảo `ping` thì chết nhưng `curl` lại chạy.
+    - Chui xuống mức OS để lùng sục dấu vết `iptables` và đo tỷ lệ load balance ngẫu nhiên.
+    - Soi "nhật ký dịch chuyển" bằng `conntrack`.
+    
+*   **PHẦN 2: Đúc kết bản chất (Slide Second)**
+    - Phanh phui bản chất: ClusterIP có card mạng và địa chỉ MAC hay không?
+    - Sơ đồ hóa chuỗi điệp vụ `iptables` do `kube-proxy` lập trình.
+    - Cách NodePort mở cổng trên toàn cụm để dẫn đường cho traffic.
 
 ---
 
 <!-- _class: lab -->
 
-## 🔬 Lab Time: Khám phá Kube-Proxy & Services
+## 🔬 PHẦN 1: Bắt đầu làm Lab ngay!
 
-Chúng ta sẽ thực hành các bước sau trong phần Lab:
+Chúng ta sẽ thực hiện các Thí nghiệm cân não trong file `lab-guide.md`:
 
-1. **Quan sát ClusterIP Service:** Phân tích tại sao ClusterIP chỉ hoạt động với giao thức TCP/UDP mà không thể `ping` được.
-2. **Theo dõi dấu vết iptables:** Lần theo đường đi của gói tin từ chuỗi `KUBE-SERVICES` đến các rules DNAT do kube-proxy tạo ra.
-3. **Phân tích Connection Tracking:** Dùng `conntrack` để quan sát trạng thái của kết nối sau khi đã thực hiện DNAT.
-4. **Kiểm thử NodePort Service:** Phân tích cách Traffic được định tuyến khi truy cập NodePort từ bên ngoài Cluster.
+1.  **Thí nghiệm 1:** Tạo Service ClusterIP cho Nginx. Chứng minh cú sốc `ping ClusterIP` bị timeout nhưng `curl` lại trả về HTML vèo vèo.
+2.  **Thí nghiệm 2:** Lên `worker1`, gõ grep iptables để lần theo các chuỗi `KUBE-SERVICES` -> `KUBE-SVC-xxx` -> `KUBE-SEP-xxx` để thấy xác suất rẽ nhánh thống kê.
+3.  **Thí nghiệm 3:** Kiểm tra cache của module NAT thông qua lệnh `conntrack`.
+4.  **Thí nghiệm 4:** Chuyển sang NodePort và dùng IP của bất kỳ Node nào để truy cập ứng dụng.
 
-👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
+👉 **Hãy tạm dừng video, mở terminal và thực hiện lab theo tệp `lab-guide.md` nhé!**
 
 ---
 
-## Key Takeaways
+## 🔬 PHẦN 2: Giải mã hiện tượng Ping Timeout vs Curl Success
 
-**kube-proxy iptables mode:**
+Tại sao ClusterIP lại có hành vi kỳ lạ như vậy?
+
+*   👉 **Câu trả lời**: **ClusterIP hoàn toàn không có thực!** Nó không được gán vào bất kỳ card mạng (NIC) vật lý hay ảo nào cả, và cũng không có địa chỉ MAC. Nó chỉ là một **ảo ảnh**!
+*   Khi bạn `ping <ClusterIP>` (giao thức ICMP), gói tin gửi ra card mạng sẽ không có ai phản hồi vì IP đó không tồn tại trên thực tế -> Dẫn đến Timeout.
+*   Khi bạn `curl <ClusterIP>:80` (giao thức TCP), `iptables` trên chính Node đó lập tức bắt gói tin (match rule), bẻ lái địa chỉ đích (DNAT) thành IP thật của Pod trước khi gói tin kịp rời khỏi Node!
+
+---
+
+## Sơ đồ luồng đi của gói tin qua Iptables
+
+Khi bạn tạo một Service, `kube-proxy` sẽ chạy ngầm và cấu hình bảng `iptables -t nat` trên **MỌI NODE** theo sơ đồ chuỗi sau:
+
 ```
-ClusterIP → KUBE-SERVICES → KUBE-SVC-XXX → KUBE-SEP-YYY → DNAT → Pod IP
+                  Gói tin TCP gửi đến ClusterIP:80
+                                 │
+                        [ KUBE-SERVICES ]
+            (Bắt trúng IP của Service và cổng đích)
+                                 │
+                          [ KUBE-SVC-xxx ]
+       (Sử dụng statistic mode random để chọn ngẫu nhiên Pod)
+          ├── 33% Probability  ──► [ KUBE-SEP-pod1 ]
+          ├── 50% Probability  ──► [ KUBE-SEP-pod2 ]
+          └── 100% Probability ──► [ KUBE-SEP-pod3 ]
+                                 │
+                       (Thực hiện luật DNAT)
+                                 ▼
+                     Destination = IP thật của Pod
 ```
 
-**3 điểm quan trọng:**
-1. ClusterIP không `ping` được vì ICMP không qua DNAT
-2. kube-proxy viết iptables rules khi Service/Endpoint thay đổi
-3. `conntrack -L` thấy mapping VIP → Pod IP sau DNAT
+---
 
-**Debug commands:**
-```bash
-iptables -t nat -L KUBE-SERVICES -n      # Tất cả services
-iptables -t nat -L KUBE-SVC-XXXX -n     # Endpoint selection
-iptables -t nat -L KUBE-SEP-XXXX -n     # DNAT rule
-conntrack -L | grep <service-ip>         # Active connections
-```
+## Conntrack & NodePort: Cách K8s dẫn đường
 
-> **Tập tiếp theo:** DNS trong K8s — tại sao mỗi request tốn 5 DNS query?
+### 1. Conntrack (Connection Tracking)
+Khi iptables thực hiện DNAT (đổi IP ảo -> IP thật), nó cần ghi nhớ "nhật ký" ở module `conntrack` của Linux Kernel. Khi Pod phản hồi ngược lại, `conntrack` tự động dịch ngược (SNAT) thành IP ảo để Client không nhận ra sự thay đổi.
+
+### 2. NodePort: Mở cổng trên toàn cụm
+Khi đổi Service sang NodePort (ví dụ: `31234`), `kube-proxy` sẽ binding port đó trên **tất cả các card mạng của tất cả các node**. Iptables sẽ bắt traffic đập vào port này trên bất kỳ node nào và tự động chuyển hướng nó về đúng node chứa Pod.
+
+---
+
+## Key Takeaways — Bài học cốt lõi
+
+*   **ClusterIP là ảo ảnh**: Toàn bộ cơ chế Service thực chất là một hệ thống phân phối luật **NAT (Network Address Translation)** khổng lồ do `kube-proxy` lập trình tự động trên nền tảng `iptables` của Linux Kernel.
+*   **Load Balancing cấp hạt nhân**: K8s sử dụng tính năng xác suất thống kê có sẵn của Linux (`statistic mode random`) để chia tải, rất nhẹ và hiệu năng cao.
+*   **Hạn chế của iptables**: Khi cụm có hàng ngàn Service, số lượng dòng iptables tăng lên tới hàng chục vạn dòng. Linux phải duyệt tuần tự $O(N)$ dẫn đến giảm hiệu năng -> Đây là lý do IPVS và eBPF ra đời!
+
+> **Tập tiếp theo:** Làm thế nào để các Pod gọi nhau qua Tên thay vì IP ảo? Khám phá CoreDNS và sắc thuế DNS "ndots:5" cực kỳ lãng phí!

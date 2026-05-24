@@ -92,34 +92,39 @@ multipass version
 
 ```
 tap-00-setup-lab/
-├── k8s-cloud-init.yaml ← cloud-init: "bản thiết kế" mỗi VM
-├── setup-lab.sh        ← tạo VMs tự động
-└── reset-lab.sh        ← xóa toàn bộ VMs
+├── k8s-cloud-init.yaml  ← cloud-init: "bản thiết kế" chung mỗi VM
+├── setup-lab.sh         ← Router tự động nhận diện CPU & điều hướng
+├── setup-lab-arm.sh     ← Dành riêng cho chip ARM (Apple Silicon)
+├── setup-lab-amd.sh     ← Dành riêng cho chip AMD/Intel (x86_64)
+└── reset-lab.sh         ← Xóa toàn bộ VMs sạch sẽ
 ```
 
-**`k8s-cloud-init.yaml`** — chạy tự động khi VM boot:
+**`k8s-cloud-init.yaml`** — tự động hóa hoàn toàn nhờ `dpkg --print-architecture`:
 - Tắt swap, load kernel modules (`overlay`, `br_netfilter`)
-- Cài `containerd` + bật `SystemdCgroup`
-- Cài `kubelet`, `kubeadm`, `kubectl` v1.36
-
-> Không cần SSH vào cài tay. VM boot xong → sẵn sàng join cluster.
+- Cài `containerd` + `kubelet`, `kubeadm`, `kubectl` v1.36 phù hợp chính xác với CPU của bạn.
 
 ---
 
 <!-- _class: lab -->
 
-## Bước 1 — Tạo máy ảo bằng Script
+## Bước 1 — Tạo máy ảo bằng Script phù hợp
 
+Hệ thống hỗ trợ 2 cách chạy cực kỳ linh hoạt:
+
+**Cách 1: Chạy Router tự động (Khuyên dùng)**
 ```bash
 cd tap-00-setup-lab/
-
-# Tạo 3 VMs (chưa init K8s)
-./setup-lab.sh
+./setup-lab.sh       # Tự phát hiện CPU & gọi script tối ưu
 ```
 
-Script tự động:
-1. Launch 3 VMs: `controlplane`, `worker1`, `worker2` (~5-10 phút)
-2. Chờ `cloud-init` hoàn thành quá trình cài đặt ngầm.
+**Cách 2: Chạy trực tiếp tùy theo chip của máy bạn**
+```bash
+./setup-lab-arm.sh   # Nếu dùng máy Mac M1/M2/M3/M4 (ARM)
+# HOẶC
+./setup-lab-amd.sh   # Nếu dùng Windows/Linux hoặc Mac Intel (AMD/Intel)
+```
+
+---
 
 ---
 

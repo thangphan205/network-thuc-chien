@@ -31,134 +31,89 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 4
-## CoreDNS & Thuế "ndots:5": Tại sao mỗi request trong K8s tốn 5 DNS query?
+<br />
+<br />
 
-**Phần 0 — Nền tảng K8s Networking** · `#CoreDNS` `#DNS` `#ndots` `#performance`
+# Tập 4 - Thuế "ndots:5" và Tối ưu DNS
+## Vạch trần lãng phí băng thông & 3 kỹ thuật trốn thuế DNS K8s
 
----
+**Phần 0 — Nền tảng K8s Networking** · `#DNS` `#CoreDNS` `#ndots` `#Headless`
+<br />
 
-## Mục tiêu tập này
-
-- Giải thích cơ chế phân giải tên miền trong K8s (FQDN vs short name)
-- Đo được số DNS query thực tế bằng `tcpdump` và `dig`
-- Cấu hình `dnsConfig` để giảm thuế ndots
-- Triển khai NodeLocal DNSCache (`169.254.20.10`)
-
-**Prerequisites:** Cluster từ Tập 1, Flannel đang chạy, CoreDNS hoạt động
+![height:200px](https://upload.wikimedia.org/wikipedia/commons/3/39/Kubernetes_logo_without_workmark.svg)
 
 ---
 
-## /etc/resolv.conf trong mọi Pod K8s
+## 🗺 Lộ trình bài học: Lab First - Slide Second
 
-```bash
-kubectl exec pod-a -- cat /etc/resolv.conf
-# nameserver 10.96.0.10           ← ClusterIP của CoreDNS
-# search default.svc.cluster.local svc.cluster.local cluster.local
-# options ndots:5
-```
+Hôm nay chúng ta sẽ phơi bày một "sự lãng phí ngầm" trong mạng K8s và cách khắc phục:
 
-**3 dòng quyết định tất cả:**
-
-| Dòng | Ý nghĩa |
-| :--- | :--- |
-| `nameserver 10.96.0.10` | Mọi DNS query đều đến CoreDNS trước |
-| `search ...` | Danh sách domain tự thêm vào khi tên ngắn |
-| `options ndots:5` | Nếu < 5 dấu chấm → thử search list trước |
-
----
-
-## Thuế ndots:5 — Demo đếm query
-
-```
-Gọi: api.external.com  (2 dấu chấm → nhỏ hơn 5 → thử search list)
-
-Query 1: api.external.com.default.svc.cluster.local  → NXDOMAIN ❌
-Query 2: api.external.com.svc.cluster.local          → NXDOMAIN ❌
-Query 3: api.external.com.cluster.local              → NXDOMAIN ❌
-Query 4: api.external.com.                           → SUCCESS  ✅
-
-3 query thừa mỗi lần gọi external service!
-
-Gọi: nginx (không có dấu chấm → thử search list)
-
-Query 1: nginx.default.svc.cluster.local  → SUCCESS ✅ (Service trong namespace)
-(1 query — hiệu quả cho internal service)
-
-Gọi: nginx.default.svc.cluster.local. (FQDN với dấu chấm cuối)
-Query 1: nginx.default.svc.cluster.local.  → SUCCESS ✅ (1 query duy nhất)
-```
-
----
-
-## CoreDNS: Cơ chế phân giải nội bộ
-
-**Service DNS pattern:**
-```
-<service>.<namespace>.svc.cluster.local
-nginx.default.svc.cluster.local → 10.96.123.45 (ClusterIP)
-
-Headless Service (clusterIP: None):
-nginx-headless.default.svc.cluster.local → 10.244.1.5, 10.244.2.7 (Pod IPs)
-```
-
-**CoreDNS Corefile (cách cấu hình):**
-```bash
-kubectl -n kube-system get configmap coredns -o yaml | grep -A30 "Corefile"
-# .:53 {
-#   errors
-#   health { lameduck 5s }
-#   ready
-#   kubernetes cluster.local in-addr.arpa ip6.arpa {
-#     pods insecure
-#     fallthrough in-addr.arpa ip6.arpa
-#   }
-#   forward . /etc/resolv.conf { max_concurrent 1000 }
-#   cache 30
-#   reload
-#   loadbalance
-# }
-```
+*   **PHẦN 1: Thực hành bắt quả tang (Lab First)**
+    - Dùng `tcpdump` nghe lén lưu lượng DNS bên trong Pod.
+    - Đếm số lượng queries thừa khi gọi API bên ngoài (Internet).
+    - Thử nghiệm 3 cách cấu hình để triệt tiêu queries rác.
+    - So sánh dịch DNS của Service thường với Headless Service.
+    
+*   **PHẦN 2: Giải phẫu cơ chế (Slide Second)**
+    - Phân tích file cấu hình `/etc/resolv.conf` của Pod.
+    - Giải thích cặn kẽ thông số `ndots:5` và cơ chế search paths.
+    - Đúc kết cẩm nang tối ưu mạng DNS cho môi trường Production.
 
 ---
 
 <!-- _class: lab -->
 
-## 🔬 Lab Time: Tối ưu hoá K8s DNS
+## 🔬 PHẦN 1: Bắt đầu làm Lab ngay!
 
-Chúng ta sẽ thực hành các bước sau trong phần Lab:
+Chúng ta sẽ thực hiện các Thí nghiệm đột phá trong file `lab-guide.md`:
 
-1. **Phân tích "Thuế ndots":** Dùng `tcpdump` để đo lường số lượng DNS query thừa khi truy cập external domain.
-2. **Tối ưu DNS với FQDN & dnsConfig:** Áp dụng giải pháp giảm tải DNS bằng FQDN và cấu hình `ndots:2`.
-3. **Triển khai NodeLocal DNSCache:** Cài đặt DaemonSet DNS Cache trên từng Node và xác minh hiệu quả.
-4. **Kiểm tra Headless Service:** Quan sát cách phân giải IP của các Pod đứng sau Headless Service mà không thông qua ClusterIP.
+1.  **Thí nghiệm 1:** Chạy `tcpdump` nghe lén UDP port 53 trên `pod-a`. Chạy curl tới `httpbin.org`. Chứng kiến cảnh 1 lần curl gửi ra tận **4 queries DNS** rác!
+2.  **Thí nghiệm 2:** Thử nghiệm trốn thuế siêu tốc bằng cách thêm dấu chấm cuối tên miền: `curl httpbin.org.` và chứng kiến số lượng query giảm về **1**.
+3.  **Thí nghiệm 3:** Ép cấu hình `ndots:2` bằng cách khai báo `dnsConfig` trong YAML của Pod.
+4.  **Thí nghiệm 4:** Tạo Headless Service (`clusterIP: None`) và chạy `nslookup` để thấy DNS trả về trực tiếp danh sách IP thật của Pod.
 
-👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
+👉 **Hãy tạm dừng video, mở terminal và bắt đầu gõ lệnh trong tệp `lab-guide.md` nhé!**
 
 ---
 
-## Key Takeaways
+## 🔬 PHẦN 2: Tại sao 1 lệnh curl lại gửi đi 4 truy vấn DNS?
 
-**ndots:5 costs:**
+Hãy xem ruột file `/etc/resolv.conf` bên trong Pod của bạn:
 ```
-Internal call (nginx): 1 query  ✅
-External call (api.external.com): 4 queries (3 wasted) ❌
-External FQDN (api.external.com.): 1 query ✅
-```
-
-**3 cách giảm DNS overhead:**
-
-| Cách | Scope | Effort |
-| :--- | :--- | :--- |
-| Thêm `.` cuối FQDN | Per request | Thủ công |
-| `dnsConfig: ndots: 2` | Per Pod | Low |
-| NodeLocal DNSCache | Toàn cluster | Medium |
-
-**Debug DNS:**
-```bash
-tcpdump -i any -n udp port 53        # Bắt DNS packets
-kubectl exec pod -- nslookup <name>  # Test resolution
-kubectl exec pod -- dig +stats <name> # Thấy query time
+nameserver 10.96.0.10
+search default.svc.cluster.local svc.cluster.local cluster.local
+options ndots:5
 ```
 
-> **Tập tiếp theo:** CNI specification — ai thực sự cắm mạng cho Pod?
+*   Khi bạn gọi `httpbin.org` (tên miền chỉ có **1 dấu chấm**), vì số lượng dấu chấm nhỏ hơn quy định (`ndots:5`), Linux cho rằng đây là một tên miền viết tắt nội bộ.
+*   Nó sẽ tuần tự nối thêm các đuôi trong danh mục `search` để đi hỏi CoreDNS:
+    1.  `httpbin.org.default.svc.cluster.local` (CoreDNS trả về NXDomain - Lỗi)
+    2.  `httpbin.org.svc.cluster.local` (Lỗi)
+    3.  `httpbin.org.cluster.local` (Lỗi)
+    4.  `httpbin.org.` (Chọc ra DNS ngoài - Thành công!)
+*   👉 **Hậu quả**: CoreDNS bị quá tải, ứng dụng bị trễ thời gian phân giải DNS khi gọi API bên ngoài!
+
+---
+
+## 3 Cách "Trốn Thuế" DNS trong Kubernetes
+
+### Cách 1: Sử dụng FQDN (Dấu chấm thần thánh ở cuối)
+Gọi tên miền có dấu chấm cuối: `httpbin.org.`
+Dấu chấm này báo với hệ điều hành: *"Đây là tên miền tuyệt đối (Fully Qualified Domain Name). Trông tôi có vẻ ngắn nhưng tôi đã hoàn chỉnh rồi, đừng nối đuôi linh tinh nữa!"*. Linux sẽ bỏ qua toàn bộ search paths và chọc thẳng ra Internet.
+
+### Cách 2: Cấu hình giảm `ndots` qua `dnsConfig`
+Cài đặt `ndots:2` cho Pod. Bất kỳ tên miền nào có từ 2 dấu chấm trở lên (ví dụ: `api.github.com`) sẽ lập tức được giải quyết trực tiếp mà không cần đi qua danh sách tìm kiếm nội bộ.
+
+### Cách 3: Headless Service cho Database/StatefulSet
+Khi gọi các dịch vụ nội bộ có nhiều bản sao, sử dụng Headless Service (`clusterIP: None`). CoreDNS trả về trực tiếp danh sách IP Pod, bỏ qua kube-proxy giúp giảm tải thời gian định tuyến mạng.
+
+---
+
+## Key Takeaways — Bài học cốt lõi
+
+*   **Sử dụng linh hoạt**:
+    - Khi gọi dịch vụ **nội bộ**: Hãy dùng tên ngắn (ví dụ: `db`). Quy tắc `ndots:5` sẽ phát huy sức mạnh giúp tự điền đuôi `db.default.svc.cluster.local`.
+    - Khi gọi dịch vụ **bên ngoài**: Bắt buộc phải thêm **dấu chấm ở cuối**, hoặc phải cấu hình giảm `ndots` trên file YAML của Deployment!
+*   **Hiệu năng Production**: Trốn thuế DNS thành công có thể giúp cụm K8s lớn giảm từ 50% - 80% tải truy cập vào CoreDNS, ngăn chặn thảm họa nghẽn mạng do sập phân giải tên miền.
+
+> **Tập tiếp theo:** Kubelet gọi CNI để cắm mạng như thế nào? CNI thực chất là gì? Hãy tự tay đóng vai Kubelet cắm mạng thủ công bằng cnitool!

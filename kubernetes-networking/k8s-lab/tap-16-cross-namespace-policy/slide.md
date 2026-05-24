@@ -89,10 +89,11 @@ ingress:
 
 **Kết quả thực tế (WRONG):**
 ```
-Prometheus (monitoring namespace)       → ✅ (match A)
-Prometheus (other namespace)            → ✅ (match B — role=prometheus bất kỳ đâu!)
 Rogue pod trong monitoring              → ✅ (match A — bất kỳ Pod trong monitoring!)
+Prometheus (monitoring namespace)       → ✅ (match A)
+Prometheus (other namespace)            → ❌ (Luật B chỉ tìm Pod in local 'production' namespace!)
 ```
+*(Lưu ý: Luật B `- podSelector` không có `namespaceSelector` đi kèm chỉ tìm Pod `role: prometheus` chạy nội bộ trong chính namespace `production` chứ không tìm được các namespace khác. Rogue pod lọt vào hoàn toàn là do kẽ hở của Luật A mở toang toàn bộ namespace `monitoring`!)*
 
 **Policy quá rộng — không an toàn!**
 

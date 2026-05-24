@@ -31,160 +31,108 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 5
-## CNI là gì? Hành trình cắm mạng cho Pod từ ADD đến DEL
+<br />
+<br />
 
-**Phần 0 — Nền tảng K8s Networking** · `#CNI` `#spec` `#cnitool` `#kubelet`
+# Tập 5 - Giải phẫu CNI
+## Đặc tả CNI Specification & Tự tay cắm mạng thủ công bằng cnitool
 
----
+**Phần 0 — Nền tảng K8s Networking** · `#CNI` `#CNISpec` `#cnitool` `#linux-net`
+<br />
 
-## Mục tiêu tập này
-
-- Giải thích CNI spec là "hợp đồng" giữa kubelet và network plugin
-- Vẽ luồng ADD/DEL/GC/STATUS đầy đủ
-- Viết CNI config `.conflist` thủ công
-- Gọi CNI plugin bằng `cnitool` mà không cần K8s
-
-**Prerequisites:** Cluster từ Tập 1. Tập này có thể dùng VM standalone không cần cluster đầy đủ.
+![height:200px](https://upload.wikimedia.org/wikipedia/commons/3/39/Kubernetes_logo_without_workmark.svg)
 
 ---
 
-## CNI là hợp đồng, không phải code
+## 🗺 Lộ trình bài học: Lab First - Slide Second
 
-```
-CNI Specification v1.1.0 (2023)
-─────────────────────────────────
-kubelet nói: "Tao cần cắm mạng cho container này"
-CNI plugin đáp: "OK, tao gán IP X.X.X.X và cài routes"
+Hôm nay chúng ta sẽ mở toang chiếc "hộp đen" mang tên CNI:
 
-Hợp đồng gồm:
-1. Plugin nhận config qua STDIN (JSON)
-2. Plugin nhận environment variables (CNI_COMMAND, CNI_NETNS, ...)
-3. Plugin trả kết quả qua STDOUT (JSON)
-4. Plugin báo lỗi qua STDERR + exit code != 0
-```
-
-**6 động từ (operations) chính:**
-
-| Verb | Khi nào | Tác dụng |
-| :--- | :--- | :--- |
-| `ADD` | Pod tạo mới | Cắm mạng, gán IP, cài routes |
-| `DEL` | Pod xóa | Gỡ network, release IP về pool |
-| `CHECK` | Pod đang chạy | Kiểm tra cấu hình mạng có chuẩn không |
-| `VERSION` | Plugin load | Lấy thông tin phiên bản CNI được hỗ trợ |
-| `GC` | Periodic cleanup | Xóa stale network objects |
-| `STATUS` | Health check | Kiểm tra plugin ready |
-
----
-
-## Luồng ADD chi tiết
-
-```
-kubelet tạo container (PID của pause container)
-    │
-    ▼
-Tạo network namespace: /var/run/netns/<id>
-    │
-    ▼
-Đọc CNI config từ /etc/cni/net.d/ (theo thứ tự alphabetical)
-    │
-    ▼
-Gọi plugin đầu tiên trong chain với:
-  CNI_COMMAND=ADD
-  CNI_NETNS=/var/run/netns/<id>
-  CNI_CONTAINERID=<pause-container-id>
-  CNI_IFNAME=eth0
-  STDIN: { "cniVersion": "1.1.0", "name": "mynet", ... }
-    │
-    ▼
-Plugin 1 (bridge): tạo cni0 bridge, tạo veth pair, gán IP
-    │
-    ▼
-Plugin 2 (portmap): cài iptables rules cho port forwarding
-    │
-    ▼
-Plugin 3 (firewall): cài iptables security rules
-    │
-    ▼
-Trả STDOUT: { "ips": [{"address": "10.244.1.5/24"}], "routes": [...] }
-    │
-    ▼
-kubelet lưu kết quả → Pod có IP ✅
-```
-
----
-
-## CNI conflist: Plugin chain
-
-```json
-{
-  "cniVersion": "1.1.0",
-  "name": "k8s-network",
-  "plugins": [
-    {
-      "type": "bridge",
-      "bridge": "cni0",
-      "isGateway": true,
-      "ipMasq": true,
-      "ipam": {
-        "type": "host-local",
-        "subnet": "10.244.1.0/24",
-        "routes": [{ "dst": "0.0.0.0/0" }]
-      }
-    },
-    {
-      "type": "portmap",
-      "capabilities": { "portMappings": true }
-    },
-    {
-      "type": "firewall",
-      "backend": "iptables"
-    }
-  ]
-}
-```
+*   **PHẦN 1: Thực hành đóng vai (Lab First)**
+    - Đột nhập `/opt/cni/bin` để truy tìm các file binary vô tri.
+    - Soạn thảo hợp đồng mạng JSON `.conflist` chuẩn đặc tả.
+    - Tạo Network Namespace Linux thủ công.
+    - Đóng vai làm Kubelet dùng `cnitool` gọi CNI cắm/rút mạng (`ADD`/`DEL`).
+    
+*   **PHẦN 2: Giải phẫu đặc tả (Slide Second)**
+    - Phân tích bản chất chuẩn đặc tả CNI Specification.
+    - Giải nghĩa các biến môi trường và JSON đầu vào/đầu ra.
+    - Kiến trúc tương tác giữa Kubelet và các CNI Plugins trong cụm.
 
 ---
 
 <!-- _class: lab -->
 
-## 🔬 Lab Time: Thực hành với CNI & cnitool
+## 🔬 PHẦN 1: Bắt đầu làm Lab ngay!
 
-Chúng ta sẽ thực hành các bước sau trong phần Lab:
+Chúng ta sẽ thực hiện các Thí nghiệm đột phá trong file `lab-guide.md`:
 
-1. **Chuẩn bị môi trường:** Cài đặt bộ công cụ `cnitool` và tải các CNI plugins nhị phân.
-2. **Gọi CNI ADD thủ công:** Cấu hình file JSON và dùng `cnitool` cấp IP/Network cho một Namespace hoàn toàn độc lập với Kubernetes.
-3. **Thực thi CNI DEL:** Quan sát cách mạng và IP được dọn dẹp khỏi Namespace.
-4. **Vị trí của CNI trong thực tế:** Tìm hiểu các file cấu hình của Flannel trên worker node.
+1.  **Thí nghiệm 1:** SSH vào `worker1`. Liệt kê các file binary CNI vô tri nằm trong `/opt/cni/bin/` (ví dụ: `bridge`, `host-local`, `loopback`).
+2.  **Thí nghiệm 2:** Tự tay viết một hợp đồng cấu hình mạng JSON `mynet` có địa chỉ IPAM tĩnh `10.99.0.0/24`.
+3.  **Thí nghiệm 3:** Khởi tạo Network Namespace `cni-test` và dùng `cnitool add` để ra lệnh cho CNI cắm mạng. Chứng minh namespace có card `eth0` và IP thành công!
+4.  **Thí nghiệm 4:** Dùng `cnitool del` để thu hồi mạng sạch sẽ.
 
-👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
+👉 **Hãy tạm dừng video, mở terminal và bắt đầu gõ lệnh trong tệp `lab-guide.md` nhé!**
 
 ---
 
-## Key Takeaways
+## 🔬 PHẦN 2: Giải mã chiếc "hộp đen" CNI
 
-**CNI lifecycle:**
+Sau bài Lab, bạn đã phát hiện ra sự thật trần trụi về CNI:
+
+*   👉 **CNI không phải là Daemon chạy ngầm!**
+    Nó không lắng nghe trên bất kỳ port nào, cũng không chạy liên tục. Nó đơn giản chỉ là các file thực thi (binary) nằm im lìm trên đĩa cứng của Node.
+*   👉 **CNI là một cái HỢP ĐỒNG (Specification)!**
+    Hợp đồng này mô tả cách Container Runtime (như Kubelet) giao tiếp với CNI Plugins. Khi Pod được sinh ra, Kubelet chỉ cần **gọi trực tiếp** file binary đó, truyền dữ liệu JSON qua cổng vào tiêu chuẩn (`STDIN`) kèm một số biến môi trường, CNI Plugin làm xong việc và in trả lại kết quả cũng dưới dạng JSON!
+
+---
+
+## Giao diện Giao tiếp chuẩn Đặc tả CNI
+
+Khi Kubelet gọi CNI Binary (ví dụ: gọi file `/opt/cni/bin/bridge`), nó truyền thông tin qua 2 kênh:
+
+### 1. Biến môi trường bắt buộc (Environment Variables)
+*   `CNI_COMMAND`: Hành động yêu cầu (`ADD`, `DEL`, `CHECK`, hoặc `VERSION`).
+*   `CNI_CONTAINERID`: ID độc nhất của container.
+*   `CNI_NETNS`: Đường dẫn tới Network Namespace (`/var/run/netns/...`).
+*   `CNI_IFNAME`: Tên card mạng muốn đặt bên trong container (mặc định: `eth0`).
+
+### 2. Cấu hình mạng mô tả qua JSON (`STDIN`)
+*   Truyền cấu hình dạng JSON (như file `.conflist` bạn vừa viết) mô tả loại card mạng (`bridge`), dải IP muốn cấp (`subnet`), gateway,... qua ngõ STDIN.
+
+---
+
+## Kiến trúc tương tác: Kubelet ↔ CNI Plugins
+
+Trong một cụm K8s thực tế, quy trình cắm mạng diễn ra tự động y hệt như những gì bạn vừa làm thủ công bằng `cnitool`:
+
 ```
-Pod create → kubelet → CNI ADD → IP assigned
-Pod delete → kubelet → CNI DEL → IP released
-Periodic   → kubelet → CNI GC  → stale cleanup
+                       Pod mới được khởi tạo
+                                 │
+                         [ Kubelet (OS) ]
+                                 │
+             (1) Gọi binary /opt/cni/bin/bridge (ADD)
+             (Truyền JSON qua STDIN + các biến CNI_*)
+                                 │
+                                 ▼
+                       [ bridge CNI Plugin ]
+            (Tạo veth-pair, chuyển 1 đầu vào Pod Namespace)
+                                 │
+                   (2) Ủy quyền cấp IP (Delegation)
+                                 ▼
+                     [ host-local IPAM Plugin ]
+             (Lấy IP trống từ dải Subnet đã cấu hình)
+                                 │
+                                 ▼
+      (3) Cắm mạng xong -> Trả kết quả JSON thành công cho Kubelet
 ```
 
-**Files quan trọng:**
-```
-/etc/cni/net.d/     ← Config (alphabetical, first wins)
-/opt/cni/bin/       ← Binary plugins
-/var/run/netns/     ← Network namespaces của containers
-```
+---
 
-**Môi trường biến (Env Variables) khi gọi CNI:**
-```bash
-CNI_COMMAND=ADD|DEL|CHECK|VERSION|GC|STATUS
-CNI_NETNS=/var/run/netns/<id>
-CNI_CONTAINERID=<container-id>
-CNI_IFNAME=eth0
-CNI_PATH=/opt/cni/bin   # Nơi chứa các CNI plugin binary
-CNI_ARGS=FOO=BAR        # (Optional) Các tham số extra
-```
+## Key Takeaways — Bài học cốt lõi
 
-> **Phần tiếp theo (Tập 6):** Flannel — CNI đơn giản nhất giải bài toán flat network như thế nào?
+*   **Đơn giản & Độc lập**: Đặc tả CNI được thiết kế cực kỳ tối giản. Bạn có thể sử dụng các CNI binaries này để tự xây dựng mạng cho các container Docker/Podman bình thường mà không cần có Kubernetes.
+*   **Vòng đời ngắn (Stateless)**: CNI plugins hoạt động theo kiểu "gọi xong rồi biến mất" (Stateless). Chúng chỉ khởi chạy, thực hiện cấu hình Linux (tạo card mạng, gán IP, route) trong vài mili-giây rồi tự chấm dứt tiến trình.
+*   **Hành trình tiếp theo**: Bây giờ bạn đã hiểu gốc rễ cách cắm mạng. Trong các tập tiếp theo, chúng ta sẽ bắt đầu mổ xẻ sâu kiến trúc của ba ông lớn CNI trong thế giới Production: **Flannel → Calico → Cilium**!
+
+> 🎉 **Chúc mừng bạn đã hoàn thành Phần 0 — Nền tảng K8s Networking!** Hãy sẵn sàng sang Phần 1 để khai phá CNI đầu tiên: Flannel!

@@ -2,6 +2,35 @@
 
 Tập này cấu hình Route Reflector để giảm BGP sessions từ n*(n-1)/2 xuống ~n.
 
+### Sơ đồ so sánh kiến trúc Peering giữa các Node:
+
+#### 1. Kiến trúc BGP Full Mesh (Mặc định)
+```mermaid
+graph TD
+  subgraph Full_Mesh [Kiến trúc Full Mesh: n*(n-1)/2 Sessions]
+    Node1[Node 1: ControlPlane] <-->|BGP Session 1| Node2[Node 2: Worker1]
+    Node2 <-->|BGP Session 2| Node3[Node 3: Worker2]
+    Node3 <-->|BGP Session 3| Node1
+  end
+```
+
+#### 2. Kiến trúc BGP Route Reflector
+```mermaid
+graph TD
+  subgraph Route_Reflector_Peering [Kiến trúc Route Reflector: ~n Sessions]
+    RR[Node 1: ControlPlane - Route Reflector]
+    Node2[Node 2: Worker1]
+    Node3[Node 3: Worker2]
+    
+    Node2 <-->|BGP Session 1| RR
+    Node3 <-->|BGP Session 2| RR
+    
+    note["Giữa Worker1 và Worker2 KHÔNG tự thiết lập session.<br/>Routes được học chéo thông qua bộ chuyển tiếp RR."]
+    classDef default fill:#151530,stroke:#2a2050,color:#e2e8f0;
+    class RR fill:#2d1b69,stroke:#a78bfa,color:#fff;
+  end
+```
+
 ## 🛠 Yêu cầu chuẩn bị
 - Cụm K8s với Calico từ Tập 18 đang chạy BGP mode.
 - `calicoctl` đã cài.

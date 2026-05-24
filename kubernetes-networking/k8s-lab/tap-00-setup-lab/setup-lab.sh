@@ -1,36 +1,29 @@
 #!/bin/bash
 
-echo "🚀 Kiểm tra công cụ Multipass..."
-if ! command -v multipass &> /dev/null
-then
-    echo "Multipass chưa được cài đặt. Đang tiến hành cài đặt qua Homebrew..."
-    brew install --cask multipass
+# ==========================================
+# Router Script - Setup Lab K8s 3 Nodes
+# Tự động nhận diện CPU (ARM vs AMD/Intel) và gọi script tối ưu tương ứng.
+# Kênh: Network Thực Chiến (youtube.com/@NetworkThucChien)
+# ==========================================
+
+set -e
+
+# Phát hiện kiến trúc CPU của máy host
+ARCH=$(uname -m)
+
+echo "🔍 Đang tự động nhận diện kiến trúc CPU của bạn..."
+sleep 0.5
+
+if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
+    echo "🍏 PHÁT HIỆN CHIP ARM (ARM64 / Apple Silicon)!"
+    echo "🚀 Đang tự động gọi script tối ưu: ./setup-lab-arm.sh"
+    echo "============================================================"
+    chmod +x "$(dirname "$0")/setup-lab-arm.sh"
+    exec "$(dirname "$0")/setup-lab-arm.sh" "$@"
 else
-    echo "✅ Đã cài đặt Multipass."
+    echo "💻 PHÁT HIỆN CHIP AMD/INTEL (x86_64 / AMD64)!"
+    echo "🚀 Đang tự động gọi script tối ưu: ./setup-lab-amd.sh"
+    echo "============================================================"
+    chmod +x "$(dirname "$0")/setup-lab-amd.sh"
+    exec "$(dirname "$0")/setup-lab-amd.sh" "$@"
 fi
-
-echo "🚀 Bắt đầu tạo 3 máy ảo Ubuntu 26.04 bằng Multipass và tự động cài K8s tools..."
-
-# Tạo Control Plane
-echo "[1/3] Đang khởi tạo Control Plane (2 CPUs, 2GB RAM)..."
-multipass launch 26.04 --name controlplane --cpus 2 --memory 2G --disk 10G --cloud-init k8s-cloud-init.yaml
-
-# Tạo Worker 1
-echo "[2/3] Đang khởi tạo Worker 1 (1 CPU, 1.5GB RAM)..."
-multipass launch 26.04 --name worker1 --cpus 1 --memory 1536M --disk 10G --cloud-init k8s-cloud-init.yaml
-
-# Tạo Worker 2
-echo "[3/3] Đang khởi tạo Worker 2 (1 CPU, 1.5GB RAM)..."
-multipass launch 26.04 --name worker2 --cpus 1 --memory 1536M --disk 10G --cloud-init k8s-cloud-init.yaml
-
-echo "⏳ Đang chờ quá trình cài đặt ngầm (cloud-init) hoàn tất trên các node..."
-multipass exec controlplane -- sudo cloud-init status --wait
-multipass exec worker1 -- sudo cloud-init status --wait
-multipass exec worker2 -- sudo cloud-init status --wait
-
-echo "🎉 Hoàn tất! Danh sách các máy ảo:"
-multipass list
-
-echo ""
-echo "Bạn có thể truy cập vào máy ảo bằng lệnh: multipass shell <tên-máy-ảo>"
-echo "Hãy làm theo hướng dẫn trong lab-guide.md để tiếp tục."

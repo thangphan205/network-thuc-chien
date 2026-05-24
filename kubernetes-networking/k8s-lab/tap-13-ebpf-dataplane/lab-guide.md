@@ -128,9 +128,9 @@ multipass shell worker1
 
 2. Verify veth interfaces cũng có BPF programs:
    ```bash
-   # Lấy tên veth của một Pod
-   VETH=$(ip link show | grep cali | head -1 | awk '{print $2}' | tr -d ':')
-   tc filter show dev $VETH ingress
+    # Lấy tên veth của một Pod (loại bỏ hậu tố liên kết @if để tránh lỗi tc)
+    VETH=$(ip link show | grep cali | head -1 | awk '{print $2}' | cut -d'@' -f1 | tr -d ':')
+    tc filter show dev $VETH ingress
    ```
 
 3. Test kết nối Pod-to-Pod vẫn hoạt động:

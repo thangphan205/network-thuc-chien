@@ -35,7 +35,7 @@ style: |
 <br />
 
 # Tập 2 - Pod Network
-## Pause Container, veth pair & Network Namespace hoạt động ra sao
+## Giải phẫu Pause Container, veth pair & Network Namespace
 
 **Phần 0 — Nền tảng K8s Networking** · `#pause` `#veth` `#namespace` `#linux`
 <br />
@@ -44,101 +44,94 @@ style: |
 
 ---
 
-## Mục tiêu tập này
+## 🗺 Lộ trình bài học: Lab First - Slide Second
 
-- Giải thích vai trò của pause container trong mỗi Pod
-- Vẽ được sơ đồ veth pair nối Pod vào Node bridge
-- Dùng `nsenter` inspect network namespace của Pod từ Node
-- Hiểu tại sao restart app container không mất network
+Hôm nay chúng ta sẽ tiếp tục bóc tách "thế giới ngầm" của Pod bằng cách làm trước, lý giải sau:
 
-**Prerequisites:** Cluster từ Tập 1 đang chạy với Flannel
-
----
-
-## Pod là gì thực sự?
-
-Hầu hết tutorial nói "Pod là container" — không đúng hoàn toàn.
-
-**Pod = nhóm container chia sẻ cùng network namespace:**
-
-```
-┌─────────────────────────────────────────────────────┐
-│                      POD                            │
-│  ┌──────────────┐    ┌──────────────┐               │
-│  │ pause/infra  │    │  app (nginx) │               │
-│  │  container   │    │  container   │  Chia sẻ:     │
-│  │              │    │              │  ─ eth0       │
-│  │ Giữ ns sống  │    │ join ns của  │  ─ lo         │
-│  │ khi app crash│    │    pause     │  ─ IP addr    │
-│  └──────────────┘    └──────────────┘  ─ Port space │
-│             Network Namespace                       │
-└─────────────────────────────────────────────────────┘
-```
-
-**Tại sao cần pause container?**
-- Network namespace tồn tại bao lâu? Chừng nào còn ít nhất 1 process giữ nó
-- Nếu chỉ dùng app container: crash app → namespace mất → IP mất
-- Pause container là "anchor" — crash app → pause vẫn sống → namespace còn nguyên
-
----
-
-## veth pair: "Dây cáp ảo" giữa Pod và Node
-
-```
-  Pod namespace              Node namespace (root ns)
-  ┌──────────────┐           ┌────────────────────────┐
-  │    eth0      │           │    veth8a3f2b (no IP)  │
-  │ 10.244.1.5   │◄─────────►│         │              │
-  │  /24         │  virtual  │    cni0 bridge         │
-  └──────────────┘  cable    │    10.244.1.1/24        │
-                             │         │              │
-                             │    eth0 (192.168.64.10)│
-                             └────────────────────────┘
-```
-
-**Nguyên lý veth pair:**
-- Tạo một lúc 2 interface: `vethXXXXX` ↔ `eth0`
-- Mọi packet gửi vào một đầu → tự động ra đầu kia
-- Một đầu trong Pod namespace, một đầu trong root namespace nối vào bridge
+*   **PHẦN 1: Thực hành điều tra (Lab First)**
+    - Lẻn vào Network Namespace của Pod từ OS vật lý bằng `nsenter`.
+    - Lùng sục "sợi dây cáp ảo" `veth` và switch ảo `cni0`.
+    - Giả lập crash ứng dụng để xem mạng K8s bền vững thế nào.
+    
+*   **PHẦN 2: Giải phẫu kiến trúc (Slide Second)**
+    - Sơ đồ hóa Pod thực chất là gì dưới góc nhìn Linux Kernel.
+    - Giải nghĩa vai trò của "kẻ canh giữ mạng" — Pause Container.
+    - Làm rõ nguyên lý sợi dây cáp ảo `veth pair`.
 
 ---
 
 <!-- _class: lab -->
 
-## 🔬 Lab Time: Khám phá Pod Network
+## 🔬 PHẦN 1: Bắt đầu làm Lab ngay!
 
-Chúng ta sẽ thực hành các bước sau trong phần Lab:
+Chúng ta sẽ thực hiện các Thí nghiệm đột phá trong file `lab-guide.md`:
 
-1. **Khởi tạo Pod:** Tạo các Pod thử nghiệm trên các Worker Node khác nhau.
-2. **Khám phá Pause Container:** Tìm PID của pause container và dùng `nsenter` để thâm nhập vào network namespace của Pod.
-3. **Phân tích veth pair:** Quan sát "dây cáp ảo" nối giữa Pod và `cni0` bridge trên Node.
-4. **Kiểm chứng tính bền vững:** Giả lập crash ứng dụng để chứng minh Pause container giữ cho IP của Pod không bị mất.
+1.  **Thí nghiệm 1 & 2:** Tìm PID của pause container và dùng `nsenter -t <PID> -n ip addr` để nhìn trộm card mạng của Pod từ máy Host.
+2.  **Thí nghiệm 3:** Truy tìm sợi cáp mạng ảo `veth` và xem cách nó cắm vào bridge `cni0`.
+3.  **Thí nghiệm 4:** Dùng `crictl stop` để kill chết container ứng dụng, chứng kiến container hồi sinh nhưng IP mạng vẫn giữ nguyên tuyệt đối.
 
-👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
+👉 **Hãy tạm dừng video, mở terminal và bắt đầu gõ lệnh trong tệp `lab-guide.md` nhé!**
 
 ---
 
-## Key Takeaways
+## 🔬 PHẦN 2: Đúc kết từ Lab — Hiện tượng kỳ bí
 
-| Khái niệm | Vai trò |
-| :--- | :--- |
-| **Pause container** | Anchor giữ network namespace sống khi app crash |
-| **veth pair** | "Dây cáp ảo" — 1 đầu trong Pod ns, 1 đầu ở root ns |
-| **cni0 bridge** | Switch ảo trên Node — kết nối tất cả Pods trên node |
-| **`nsenter -n`** | Công cụ debug — vào ns Pod mà không cần `exec` |
-| **Route `/16` trong Pod** | Anchor route CNI cài để bảo vệ traffic K8s khỏi bị default route đè |
+Sau bài Lab vừa rồi, chúng ta gặp 2 hiện tượng cực kỳ thú vị:
 
-**Lệnh debug hay dùng:**
-```bash
-# Từ Node: xem mạng bên trong Pod
-nsenter -t <pause_pid> -n ip addr
-nsenter -t <pause_pid> -n ss -tlnp
+1.  **Hiện tượng 1**: Địa chỉ IP mạng của Pod thực chất lại hiển thị dưới PID của một tiến trình có tên là `/pause` chứ không phải PID của container ứng dụng (Nginx/Netshoot).
+2.  **Hiện tượng 2**: Khi chúng ta cố tình "hạ sát" container ứng dụng bằng lệnh `crictl stop`, Kubernetes tự khởi động lại container mới, cột RESTARTS tăng lên 1, nhưng địa chỉ IP của Pod hoàn toàn **không bị thay đổi**!
 
-# Xem tất cả veth trên node
-ip link show type veth
+👉 *Tại sao lại như vậy? Chúng ta hãy cùng bóc tách lý thuyết.*
 
-# Xem bridge ports
-ip link show master cni0
+---
+
+## Sơ đồ "Thế giới ngầm" của một Pod
+
+Hầu hết các tài liệu cơ bản nói: *"Pod là container"*. Điều này **chưa chính xác**.
+Thực chất, **Pod = Nhóm các container chia sẻ cùng một Network Namespace**:
+
 ```
+┌────────────────────────────────────────────────────────────────┐
+│                           POD                                  │
+│  ┌─────────────────────────┐      ┌─────────────────────────┐  │
+│  │   PAUSE CONTAINER       │      │   APP CONTAINER         │  │
+│  │   (Infra Container)     │      │   (Nginx / Netshoot)    │  │
+│  │                         │      │                         │  │
+│  │  - Giữ Namespace sống   │      │  - Join vào Namespace   │  │
+│  │  - Làm mỏ neo mạng      │      │    của Pause Container  │  │
+│  └─────────────────────────┘      └─────────────────────────┘  │
+│                                                                │
+│            Network Namespace (eth0: 10.244.1.5, lo)            │
+└────────────────────────────────────────────────────────────────┘
+```
+- **Pause container** được sinh ra đầu tiên để tạo ra Network Namespace và "neo" nó lại.
+- Nếu App container bị crash và biến mất, Network Namespace vẫn tồn tại nhờ Pause container vẫn sống. Khi App container khởi động lại, nó chỉ cần join lại namespace đó → **IP Pod được giữ vững!**
 
-> **Tập tiếp theo:** `cni0` bridge → iptables → kube-proxy. Packet đến Service VIP đi đường nào?
+---
+
+## veth pair: Sợi cáp ảo kết nối Pod ra ngoài Host
+
+Làm thế nào gói tin đi ra khỏi Network Namespace bị cô lập của Pod để lên OS vật lý?
+CNI sử dụng cơ chế **`veth pair` (Virtual Ethernet Pair)** giống như một sợi dây cáp ảo:
+
+```
+    Pod Namespace (Cô lập)       │      Root Namespace (OS vật lý)
+  ┌────────────────────────┐     │     ┌──────────────────────────┐
+  │         eth0           │     │     │      veth8a3f2b (No IP)  │
+  │      10.244.1.5        │◄────┼────►│            │             │
+  │         /24            │     │     │      cni0 bridge         │
+  └────────────────────────┘     │     │      10.244.1.1/24       │
+                                 │     └──────────────────────────┘
+```
+*   `veth pair` luôn được tạo thành cặp: 1 đầu cắm vào Pod (đặt tên là `eth0`), 1 đầu nằm ngoài host (đặt tên ngẫu nhiên như `vethXXXX`).
+*   Mọi gói tin chui vào đầu `eth0` trong Pod sẽ tự động chột ra đầu `vethXXXX` ngoài host, và được chuyển tiếp trực tiếp vào switch ảo `cni0`.
+
+---
+
+## Key Takeaways — Bài học cốt lõi
+
+*   **Pause container là anh hùng thầm lặng**: Nhẹ (~300KB), không làm gì ngoài việc ngủ (`sleep infinity`), nhưng chịu trách nhiệm giữ sinh mệnh mạng cho Pod.
+*   **veth pair và bridge**: Cấu trúc mạng K8s cục bộ hoạt động y hệt cách bạn cắm dây mạng LAN từ máy tính vào một Switch vật lý trong nhà.
+*   **`nsenter` là vũ khí debug tối thượng**: Giúp kỹ sư hệ thống bỏ qua lớp bảo mật K8s để trực tiếp nhảy vào Linux Kernel kiểm tra cấu hình mạng.
+
+> **Tập tiếp theo:** IP của Pod rất dễ thay đổi khi Pod bị xóa hẳn. Làm thế nào để tạo một địa chỉ IP ảo cố định? Cùng tìm hiểu Service & kube-proxy!

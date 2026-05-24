@@ -553,12 +553,15 @@ Outer Ethernet | Outer IP | UDP 8472 | VXLAN Header | Inner Ethernet | Inner IP 
 
 **Hệ quả:**
 - MTU 1500 → payload thực tế chỉ còn 1450 bytes
-- Mọi TCP connection cần MSS clamping để tránh fragmentation
+- TCP MSS tự động giảm xuống 1410 nhờ MTU 1450 để tránh fragmentation
 
-### Lab: Bắt VXLAN bằng tcpdump
+### Lab: VTEP & Bắt VXLAN bằng tcpdump
 
 ```bash
-# Bắt traffic VXLAN trên interface vật lý (cổng 8472)
+# 1. Verify cấu hình VTEP (VNI = 1, port 8472, local IP)
+ip -d link show flannel.1
+
+# 2. Bắt traffic VXLAN trên interface vật lý (cổng 8472)
 tcpdump -i eth0 -n udp port 8472 -v
 
 # Phân tích: thấy outer IP header + inner IP header
