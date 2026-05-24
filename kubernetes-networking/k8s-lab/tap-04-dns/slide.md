@@ -34,8 +34,8 @@ style: |
 <br />
 <br />
 
-# Tập 4 - Thuế "ndots:5" và Tối ưu DNS
-## Vạch trần lãng phí băng thông & 3 kỹ thuật trốn thuế DNS K8s
+# Tập 4 - DNS
+## Vạch trần lãng phí băng thông & 3 kỹ thuật tối ưu DNS K8s
 
 **Phần 0 — Nền tảng K8s Networking** · `#DNS` `#CoreDNS` `#ndots` `#Headless`
 <br />
@@ -68,7 +68,7 @@ Hôm nay chúng ta sẽ phơi bày một "sự lãng phí ngầm" trong mạng K
 Chúng ta sẽ thực hiện các Thí nghiệm đột phá trong file `lab-guide.md`:
 
 1.  **Thí nghiệm 1:** Chạy `tcpdump` nghe lén UDP port 53 trên `pod-a`. Chạy curl tới `httpbin.org`. Chứng kiến cảnh 1 lần curl gửi ra tận **4 queries DNS** rác!
-2.  **Thí nghiệm 2:** Thử nghiệm trốn thuế siêu tốc bằng cách thêm dấu chấm cuối tên miền: `curl httpbin.org.` và chứng kiến số lượng query giảm về **1**.
+2.  **Thí nghiệm 2:** Tối ưu DNS bằng FQDN — thêm dấu chấm cuối tên miền: `curl httpbin.org.` và chứng kiến số lượng query giảm về **1**.
 3.  **Thí nghiệm 3:** Ép cấu hình `ndots:2` bằng cách khai báo `dnsConfig` trong YAML của Pod.
 4.  **Thí nghiệm 4:** Tạo Headless Service (`clusterIP: None`) và chạy `nslookup` để thấy DNS trả về trực tiếp danh sách IP thật của Pod.
 
@@ -95,7 +95,7 @@ options ndots:5
 
 ---
 
-## 3 Cách "Trốn Thuế" DNS trong Kubernetes
+## 3 Cách Tối Ưu DNS trong Kubernetes
 
 ### Cách 1: Sử dụng FQDN (Dấu chấm thần thánh ở cuối)
 Gọi tên miền có dấu chấm cuối: `httpbin.org.`
@@ -104,8 +104,8 @@ Dấu chấm này báo với hệ điều hành: *"Đây là tên miền tuyệt
 ### Cách 2: Cấu hình giảm `ndots` qua `dnsConfig`
 Cài đặt `ndots:2` cho Pod. Bất kỳ tên miền nào có từ 2 dấu chấm trở lên (ví dụ: `api.github.com`) sẽ lập tức được giải quyết trực tiếp mà không cần đi qua danh sách tìm kiếm nội bộ.
 
-### Cách 3: Headless Service cho Database/StatefulSet
-Khi gọi các dịch vụ nội bộ có nhiều bản sao, sử dụng Headless Service (`clusterIP: None`). CoreDNS trả về trực tiếp danh sách IP Pod, bỏ qua kube-proxy giúp giảm tải thời gian định tuyến mạng.
+### Cách 3: Headless Service — Địa chỉ thẳng đến Pod (không qua kube-proxy)
+Đây là kỹ thuật khác với ndots: thay vì giảm số DNS queries, Headless Service (`clusterIP: None`) thay đổi *nội dung* trả về. CoreDNS trả về trực tiếp IP thật của từng Pod thay vì 1 ClusterIP ảo — client kết nối thẳng, bỏ qua kube-proxy hoàn toàn. Dùng cho StatefulSet (DB, Kafka, etcd) cần kết nối đến replica cụ thể.
 
 ---
 
@@ -114,6 +114,6 @@ Khi gọi các dịch vụ nội bộ có nhiều bản sao, sử dụng Headles
 *   **Sử dụng linh hoạt**:
     - Khi gọi dịch vụ **nội bộ**: Hãy dùng tên ngắn (ví dụ: `db`). Quy tắc `ndots:5` sẽ phát huy sức mạnh giúp tự điền đuôi `db.default.svc.cluster.local`.
     - Khi gọi dịch vụ **bên ngoài**: Bắt buộc phải thêm **dấu chấm ở cuối**, hoặc phải cấu hình giảm `ndots` trên file YAML của Deployment!
-*   **Hiệu năng Production**: Trốn thuế DNS thành công có thể giúp cụm K8s lớn giảm từ 50% - 80% tải truy cập vào CoreDNS, ngăn chặn thảm họa nghẽn mạng do sập phân giải tên miền.
+*   **Hiệu năng Production**: Tối ưu DNS đúng cách có thể giúp cụm K8s lớn giảm từ 50% - 80% tải truy cập vào CoreDNS, ngăn chặn thảm họa nghẽn mạng do sập phân giải tên miền.
 
 > **Tập tiếp theo:** Kubelet gọi CNI để cắm mạng như thế nào? CNI thực chất là gì? Hãy tự tay đóng vai Kubelet cắm mạng thủ công bằng cnitool!
