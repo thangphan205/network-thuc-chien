@@ -102,7 +102,21 @@ Khi iptables thực hiện DNAT, nó lưu lại "nhật ký" ở trong module `c
    ```bash
    sudo conntrack -L | grep 10.96.123.45
    ```
-   *Nhận xét:* Bạn sẽ thấy một bản ghi ESTABLISHED, trong đó `src=10.244.1.x` (IP của pod-a), và `dst=10.96.123.45` đã được chuyển ngầm (UNREPLIED dst) thành `10.244.y.y` (IP thực của 1 trong 3 Pod Nginx).
+
+   *Nhận xét:* Bạn sẽ thấy một bản ghi kết nối (ở trạng thái `ESTABLISHED` hoặc `TIME_WAIT` nếu đã đóng), trông tương tự như thế này:
+   ```text
+   tcp      6 118 TIME_WAIT src=10.244.1.7 dst=10.96.123.45 sport=35350 dport=80 src=10.244.1.6 dst=10.244.1.7 sport=80 dport=35350 [ASSURED] mark=0 use=1
+   ```
+
+   > **🔍 Mổ xẻ chi tiết bản ghi Conntrack:**
+   > * **`tcp 6`**: Giao thức TCP (mã protocol là 6).
+   > * **`118 TIME_WAIT`**: Trạng thái kết nối TCP (đang ở bước đóng kết nối một cách an toàn) và số giây TTL còn lại trước khi bản ghi bị xóa khỏi cache.
+   > * **Chiều đi (Original tuple)**: `src=10.244.1.7 dst=10.96.123.45 sport=35350 dport=80`
+   >   - Gói tin xuất phát từ `pod-a` (`src=10.244.1.7`) đi tới ClusterIP ảo (`dst=10.96.123.45`) cổng `80`.
+   > * **Chiều về (Reply tuple)**: `src=10.244.1.6 dst=10.244.1.7 sport=80 dport=35350`
+   >   - **Đây chính là bí mật:** Gói tin phản hồi thực tế được gửi về từ **IP thật của Pod Nginx** (`src=10.244.1.6`), chứ không phải ClusterIP!
+   >   - Khi gói tin đi qua Node, `iptables` đã thực hiện **DNAT** đổi IP đích ảo thành IP thật của Pod. `conntrack` ghi nhớ điều này để khi gói tin quay về từ Pod thật (`src=10.244.1.6`), kernel sẽ **tự động dịch ngược lại** (SNAT) thành ClusterIP để Client (`pod-a`) không phát giác ra sự thay đổi.
+   > * **`[ASSURED]`**: Đánh dấu kết nối đã truyền nhận thành công hai chiều và không bị tự động xóa khi bảng NAT cache đầy.
 
 ---
 
