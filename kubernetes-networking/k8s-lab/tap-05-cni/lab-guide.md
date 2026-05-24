@@ -51,7 +51,10 @@ Khi Kubelet gọi CNI, nó dùng code Golang bên trong mã nguồn K8s. Vì ch�
            "subnet": "10.99.0.0/24",
            "rangeStart": "10.99.0.10",
            "rangeEnd": "10.99.0.50",
-           "gateway": "10.99.0.1"
+           "gateway": "10.99.0.1",
+           "routes": [
+             { "dst": "0.0.0.0/0" }
+           ]
          }
        },
        { "type": "loopback" }

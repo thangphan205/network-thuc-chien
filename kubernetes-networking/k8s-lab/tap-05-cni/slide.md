@@ -40,7 +40,7 @@ style: |
 **Phần 0 — Nền tảng K8s Networking** · `#CNI` `#CNISpec` `#cnitool` `#linux-net`
 <br />
 
-![height:200px](https://upload.wikimedia.org/wikipedia/commons/3/39/Kubernetes_logo_without_workmark.svg)
+![height:200px](https://www.cni.dev/img/logos/cni-horizontal-color.png)
 
 ---
 
