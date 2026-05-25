@@ -60,31 +60,129 @@ Câu trả lời là **Không**, nhờ vào cơ chế tự động đàm phán *
 
 ---
 
-## 🔬 Thí nghiệm 1: Verify cấu hình VTEP & Bắt VXLAN traffic với tcpdump
+## 🔬 Thí nghiệm 1: Bắt VXLAN traffic với tcpdump — Xem tận mắt 2 tầng IP
 
-Thực hiện các bước bắt gói tin trên `worker1` bằng lệnh:
+**Mở 3 terminal song song.**
+
+**Terminal 1 — SSH vào `worker1`, bắt gói VXLAN:**
 ```bash
+multipass shell worker1
 sudo tcpdump -i eth0 -n udp port 8472 -v
 ```
-Và kích hoạt ping từ `pod-a` sang `pod-b` ở `controlplane`. Bạn sẽ thấy rõ 2 tầng IP (Inner và Outer) hiển thị trong log như tài liệu gốc.
+*Để terminal chạy — đang chờ gói tin.*
+
+**Terminal 2 — SSH vào `worker1`, xem VNI của VTEP để đối chiếu:**
+```bash
+multipass shell worker1
+ip -d link show flannel.1 | grep vxlan
+```
+*Ghi lại VNI (thường là `id 1`).*
+
+**Terminal 3 — SSH vào `controlplane`, kích hoạt traffic:**
+```bash
+multipass shell controlplane
+POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
+echo "IP pod-b: $POD_B_IP"
+kubectl exec pod-a -- ping -c 5 $POD_B_IP
+```
+
+**Quan sát Terminal 1 — tcpdump sẽ in 2 dòng cho mỗi gói:**
+```
+IP 192.168.64.11.xxxxx > 192.168.64.12.8472: VXLAN, flags [I] (0x08), vni 1
+IP 10.244.1.X > 10.244.2.Y: ICMP echo request, id X, seq 1, length 64
+```
+
+*Giải mã:*
+- Dòng 1: **Outer frame** — địa chỉ vật lý Node nguồn → Node đích, cổng 8472, VNI = 1
+- Dòng 2: **Inner packet** — địa chỉ Pod thực sự bên trong tunnel
+- VNI `1` khớp với output `ip -d link show flannel.1` ở Terminal 2
 
 ---
 
 ## 🔬 Thí nghiệm 2: Chứng minh 50 bytes overhead bằng length field
 
-Thực hiện theo các bước trong file lab gốc để đo chính xác chiều dài Outer IP packet (`length 134`) so với Inner IP packet (`length 84`), từ đó rút ra hiệu số đúng `50 bytes`.
+**Terminal worker1 — Bắt gói lọc theo dòng length:**
+```bash
+sudo tcpdump -i eth0 -n udp port 8472 -v 2>/dev/null | grep "length"
+```
+
+**Terminal controlplane — Gửi ping payload cố định 64 bytes:**
+```bash
+POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
+kubectl exec pod-a -- ping -c 3 -s 64 $POD_B_IP
+```
+
+**Đọc hiệu số từ tcpdump output:**
+
+| Layer | Tính | Kết quả |
+|-------|------|---------|
+| ICMP payload | 64 bytes | |
+| + ICMP header | + 8 bytes | = 72 bytes |
+| + Inner IP header | + 20 bytes | = **92 bytes** (inner packet) |
+| + VXLAN overhead (20+8+8+14) | + 50 bytes | = **142 bytes** (outer packet) |
+
+tcpdump sẽ in `length 142` ở outer và `length 92` ở inner. Hiệu số **142 − 92 = 50 bytes** — đúng lý thuyết.
 
 ---
 
 ## 🔬 Thí nghiệm 3: Đo MTU thực tế bằng DF bit (Don't Fragment)
 
-Chạy thử nghiệm ping với size tối đa `-s 1422` và cờ cấm phân mảnh `-M do` để thấy rõ hệ điều hành chặn gói tin ngay lập tức khi kích thước vượt quá giới hạn MTU `1450`.
+**Trên `controlplane` — Kiểm tra MTU interface eth0 của pod-a:**
+```bash
+kubectl exec pod-a -- ip link show eth0
+```
+*Kết quả:* `mtu 1450` — Pod gửi tối đa 1450 bytes.
+
+**Test 1 — Payload 1422 bytes (tổng = 1422 + 20 IP + 8 ICMP = 1450 bytes, vừa đúng giới hạn):**
+```bash
+POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
+kubectl exec pod-a -- ping -s 1422 -M do -c 2 $POD_B_IP
+```
+*Kết quả mong đợi:* Ping thành công.
+
+**Test 2 — Payload 1423 bytes (tổng = 1451, vượt 1 byte):**
+```bash
+kubectl exec pod-a -- ping -s 1423 -M do -c 2 $POD_B_IP
+```
+*Kết quả mong đợi:* Lỗi tức thì tại nguồn:
+```
+ping: local error: message too long, mtu=1450
+```
+
+*Nhận xét:* Cờ `DO` (Don't Fragment) ép kernel từ chối gói tại nguồn thay vì phân mảnh. Khi MTU host thực tế thấp hơn 1500 nhưng cờ DF không được đặt, kernel sẽ gửi packet và router trung gian drop âm thầm — đó là nguyên nhân MTU Black Hole ở Troubleshooting phía dưới.
 
 ---
 
-## 🔬 Thí nghiệm 4: Benchmark throughput ở VXLAN mode với iperf3
+## 🔬 Thí nghiệm 4: Benchmark throughput VXLAN với iperf3
 
-Sử dụng công cụ `iperf3` để chạy đo đạc throughput baseline ở chế độ mạng Overlay VXLAN giữa 2 Node vật lý ảo. Ghi lại kết quả để đối chiếu ở Tập 8.
+**Trên `controlplane` — Deploy iperf3 server trên worker2:**
+```bash
+kubectl run iperf3-server \
+  --image=networkstatic/iperf3 \
+  --overrides='{"spec":{"nodeName":"worker2"}}' \
+  -- -s
+kubectl wait --for=condition=Ready pod/iperf3-server --timeout=60s
+IPERF_IP=$(kubectl get pod iperf3-server -o jsonpath='{.status.podIP}')
+echo "iperf3 server IP: $IPERF_IP"
+```
+
+**Chạy client từ worker1 (30 giây):**
+```bash
+kubectl run iperf3-client \
+  --image=networkstatic/iperf3 \
+  --restart=Never \
+  --overrides='{"spec":{"nodeName":"worker1"}}' \
+  -- -c $IPERF_IP -t 30 -i 5
+kubectl wait --for=condition=completed pod/iperf3-client --timeout=90s
+kubectl logs iperf3-client
+```
+
+*Ghi lại throughput (Gbits/sec) — đây là baseline VXLAN để so sánh với host-gw ở Tập 8.*
+
+**Dọn dẹp:**
+```bash
+kubectl delete pod iperf3-server iperf3-client
+```
 
 ---
 
@@ -120,36 +218,6 @@ Sử dụng công cụ `iperf3` để chạy đo đạc throughput baseline ở 
      kubectl rollout restart ds kube-flannel-ds -n kube-flannel
      ```
   5. **⚠️ CỰC KỲ QUAN TRỌNG:** Bạn phải xóa và khởi động lại toàn bộ các Pod ứng dụng hiện tại của mình để chúng nhận diện và tự áp dụng MTU mới (`1350`) từ CNI bridge.
-
-### 🔍 Sự cố 2: Lỗi Kernel thiếu driver/module `vxlan` phục vụ Overlay
-* **Triệu chứng**: Khi cài đặt Flannel xong, các node không bao giờ chuyển sang trạng thái `Ready`. Xem log của Pod `kube-flannel` báo lỗi:
-  ```
-  Error introducing route: vxlan: module not found
-  ```
-  Hoặc:
-  ```
-  Failed to create flannel.1 interface: link type vxlan not supported
-  ```
-* **Nguyên nhân**: Hệ điều hành cài trên Node sử dụng một phiên bản Linux Kernel tối giản (chẳng hạn như Alpine Linux, hoặc các bản kernel tùy biến chuyên biệt cho bảo mật) đã bị lược bỏ driver `vxlan.ko` nằm trong nhân Linux. Do đó, hệ thống không thể khởi tạo interface ảo loại `vxlan`.
-* **Cách khắc phục**:
-  1. SSH vào Node bị lỗi, kiểm tra xem module `vxlan` đã được nạp hay chưa:
-     ```bash
-     lsmod | grep vxlan
-     ```
-  2. Nếu chưa có, hãy thử nạp thủ công bằng lệnh:
-     ```bash
-     sudo modprobe vxlan
-     ```
-     Nếu hệ thống báo lỗi không tìm thấy module, bạn cần cài đặt thêm package chứa các driver mạng rộng của kernel:
-     - Trên **Ubuntu/Debian**:
-       ```bash
-       sudo apt-get update && sudo apt-get install -y linux-modules-extra-$(uname -r)
-       sudo modprobe vxlan
-       ```
-  3. Đảm bảo module tự động nạp khi khởi động lại VM:
-     ```bash
-     echo "vxlan" | sudo tee -a /etc/modules
-     ```
 
 ---
 

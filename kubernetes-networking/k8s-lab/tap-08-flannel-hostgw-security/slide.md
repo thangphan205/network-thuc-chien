@@ -34,9 +34,9 @@ style: |
 <!-- _class: ep -->
 
 # Tập 8
-## Tối ưu Định tuyến host-gw & Giới hạn Security của Flannel CNI
+## Tối ưu Định tuyến host-gw & Khắc phục Sự cố trên Flannel CNI
 
-**Phần 1 — Flannel** · `#host-gw` `#underlay` `#ZeroSecurity` `#NetworkPolicy` `#Canal`
+**Phần 1 — Flannel** · `#host-gw` `#underlay` `#routing` `#troubleshooting`
 
 ---
 
@@ -44,8 +44,7 @@ style: |
 
 - Tìm hiểu cơ chế định tuyến trực tiếp **host-gw** (Underlay) thay thế VXLAN (Overlay).
 - Chuyển đổi backend, so sánh chi tiết hiệu năng và điều kiện L2 boundary.
-- Đóng vai Attacker scan port chéo node (Lateral Movement), chứng minh Flannel phớt lờ hoàn toàn `NetworkPolicy`.
-- Nghiên cứu **Canal CNI** (Flannel + Calico Policy-only) như một giải pháp khẩn cấp để vá bảo mật.
+- Phân tích và thực hành các kịch bản khắc phục sự cố định tuyến trực tiếp nâng cao (L3 Boundary drop, interface cũ tồn đọng, Forwarding policy block).
 
 ---
 
@@ -89,74 +88,15 @@ Routing table trên worker1:
 
 ---
 
-<!-- _class: warn -->
-
-## Flannel: Zero Security by Design
-
-Mặc dù host-gw giúp mạng chạy cực nhanh, Flannel vẫn mang một lỗ hổng bảo mật chí mạng: **Không có cơ chế cô lập**.
-
-```
-Cluster Flannel — mọi Pod đều có thể scan và kết nối tới Pod khác:
-
-frontend     (10.244.1.5)  ──────────────► database    (10.244.2.10)
-hacker-pod   (10.244.1.9)  ──────────────► database    (10.244.2.10) ✅ OPEN!
-hacker-pod   (10.244.1.9)  ──────────────► payment-api (10.244.3.5)  ✅ OPEN!
-```
-
-**Nguyên nhân:**
-- Flannel chỉ làm nhiệm vụ định tuyến (Connectivity).
-- Flannel **không** lắng nghe (watch) tài nguyên `NetworkPolicy` từ API server.
-- Do đó, Flannel không hề cài đặt các luật lọc gói tin (`iptables` / `ipvs` / `eBPF`) trên Node.
-
----
-
-<!-- _class: warn -->
-
-## Nguy hại thầm lặng: NetworkPolicy bị bỏ qua
-
-```bash
-# Học viên nghĩ rằng hệ thống đã được bảo mật...
-kubectl apply -f block-all-networkpolicy.yaml
-
-kubectl get networkpolicy
-# NAME             POD-SELECTOR   AGE
-# block-everything <none> (All)   5s  ← K8s API chấp nhận thành công!
-```
-
-> **Nguy hiểm lớn nhất:** K8s chấp nhận tạo NetworkPolicy mà không báo lỗi, khiến người vận hành có cảm giác an toàn giả tạo (**False Sense of Security**). Thực tế dưới Kernel, các Pod vẫn tự do liên lạc chéo Namespace mà không bị chặn.
-
----
-
-## Giải pháp: Tích hợp Canal CNI (Calico Policy-Only)
-
-Khi hạ tầng đang chạy Flannel nhưng bộ phận kiểm toán yêu cầu phải kích hoạt `NetworkPolicy` khẩn cấp:
-
-```
-                  +-----------------------------------+
-                  |             CANAL CNI             |
-                  +-----------------+-----------------+
-                                    |
-            ┌───────────────────────┴───────────────────────┐
-            ▼                                               ▼
-     Flannel Backend                                 Calico Engine
-     (Phụ trách Định tuyến)                          (Phụ trách Bảo mật)
-     • Giữ nguyên IP Pod cũ.                         • Chạy calico-node daemon.
-     • Giữ nguyên cni0/flannel.1.                    • Watch NetworkPolicy từ API.
-     • Không lo downtime IP.                         • Cài iptables rules để filter.
-```
-
----
-
 <!-- _class: lab -->
 
-## 🔬 Lab Time: Định tuyến host-gw & Giới hạn Security
+## 🔬 Lab Time: Định tuyến host-gw & Troubleshooting
 
 Chúng ta sẽ thực hành các kịch bản sau trong file `lab-guide.md`:
 
 1. **Switch VXLAN $\rightarrow$ host-gw:** Thay đổi config, xóa `flannel.1` cũ và đo đạc iperf3 benchmark.
-2. **Đóng vai Attacker:** Thực hiện Lateral Movement scan port chéo node.
-3. **Chứng minh Policy Vô hiệu:** Apply NetworkPolicy "chặn tất cả" và chứng minh Flannel hoàn toàn bất lực qua `iptables-save`.
-4. **Giả lập sự cố nâng cao:** Chéo subnet router L3 (L3 Boundary drop), tường lửa Host chặn Forwarding, và nâng cấp Canal khẩn cấp.
+2. **Troubleshooting 1 (L3 Boundary Drop):** Mô phỏng & xử lý lỗi Nodes chéo Subnet L3.
+3. **Troubleshooting 2 (Host Firewall):** Xử lý sự cố chuỗi FORWARD chain policy DROP chặn traffic.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
@@ -165,7 +105,7 @@ Chúng ta sẽ thực hành các kịch bản sau trong file `lab-guide.md`:
 ## Key Takeaways
 
 - **host-gw** là giải pháp định tuyến trực tiếp L3, tăng tốc độ mạng lên 10-15%, đưa MTU về 1500 nhưng bắt buộc phải cùng L2 segment.
-- **Flannel = Zero Security**: K8s chấp nhận NetworkPolicy nhưng Flannel bỏ qua hoàn toàn, tạo nên lỗ hổng Lateral Movement cực kỳ nguy hiểm.
-- **Canal CNI** là một phương án nâng cấp lai (Hybrid) tuyệt vời để giữ nguyên IP Pod của Flannel nhưng mang lại bảo mật của Calico.
+- **Troubleshooting thực chiến**: Hiểu rõ sự tương tác giữa Linux routing table, ARP cache, và Host firewall đối với CNI định tuyến trực tiếp.
+- **Tầm quan trọng của Bảo mật**: Sự bất lực của Flannel trước NetworkPolicy sẽ là động lực để chúng ta học giải pháp Calico CNI.
 
-> **Chương tiếp theo (Tập 9):** Calico CNI — Chuyển đổi và Giải mã Kiến trúc bảo mật chéo node thực thụ.
+> **Chương tiếp theo (Tập 9):** Calico CNI — Cài đặt từ đầu, giải quyết triệt để bài toán Lateral Movement và thực thi NetworkPolicy thực sự.

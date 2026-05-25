@@ -1,6 +1,6 @@
-# Lab Tập 8: Định tuyến host-gw Mode & Giới hạn Security của Flannel CNI
+# Lab Tập 8: Định tuyến host-gw Mode trên Flannel CNI & Khắc phục Sự cố
 
-Trong bài lab này, chúng ta sẽ bắt đầu bằng việc chuyển đổi Flannel từ VXLAN (Overlay) sang host-gw (Direct Routing) để đo đạc và so sánh trực quan hiệu năng truyền dữ liệu. Tiếp theo, chúng ta sẽ đóng vai Attacker thực hiện các kỹ thuật di chuyển ngang (Lateral Movement) để chứng minh lỗ hổng bảo mật chí mạng của Flannel: phớt lờ hoàn toàn `NetworkPolicy`. Cuối cùng, chúng ta sẽ thực hành các kịch bản sự cố nâng cao và tự tay nâng cấp hệ thống lên **Canal CNI** để vá lỗ hổng bảo mật.
+Trong bài lab này, chúng ta sẽ bắt đầu bằng việc chuyển đổi Flannel từ VXLAN (Overlay) sang host-gw (Direct Routing) để đo đạc và so sánh trực quan hiệu năng truyền dữ liệu. Tiếp theo, chúng ta sẽ thực hành các kịch bản lỗi định tuyến nâng cao và tiến hành khắc phục sự cố trực tiếp trên các Node (Sự cố L3 Boundary Drop, card ảo flannel.1 cũ tồn đọng, và tường lửa Host chặn forwarding).
 
 ---
 
@@ -116,97 +116,7 @@ multipass shell worker1
 
 ---
 
-## 🚀 Thí nghiệm 4: Setup mục tiêu và Demo di chuyển ngang (Lateral Movement)
-
-**Trên `controlplane`:**
-
-1. Deploy pod giả lập database (lắng nghe TCP port 5432) và payment-api (nginx port 80) chéo node trên `worker2`:
-   ```bash
-   kubectl apply -f - <<'EOF'
-   apiVersion: v1
-   kind: Pod
-   metadata:
-     name: database
-     labels:
-       app: database
-   spec:
-     nodeName: worker2
-     containers:
-     - name: db
-       image: nicolaka/netshoot
-       command: ["nc", "-lk", "-p", "5432"]
-   ---
-   apiVersion: v1
-   kind: Pod
-   metadata:
-     name: payment-api
-     labels:
-       app: payment
-   spec:
-     nodeName: worker2
-     containers:
-     - name: api
-       image: nginx
-       ports:
-       - containerPort: 80
-   EOF
-   kubectl wait --for=condition=Ready pod/database pod/payment-api --timeout=90s
-   ```
-
-2. Ghi lại IP của các targets:
-   ```bash
-   DB_IP=$(kubectl get pod database -o jsonpath='{.status.podIP}')
-   PAYMENT_IP=$(kubectl get pod payment-api -o jsonpath='{.status.podIP}')
-   echo "Database IP: $DB_IP"
-   echo "Payment API IP: $PAYMENT_IP"
-   ```
-
-3. Đóng vai Attacker scan port chéo node từ `pod-a` (trên `worker1`):
-   ```bash
-   kubectl exec pod-a -- bash -c "
-     echo '=== Lateral Movement Demo ==='
-     echo '[1] Scan Database (port 5432):'
-     nc -zv $DB_IP 5432 2>&1
-     echo '[2] Curl Payment API (port 80):'
-     curl -s -o /dev/null -w '%{http_code}\n' http://$PAYMENT_IP
-   "
-   ```
-   *Kết quả:* Attacker kết nối thành công 100% tới mọi mục tiêu — Flannel không chặn gì cả.
-
----
-
-## 🚀 Thí nghiệm 5: Áp dụng NetworkPolicy — Chứng minh nó vô dụng
-
-1. Thiết lập một NetworkPolicy "deny all" (chặn toàn bộ traffic vào/ra trong namespace):
-   ```bash
-   kubectl apply -f - <<'EOF'
-   apiVersion: networking.k8s.io/v1
-   kind: NetworkPolicy
-   metadata:
-     name: block-everything
-   spec:
-     podSelector: {}
-     policyTypes:
-     - Ingress
-     - Egress
-   EOF
-   ```
-
-2. Đứng từ `pod-a` quét lại Database IP:
-   ```bash
-   kubectl exec pod-a -- nc -zv $DB_IP 5432 2>&1
-   ```
-   *Kết quả bất ngờ:* Kết nối **VẪN THÀNH CÔNG**! Mặc dù NetworkPolicy được K8s chấp nhận, nó hoàn toàn bị phớt lờ bởi Flannel.
-
-3. Dọn dẹp targets:
-   ```bash
-   kubectl delete pod database payment-api
-   kubectl delete networkpolicy block-everything
-   ```
-
----
-
-## 💥 Thực hành Khắc phục Sự cố & Nâng cấp Bảo mật (Troubleshooting)
+## 💥 Thực hành Khắc phục Sự cố (Troubleshooting)
 
 Chúng ta sẽ thực hành các kịch bản nâng cao, tự tái hiện lỗi và tiến hành sửa chữa chéo hạ tầng.
 
@@ -247,46 +157,7 @@ Chúng ta sẽ thực hành các kịch bản nâng cao, tự tái hiện lỗi 
 
 ---
 
-### 🔍 Sự cố 2: Xung đột bảng định tuyến do interface `flannel.1` cũ chưa được xóa thủ công
-
-#### 🛠️ Bước 1: Kịch bản giả lập sự cố (Tái hiện lỗi)
-1. SSH vào `worker1`:
-   ```bash
-   multipass shell worker1
-   ```
-2. Cố tình dựng lại card ảo `flannel.1` cũ và gán route ưu tiên trỏ dải IP Pod của `worker2` (`10.244.2.0/24`) đi qua card `flannel.1` ảo đã bị vô hiệu thay vì card vật lý `eth0`:
-   ```bash
-   sudo ip link add flannel.1 type vxlan id 1 local 192.168.64.11 dev eth0 dstport 8472 2>/dev/null
-   sudo ip link set dev flannel.1 up
-   sudo ip route replace 10.244.2.0/24 via 10.244.2.0 dev flannel.1 onlink
-   ```
-
-#### 🕵️‍♂️ Bước 2: Quan sát thực tế lỗi (Xem tận mắt)
-1. Gửi ping từ `pod-a` sang `pod-b` chéo node:
-   ```bash
-   kubectl exec pod-a -- ping -c 3 <IP_CỦA_POD_B>
-   ```
-   *Kết quả:* Ping bị treo (timeout 100% loss) mặc dù flanneld `host-gw` đang chạy bình thường!
-2. Kiểm tra bảng định tuyến trên `worker1`:
-   ```bash
-   ip route show | grep 10.244.2.0
-   ```
-   *Bạn sẽ thấy:* Gói tin đi sang `worker2` đang bị bẻ hướng gửi qua interface `flannel.1` thay vì đi trực tiếp qua card vật lý `eth0` như host-gw quy định.
-
-#### 🛡️ Bước 3: Cách khắc phục & Sửa chữa
-1. Tiến hành xóa triệt để card ảo `flannel.1` cũ kẹt trong kernel:
-   ```bash
-   sudo ip link delete flannel.1
-   ```
-2. Khởi động lại daemonset Flannel để flanneld tự động dựng lại bảng định tuyến `host-gw` chuẩn xác:
-   ```bash
-   kubectl rollout restart ds kube-flannel-ds -n kube-flannel
-   ```
-3. Lệnh ping sẽ hoạt động trơn tru trở lại!
-
----
-
-### 🔍 Sự cố 3: Tường lửa Host Firewall (FORWARD chain policy DROP) chặn forwarding của host-gw
+### 🔍 Sự cố 2: Tường lửa Host Firewall (FORWARD chain policy DROP) chặn forwarding của host-gw
 
 #### 🛠️ Bước 1: Kịch bản giả lập sự cố (Tái hiện lỗi)
 1. SSH vào `worker1`:
@@ -322,52 +193,8 @@ Chúng ta sẽ thực hành các kịch bản nâng cao, tự tái hiện lỗi 
 
 ---
 
-### 🔍 Giải pháp Vá Bảo mật: Nâng cấp khẩn cấp cụm mạng lên Canal CNI (Flannel + Calico Policy-Only)
-
-Khi bộ phận an ninh mạng yêu cầu kích hoạt NetworkPolicy nhưng bạn không muốn xáo trộn dải IP hiện tại của Flannel (`10.244.0.0/16`) hay gặp downtime nặng nề, Canal là giải pháp Hybrid tối ưu.
-
-#### 🛠️ Các bước nâng cấp thực hành:
-
-1. Tải file cấu hình tích hợp chính thức của Canal CNI:
-   ```bash
-   curl -o canal.yaml https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/canal.yaml
-   ```
-
-2. Kiểm tra và đảm bảo dải IP Pod trong file `canal.yaml` trùng khớp hoàn toàn với dải IP của Flannel hiện tại (`10.244.0.0/16`). Tìm đến phần `net-conf.json` trong file `canal.yaml`:
-   ```yaml
-   net-conf.json: |
-     {
-       "Network": "10.244.0.0/16",
-       "Backend": {
-         "Type": "vxlan"
-       }
-     }
-   ```
-
-3. Tiến hành gỡ bỏ DaemonSet Flannel cũ trên cụm:
-   ```bash
-   kubectl delete -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
-   ```
-
-4. Triển khai Canal tích hợp mới vào cụm:
-   ```bash
-   kubectl apply -f canal.yaml
-   ```
-
-5. Chờ khoảng 1 - 2 phút cho các Pod có tên dạng `canal-xxxxx` trong namespace `kube-system` khởi động thành công và chuyển sang trạng thái `Running`.
-
-6. **Kiểm chứng (Xem tận mắt bảo mật hoạt động):**
-   Tiến hành deploy lại Target Pod và NetworkPolicy "deny-all" từ **Thí nghiệm 4 & 5**.
-   Chạy lệnh kết nối tới Database:
-   ```bash
-   kubectl exec pod-a -- nc -zv $DB_IP 5432 2>&1
-   ```
-   *Kết quả rực rỡ:* Lần này gói tin kết nối bị **chặn đứng hoàn toàn** đúng như luật bảo mật! Calico Policy-Only chạy dưới nền Canal đã dịch các NetworkPolicy thành các chain iptables để lọc gói tin chéo node bảo vệ hệ thống của bạn.
-
----
-
 ## ✅ Tổng kết
 
 1. `host-gw` mang lại hiệu năng cao nhất cho Flannel nhờ cơ chế định tuyến trực tiếp L3, đạt full MTU 1500 và loại bỏ hoàn toàn CPU đóng/giải gói.
-2. Giới hạn bảo mật: Flannel là CNI chỉ định tuyến, bỏ qua hoàn toàn NetworkPolicy, tạo nên blast radius bằng toàn bộ cụm.
-3. Canal là phương án cứu cánh lai cực tốt để nâng cấp bảo mật mà giữ nguyên dải mạng IP Pod có sẵn của Flannel.
+2. Điểm hạn chế lớn nhất của host-gw mode là yêu cầu khắt khe về topology hạ tầng mạng: tất cả các Node bắt buộc phải cùng thuộc một mạng L2 (Direct L2 connectivity) thì mới có thể định tuyến trực tiếp chéo Node.
+3. Thông qua các kịch bản khắc phục sự cố định tuyến chéo Node, bạn đã nắm vững cách hoạt động của bảng route nhân Linux, sự tương tác với ARP cache, và tầm ảnh hưởng của Host Firewall (chuỗi FORWARD chain) đối với các CNI định tuyến trực tiếp (Direct Routing).

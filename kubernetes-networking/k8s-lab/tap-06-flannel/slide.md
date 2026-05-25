@@ -31,10 +31,12 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 6
+# Tập 6 - Flannel
 ## Cài đặt Flannel & Giải mã Kiến trúc Định tuyến L2/L3 (VXLAN Mode)
 
 **Phần 1 — Flannel** · `#flannel` `#CNI` `#overlay` `#flanneld` `#FDB-ARP`
+
+![height:200px](https://github.com/flannel-io/flannel/blob/master/logos/flannel-horizontal-color.png?raw=true)
 
 ---
 
@@ -139,7 +141,7 @@ Chúng ta sẽ thực hành các bước sau trong file hướng dẫn `lab-guid
 1. **Quan sát cụm trắng:** Xem xét trạng thái `NotReady` của node và sự thiếu hụt định tuyến.
 2. **Cài đặt & Theo dõi:** Dựng Flannel CNI và quan sát card ảo `flannel.1`, bridge `cni0` xuất hiện.
 3. **Trace Route, ARP, FDB:** Soi tận mắt 3 bảng dữ liệu mà Kernel Linux dùng để điều hướng packet.
-4. **Giả lập sự cố:** Tự tay mô phỏng lỗi sai card mạng chính (`--iface`), lỗi lệch subnet của bridge `cni0` và lỗi tường lửa chặn VXLAN.
+4. **Giả lập sự cố:** Tự tay tái hiện lỗi sai card mạng chính (`--iface`), mất cấu hình CNI (kẹt `Terminating`), tường lửa chặn VXLAN (UDP 8472), và cạn kiệt IPAM lease.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 

@@ -42,3 +42,35 @@ Việc tách riêng route `/16` cho phép CNI ép thông số `mtu 1450` riêng 
 3. Chuẩn bị cho Pod có nhiều Card mạng (Multus CNI)
 Trong thực tế (như các công ty viễn thông), một Pod có thể được cắm thêm `net1`, `net2`... (ví dụ kết nối mạng SR-IOV tốc độ cao). 
 Khi Pod có 3 card mạng, ai sẽ là người nói cho Pod biết "Nếu gọi Pod khác thì đi đường nào? Ra Internet thì đi đường nào?". Chính cái route `/16 dev eth0` này là biển chỉ đường cứng để đảm bảo traffic nội bộ K8s luôn đi đúng card `eth0` chứ không lạc sang card khác!
+
+## Tập 6
+### Tại sao trong Sự cố 2, khi xóa file cấu hình CNI `10-flannel.conflist` làm Node chuyển sang NotReady, nhưng các Pod đang chạy vẫn có thể ping thông suốt chéo Node?
+
+Đây là một câu hỏi quan sát cực kỳ xuất sắc! Hiện tượng này phản ánh chính xác sự phân tách độc lập (decoupling) giữa **Control Plane (Tầng điều khiển)** và **Data Plane (Tầng truyền tải dữ liệu)** trong Kubernetes:
+
+1. **Tầng Control Plane (Kubelet và file cấu hình CNI)**:
+   - File cấu hình `/etc/cni/net.d/10-flannel.conflist` là "cầu nối" để Kubelet tương tác với CNI plugin khi có sự kiện thay đổi Pod (Tạo mới hoặc Xóa bỏ). Kubelet cũng quét thư mục này định kỳ để kiểm tra xem hệ thống mạng của Node có sẵn sàng hay không.
+   - Khi file này bị xóa, tiến trình Kubelet kiểm tra sức khỏe mạng thất bại $\rightarrow$ lập tức báo cáo trạng thái `NetworkReady=false` về API Server $\rightarrow$ Node bị đánh dấu **`NotReady`** nhằm ngăn không cho Scheduler lập lịch cho Pod mới chui vào Node bị lỗi cấu hình mạng.
+
+2. **Tầng Data Plane (Linux Kernel Space)**:
+   - Các Pod đang chạy (như `pod-a`) **đã được thiết lập mạng xong xuôi từ trước đó**.
+   - Interface ảo `eth0` trong Pod, cặp dây mạng ảo **veth pair** nối ra Host, bridge `cni0`, và card ảo `flannel.1` (VTEP) cùng các bảng tra cứu tĩnh (**Route, ARP, FDB**) đã được Linux Kernel ghi nhớ trực tiếp vào bộ nhớ RAM của hệ điều hành.
+   - Khi `pod-b` gửi gói tin ping sang `pod-a`, gói tin đi qua card mạng vật lý `eth0` của Node, được nhân Linux giải mã VXLAN trên card ảo `flannel.1`, định tuyến qua bridge `cni0` và chui vào Pod hoàn toàn ở **tầng Kernel Space**.
+
+👉 **Kết luận:** Toàn bộ quá trình truyền dữ liệu (Data Plane) được thực thi trực tiếp bởi Linux Kernel, hoàn toàn không đi qua Kubelet hay tiến trình User Space nào, và cũng không cần đọc file `/etc/cni/net.d/10-flannel.conflist` nữa. Nhờ vậy, mạng lưới Pod đã chạy vẫn thông suốt kể cả khi cấu hình CNI của Node bị hỏng!
+
+### Tại sao khi Node bị NotReady (do thiếu file cấu hình CNI), các Pod bị xóa sẽ bị kẹt ở trạng thái `Terminating`, nhưng ngay sau khi ta khôi phục lại file cấu hình CNI, Pod đó lại lập tức biến mất sạch sẽ?
+
+Đây là một câu hỏi thực chiến cực kỳ sâu sắc, tiếp tục chứng minh vai trò không thể thiếu của CNI trong **vòng đời dọn dẹp tài nguyên (Teardown lifecycle)** của Kubernetes:
+
+1. **Tại sao Pod bị kẹt ở trạng thái `Terminating`?**
+   - Khi bạn chạy lệnh xóa Pod (`kubectl delete pod`), Kubelet trên Node nhận được chỉ thị. Để xóa Pod một cách sạch sẽ và an toàn, Kubelet bắt buộc phải **giải phóng toàn bộ tài nguyên mạng của Pod đó trước**.
+   - Hành động giải phóng này bao gồm: thu hồi địa chỉ IP đã cấp phát (xóa file IPAM lease), nhổ cặp veth pair ra khỏi bridge `cni0` và xóa namespace mạng.
+   - Để thực hiện các công việc này, Kubelet **phải đọc file cấu hình CNI `/etc/cni/net.d/10-flannel.conflist`** để biết cách gọi CNI plugin thực thi lệnh dọn dẹp (`DEL` command).
+   - Vì file này đã bị di chuyển hoặc xóa đi, Kubelet bị "mù" cấu hình và báo lỗi, không thể dọn dẹp mạng cho Pod. Do đó, Kubelet từ chối kết thúc tiến trình xóa container và không báo cáo hoàn tất về API Server. Pod bị kẹt cứng ở trạng thái `Terminating` trên API Server.
+
+2. **Tại sao Pod tự động biến mất khi file CNI được khôi phục?**
+   - Kubernetes hoạt động theo mô hình **Reconciliation Loop (vòng lặp đồng bộ)** liên tục. Kubelet liên tục cố gắng đưa trạng thái thực tế của Node về đúng trạng thái mong muốn (mong muốn là Pod phải được xóa sạch).
+   - Ngay sau khi bạn di chuyển file `10-flannel.conflist` quay trở lại thư mục `/etc/cni/net.d/`, Kubelet lập tức phát hiện cấu hình CNI đã khả dụng.
+   - Ở vòng lặp tiếp theo, Kubelet gọi thành công CNI CNI plugin để thực thi dọn dẹp card mạng, xóa sạch container và báo cáo thành công về API Server.
+   - Pod lập tức biến mất hoàn toàn khỏi danh sách của bạn chỉ sau vài giây mà không cần bất kỳ lệnh can thiệp thủ công nào!
