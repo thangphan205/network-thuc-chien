@@ -179,11 +179,11 @@ sudo kubeadm join <IP_CỦA_CONTROLPLANE>:6443 \
 kubectl apply -f \
   https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 
-# Calico — BGP, Network Policy (Tập 11-26)
+# Calico — BGP, Network Policy (Tập 9-26)
 curl -s https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml | \
   sed "s|192.168.0.0/16|10.244.0.0/16|g" | kubectl apply -f -
 
-# Cilium — eBPF, Hubble observability (Tập 27-43)
+# Cilium — eBPF, Hubble observability (Tập 25-43)
 helm repo add cilium https://helm.cilium.io/
 helm install cilium cilium/cilium \
   --namespace kube-system \
