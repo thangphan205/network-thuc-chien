@@ -44,7 +44,7 @@ style: |
 
 - Tìm hiểu cơ chế định tuyến trực tiếp **host-gw** (Underlay) thay thế VXLAN (Overlay).
 - Chuyển đổi backend, so sánh chi tiết hiệu năng và điều kiện L2 boundary.
-- Phân tích và thực hành các kịch bản khắc phục sự cố định tuyến trực tiếp nâng cao (L3 Boundary drop, interface cũ tồn đọng, Forwarding policy block).
+- Phân tích và thực hành các kịch bản khắc phục sự cố định tuyến trực tiếp nâng cao (card ảo flannel.1 cũ tồn đọng và tường lửa Host chặn forwarding).
 
 ---
 
@@ -94,9 +94,7 @@ Routing table trên worker1:
 
 Chúng ta sẽ thực hành các kịch bản sau trong file `lab-guide.md`:
 
-1. **Switch VXLAN $\rightarrow$ host-gw:** Thay đổi config, xóa `flannel.1` cũ và đo đạc iperf3 benchmark.
-2. **Troubleshooting 1 (L3 Boundary Drop):** Mô phỏng & xử lý lỗi Nodes chéo Subnet L3.
-3. **Troubleshooting 2 (Host Firewall):** Xử lý sự cố chuỗi FORWARD chain policy DROP chặn traffic.
+1. **Switch VXLAN → host-gw:** Thay đổi config, xóa `flannel.1` cũ và đo đạc iperf3 benchmark.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
@@ -105,7 +103,7 @@ Chúng ta sẽ thực hành các kịch bản sau trong file `lab-guide.md`:
 ## Key Takeaways
 
 - **host-gw** là giải pháp định tuyến trực tiếp L3, tăng tốc độ mạng lên 10-15%, đưa MTU về 1500 nhưng bắt buộc phải cùng L2 segment.
-- **Troubleshooting thực chiến**: Hiểu rõ sự tương tác giữa Linux routing table, ARP cache, và Host firewall đối với CNI định tuyến trực tiếp.
+- **Troubleshooting thực chiến**: Hiểu rõ sự tương tác giữa Linux routing table và Host firewall đối với CNI định tuyến trực tiếp.
 - **Tầm quan trọng của Bảo mật**: Sự bất lực của Flannel trước NetworkPolicy sẽ là động lực để chúng ta học giải pháp Calico CNI.
 
 > **Chương tiếp theo (Tập 9):** Calico CNI — Cài đặt từ đầu, giải quyết triệt để bài toán Lateral Movement và thực thi NetworkPolicy thực sự.
