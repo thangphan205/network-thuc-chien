@@ -109,7 +109,7 @@ multipass shell worker1
 
 1. Cài calicoctl:
    ```bash
-   curl -L https://github.com/projectcalico/calico/releases/download/v3.29.0/calicoctl-linux-amd64 \
+   curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 \
      -o calicoctl && chmod +x calicoctl && sudo mv calicoctl /usr/local/bin/
    ```
 

@@ -94,7 +94,7 @@ Thí nghiệm này sẽ hướng dẫn bạn bootstrap cụm K8s qua `kubeadm` v
 
 1. **Cài đặt Tigera Operator (Trình quản lý vòng đời Calico):**
    ```bash
-   kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.29.0/manifests/tigera-operator.yaml
+   kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
    ```
 
 2. **Tạo Custom Resource (CR) để cấu hình mạng Calico:**
