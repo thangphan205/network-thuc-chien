@@ -104,7 +104,7 @@ multipass shell worker1
      --restart=Never \
      -- iperf3 -c $IPERF_IP -t 15 -P 4
    
-   kubectl wait --for=condition=Ready pod/iperf3-client --timeout=60s
+   kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/iperf3-client --timeout=60s
    kubectl logs iperf3-client | tail -5
    ```
    *Nhận xét:* So sánh kết quả throughput với baseline ở Tập 7 (VXLAN). Bạn sẽ thấy throughput ở `host-gw` tăng khoảng 10 - 15% và latency giảm rõ rệt.
