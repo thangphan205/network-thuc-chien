@@ -42,64 +42,39 @@ style: |
 
 ## Mục tiêu tập này
 
-- Hiểu bài toán Pod-to-Pod cross-node communication và vai trò của CNI.
-- Dựng cụm mạng Flannel từ con số 0 (từ cụm trắng NotReady).
-- Khám phá kiến trúc 3 thành phần của Flannel: **K8s API**, **flanneld**, và **CNI plugin**.
-- Phân tích chi tiết quy trình node join & giao tiếp 3 bước tĩnh của kernel: **Route $\rightarrow$ ARP $\rightarrow$ FDB**.
+- Hiểu **tại sao** Pod cross-node không nói chuyện được khi chưa có CNI.
+- Dựng Flannel từ cụm trắng `NotReady` → quan sát từng thay đổi xảy ra.
+- Nắm 3 tầng của Flannel: **K8s API → flanneld → CNI plugin**.
+- Đọc tận mắt 3 bảng kernel điều hướng packet: **Route → ARP → FDB**.
 
 ---
 
-## Bài toán: 2 Pod, 2 Node, không nói chuyện được
+## Vấn đề: Pod A không biết đường đến Pod B
 
 ```
-Node 1 (192.168.64.11)         Node 2 (192.168.64.12)
-┌───────────────────────┐      ┌───────────────────────┐
-│ Pod A: 10.244.1.5/24  │      │ Pod B: 10.244.2.7/24  │
-│ Default route:         │      │                       │
-│  via 10.244.1.1 (cni0)│      │                       │
-└───────────────────────┘      └───────────────────────┘
+Node 1 (192.168.64.11)          Node 2 (192.168.64.12)
+┌──────────────────────┐        ┌──────────────────────┐
+│  Pod A: 10.244.1.5   │        │  Pod B: 10.244.2.7   │
+└──────────────────────┘        └──────────────────────┘
 
-Pod A gửi packet đến 10.244.2.7:
-  ip route show → không có route đến 10.244.2.0/24
-  → packet bị DROP ngay tại Node 1 (no route to host)
+Pod A hỏi kernel: "Đường nào đến 10.244.2.0/24?"
+→ ip route show: không có route
+→ Kernel DROP packet ngay tại Node 1
 ```
 
-**Giải pháp Flannel:** tạo virtual network phẳng (Overlay) qua VXLAN chui qua mạng vật lý.
+> **Flannel giải quyết:** tạo VXLAN tunnel, bọc gói tin trong UDP rồi chuyển qua mạng vật lý.
 
 ---
 
-## 3 thành phần cốt lõi của Flannel CNI
+## Flannel hoạt động qua 3 tầng
 
-```
-┌─────────────────────────────────────────────────┐
-│              Kubernetes API / etcd              │
-│   Node annotation: podCIDR + public-ip          │
-│   controlplane: 10.244.0.0/24                   │
-│   worker1:      10.244.1.0/24                   │
-│   worker2:      10.244.2.0/24                   │
-└──────────────────────┬──────────────────────────┘
-                       │ watch
-          ┌────────────┼────────────┐
-          ▼            ▼            ▼
-    flanneld (cp)  flanneld (w1)  flanneld (w2)  (DaemonSet)
-    ───────────────────────────────────────────
-    • Lắng nghe sự kiện Node Added/Modified từ K8s API.
-    • Tạo VTEP interface (flannel.1), ghi /run/flannel/subnet.env.
-    • Cấu hình các bảng tĩnh ARP/FDB/Route trên Node Host.
-          │
-          ▼
-    CNI plugin (bridge binary)
-    Đọc subnet.env → gán IP cho Pod khi Kubelet tạo Pod.
-```
+| Tầng | Vai trò |
+|------|---------|
+| **K8s API** | Lưu `podCIDR` và annotation `VtepMAC` / `public-ip` của từng Node |
+| **flanneld** (DaemonSet) | Watch API → tạo `flannel.1` (VTEP) → điền bảng Route/ARP/FDB → ghi `subnet.env` |
+| **CNI bridge plugin** | Đọc `subnet.env` → tạo veth pair → gắn vào `cni0` → cấp IP cho Pod |
 
----
-
-## Cơ cấu giao tiếp giữa flanneld và CNI plugin
-
-- **flanneld** là "bộ não" quản lý Control Plane (watch API, setup routing table, static ARP, FDB).
-- **CNI bridge plugin** là "tay chân" quản lý Data Plane ở local (tạo veth pair, gán IP Pod, cắm vào `cni0`).
-- **subnet.env** là "hợp đồng" giao tiếp giữa bộ não và tay chân:
-
+**subnet.env** là "hợp đồng" giữa flanneld và CNI plugin:
 ```ini
 FLANNEL_NETWORK=10.244.0.0/16
 FLANNEL_SUBNET=10.244.1.1/24
@@ -109,52 +84,71 @@ FLANNEL_IPMASQ=true
 
 ---
 
-## FDB và ARP: "Bản đồ" định tuyến 3 bước của VTEP
-
-Trên `worker1`, khi gửi packet đến Pod B (`10.244.2.7` trên `worker2`):
+## Packet đi qua đâu trên một Node?
 
 ```
-1. Route lookup:
-   Đích 10.244.2.0/24 via 10.244.2.0 dev flannel.1 onlink (next hop là 10.244.2.0)
-                         ↓
+Pod (eth0: 10.244.X.Y)
+      │  veth pair
+   cni0  (bridge, gateway: 10.244.X.1)
+      │  Kernel routing
+ flannel.1  (VTEP, đóng gói VXLAN)
+      │  UDP port 8472
+   eth0  (physical: 192.168.64.X)
+      │
+    Mạng vật lý → Node đích
+```
+
+**Khi kubelet tạo Pod:**
+```
+kubelet → 10-flannel.conflist
+        → flannel binary (đọc subnet.env)
+        → delegate bridge plugin  →  delegate host-local IPAM
+```
+
+---
+
+## Kernel định tuyến cross-node bằng 3 bảng tĩnh
+
+Từ `worker1`, gửi packet đến `10.244.2.7` (Pod B trên `worker2`):
+
+```
+1. Route table:
+   10.244.2.0/24  via 10.244.2.0  dev flannel.1  ← đi qua VTEP
+
 2. ARP table (flannel.1):
-   10.244.2.0 → MAC cc:dd:ee:ff:11:22   (VTEP MAC của worker2)
-                         ↓
+   10.244.2.0  →  MAC aa:bb:cc:dd:ee:ff  ← MAC của VTEP worker2
+
 3. FDB table (flannel.1):
-   cc:dd:ee:ff:11:22 → dst 192.168.64.12  (IP vật lý của worker2)
-                         ↓
-Tạo VXLAN UDP packet (Dst Port: 8472) → gửi đến 192.168.64.12
+   aa:bb:cc:dd:ee:ff  →  dst 192.168.64.12  ← IP vật lý worker2
 ```
 
-- **Route:** Subnet IP Pod đích đi qua VTEP nào?
-- **ARP:** VTEP gateway đối diện có MAC là gì?
-- **FDB:** MAC VTEP đó tương ứng với IP vật lý nào của Node?
+> **flanneld** điền cả 3 bảng này tĩnh từ trước — kernel không cần broadcast hỏi khi có packet.
 
 ---
 
 <!-- _class: lab -->
 
-## 🔬 Lab Time: Dựng Flannel & Mổ xẻ cơ chế định tuyến
+## 🔬 Lab Time
 
-Chúng ta sẽ thực hành các bước sau trong file hướng dẫn `lab-guide.md`:
+Thực hành theo thứ tự trong `lab-guide.md`:
 
-1. **Quan sát cụm trắng:** Xem xét trạng thái `NotReady` của node và sự thiếu hụt định tuyến.
-2. **Cài đặt & Theo dõi:** Dựng Flannel CNI và quan sát card ảo `flannel.1`, bridge `cni0` xuất hiện.
-3. **Trace Route, ARP, FDB:** Soi tận mắt 3 bảng dữ liệu mà Kernel Linux dùng để điều hướng packet.
-4. **Giả lập sự cố:** Tự tay tái hiện lỗi sai card mạng chính (`--iface`), mất cấu hình CNI (kẹt `Terminating`), tường lửa chặn VXLAN (UDP 8472), và cạn kiệt IPAM lease.
+1. **TN1** — Quan sát cụm trắng: `NotReady`, bảng route trống, chưa có `cni0`/`flannel.1`.
+2. **TN2** — Cài Flannel: `kubectl apply`, theo dõi node chuyển `Ready`, card ảo xuất hiện.
+3. **TN3** — Đọc K8s API: `podCIDR` từng node, annotation `VtepMAC`/`public-ip`.
+4. **TN4** — Đọc `subnet.env`: xem file hợp đồng và `10-flannel.conflist`.
+5. **TN5** — Trace Route → ARP → FDB: quan sát flanneld sync real-time.
+6. **TN6** — Kiểm chứng: ping cross-node từ pod-a sang pod-b thành công.
+7. **Troubleshooting**: 4 sự cố thực chiến — sai `--iface`, mất CNI conflist, chặn UDP 8472, cạn IPAM.
 
-👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
+👉 **Làm theo `lab-guide.md`**
 
 ---
 
 ## Key Takeaways
 
-**Phân công trách nhiệm:**
-- **K8s API:** Lưu trữ `podCIDR` allocation và Node annotations (MAC VTEP, public-ip).
-- **flanneld:** Watch API, setup `flannel.1` interface, điền các bảng ARP/FDB/Route, ghi `subnet.env`.
-- **CNI plugin:** Đọc `subnet.env`, delegate xuống bridge plugin để cắm mạng và gán IP cho Pod.
+- **K8s API** giữ nguồn sự thật: `podCIDR` + VTEP MAC + public-ip của từng Node.
+- **flanneld** là bộ não: watch API, setup `flannel.1`, điền 3 bảng Route/ARP/FDB tĩnh.
+- **CNI bridge plugin** là tay chân: đọc `subnet.env`, cắm veth và cấp IP cho Pod.
+- **3 bảng tĩnh** = không cần dynamic discovery khi packet chạy → hiệu quả, đơn giản.
 
-**Bảng tra cứu tĩnh:**
-Nhờ `flanneld` đồng bộ tĩnh các bảng ARP và FDB từ trước, Kernel có thể đóng gói VXLAN và gửi gói tin cross-node ngay lập tức mà không cần bất kỳ giao thức khám phá động (dynamic discovery) nào khi packet truyền qua.
-
-> **Tập tiếp theo:** VXLAN Backend — tcpdump soi gói tin thực tế, 50 bytes overhead đến từ đâu?
+> **Tập tiếp theo:** tcpdump soi gói tin VXLAN thực tế — 50 bytes overhead đến từ đâu?

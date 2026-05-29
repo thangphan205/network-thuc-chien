@@ -33,260 +33,108 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 9
+# Tập 9 - Calico CNI
 ## Cài đặt cụm Calico CNI mới hoàn toàn bằng Multipass
 
 **Phần 2 — Calico** · `#calico` `#bootstrap` `#kubeadm` `#NetworkPolicy` `#security`
+![height:200px](https://www.tigera.io/app/uploads/2026/01/Calico-logo-2026-white-text.svg)
 
 ---
 
 ## Mục tiêu tập này
 
-- Hiểu rõ rủi ro bảo mật **Lateral Movement** & Khái niệm **Blast Radius**
-- Khởi tạo cụm Kubernetes sạch từ đầu và join các node sử dụng Multipass
-- Cài đặt **Calico CNI** qua Tigera Operator (`10.244.0.0/16` CIDR)
-- Chứng thực cơ chế bảo mật hoạt động thực sự qua **Default Deny Policy**
-- Giải phẫu các chains `cali-*` trong iptables do Felix đồng bộ xuống kernel
+- Hiểu tại sao Flannel không đủ bảo mật — bài toán **Lateral Movement** và **Blast Radius**.
+- Dựng cụm K8s sạch từ đầu bằng Multipass + `kubeadm`.
+- Cài **Calico CNI** qua Tigera Operator với IP Pool `10.244.0.0/16`.
+- Chứng minh **NetworkPolicy được enforce thực sự** bằng Default Deny kịch bản.
+- Giải phẫu chains `cali-*` trong iptables do Felix tạo ra.
 
 ---
 
-## Mối đe dọa: Lateral Movement & Blast Radius
+## Vấn đề: Flannel để ngỏ toàn bộ cluster
 
-**Lateral Movement (Di chuyển ngang):**
-Khi attacker tấn công thành công một Pod công khai (ví dụ Frontend có lỗ hổng), họ sẽ dùng Pod đó làm bàn đạp để quét và tấn công các Pod nội bộ khác (Database, Payment Services, DNS).
+**Lateral Movement** — attacker chiếm 1 Pod rồi di chuyển tự do sang các Pod khác:
 
-```
-Flannel (mặc định không enforce NetworkPolicy):
-  [Frontend compromised] ────(Mạng không chặn)────► [Internal DB] (Bị hack!)
-  Blast Radius = N-1 (tấn công được toàn bộ các dịch vụ còn lại)
-```
+- Flannel không enforce NetworkPolicy — mọi Pod ping được mọi Pod.
+- Frontend bị chiếm → attacker quét thẳng sang Database, Payment, DNS.
+- **Blast Radius = toàn bộ cluster (N-1 dịch vụ)**.
 
-**Bảo mật Least Privilege (Quyền hạn tối thiểu):**
-```
-Calico + Default Deny + Least Privilege:
-  Mỗi Pod mặc định bị KHÓA hết kết nối, chỉ được cho phép nói chuyện với đúng dịch vụ được chỉ định.
-  Blast Radius = Rất nhỏ (chỉ giới hạn trong phạm vi dịch vụ được khai báo)
-```
+**Calico giải quyết bằng Least Privilege:**
+
+- Felix dịch NetworkPolicy → iptables/eBPF rules ngay tại kernel mỗi Node.
+- Mặc định: không có traffic nào được phép (Default Deny).
+- Chỉ các kết nối được khai báo tường minh mới được đi qua.
+- **Blast Radius thu hẹp tối thiểu**.
 
 ---
 
-## Kiến trúc 3 thành phần chính của Calico
+## Calico: 4 thành phần cốt lõi
 
-```
-                 ┌──────────────────────────────────────┐
-                 │ Tigera Operator (Quản lý Lifecycle)  │
-                 └──────────────────┬───────────────────┘
-                                    │
-                          ┌─────────┼─────────┐
-                          │         │         │
-                     ┌────▼───┐ ┌───▼──┐ ┌────▼────┐
-                     │ Felix  │ │ BIRD │ │  Typha  │
-                     │ Policy │ │  BGP │ │  Cache  │
-                     │ Engine │ │daemon│ │  Node   │
-                     └────────┘ └──────┘ └─────────┘
-```
-- **Felix:** Bộ não chính chạy trên mỗi Node, nhận diện NetworkPolicy từ API Server và dịch trực tiếp thành các rules bảo mật trong Linux kernel (`iptables`/`eBPF`).
-- **BIRD:** BGP Daemon chịu trách nhiệm chia sẻ routing table giữa các node (L3 routing).
-- **Typha:** Bộ đệm giúp giảm tải truy vấn cho API Server khi cụm scale lớn.
+| Thành phần | Chạy ở đâu | Vai trò |
+|---|---|---|
+| **Tigera Operator** | Deployment | Quản lý vòng đời toàn bộ Calico |
+| **Felix** | DaemonSet (mỗi Node) | Dịch NetworkPolicy → iptables / eBPF |
+| **BIRD** | DaemonSet (mỗi Node) | BGP daemon — quảng bá Pod subnet routes |
+| **Typha** | Deployment (optional) | Cache K8s API cho Felix, giảm tải khi cluster lớn |
+
+> **Felix** là trái tim: nhận event từ K8s API trong ms, update iptables atomic, không cần restart Pod hay Node.
 
 ---
 
-<!-- _class: lab -->
+## Cài Calico: 2 bước qua Tigera Operator
 
-## Lab 1: Khởi dựng cụm K8s sạch & Join Worker Nodes
-
-**Bước 1: Khởi dựng lại cụm máy ảo mới hoàn toàn**
+**Bước 1** — Deploy Tigera Operator (controller quản lý lifecycle):
 ```bash
-# Xóa sạch cụm máy ảo cũ để tránh xung đột cấu hình mạng
-multipass delete controlplane worker1 worker2 && multipass purge
-
-# Tạo mới 3 VM bằng script setup của Tập 00
-cd ../tap-00-setup-lab && ./setup-lab.sh && cd ../tap-09-calico-migrate
+kubectl create -f https://raw.githubusercontent.com/.../tigera-operator.yaml
 ```
 
-**Bước 2: Khởi tạo Control Plane & Cấu hình kubeconfig**
-```bash
-multipass shell controlplane
-
-# Bootstrap cụm với kubeadm và dải CIDR chuẩn dành cho Pod
-sudo kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$(ip route get 1.1.1.1 | awk '{print $7}')
-
-# Cấu hình kubectl cho user không có quyền root
-mkdir -p $HOME/.kube && sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config && sudo chown $(id -u):$(id -g) $HOME/.kube/config
-```
-
----
-
-<!-- _class: lab -->
-
-## Lab 1 (tiếp): Join Node & Xem trạng thái thiếu CNI
-
-**Bước 3: Join các node worker vào cụm**
-```bash
-# SSH vào worker1 và chạy câu lệnh join nhận được từ controlplane
-multipass shell worker1
-sudo kubeadm join 192.168.64.X:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
-
-# Thực hiện tương tự với worker2
-multipass shell worker2
-sudo kubeadm join 192.168.64.X:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
-```
-
-**Bước 4: Kiểm tra trạng thái nodes trên `controlplane`**
-```bash
-kubectl get nodes
-# NAME           STATUS     ROLES           AGE   VERSION
-# controlplane   NotReady   control-plane   2m    v1.36.1
-# worker1        NotReady   <none>          1m    v1.36.1
-# worker2        NotReady   <none>          1m    v1.36.1
-# --> STATUS = "NotReady" do chưa có CNI (Container Network Interface) hoạt động!
-```
-
----
-
-<!-- _class: lab -->
-
-## Lab 1 (tiếp): Cài đặt Calico CNI bằng Tigera Operator
-
-**Bước 5: Cài đặt Tigera Operator & Apply Custom Resource cấu hình Calico**
-```bash
-# 1. Cài đặt Tigera Operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.29.0/manifests/tigera-operator.yaml
-
-# 2. Định nghĩa Custom Resource cấu hình Calico (khớp CIDR 10.244.0.0/16)
-kubectl create -f - <<'EOF'
-apiVersion: operator.tigera.io/v1
+**Bước 2** — Apply `Installation` CR để khai báo IP Pool:
+```yaml
 kind: Installation
-metadata:
-  name: default
 spec:
   calicoNetwork:
     ipPools:
-    - blockSize: 26
-      cidr: 10.244.0.0/16
+    - cidr: 10.244.0.0/16          # khớp với --pod-network-cidr của kubeadm
       encapsulation: VXLANCrossSubnet
       natOutgoing: Enabled
-      nodeSelector: all()
-EOF
 ```
 
-**Bước 6: Xác thực nodes chuyển sang trạng thái "Ready"**
-```bash
-watch kubectl get pods -n calico-system  # Chờ toàn bộ Pod sang trạng thái Running
-kubectl get nodes                       # Mọi node chuyển sang "Ready"!
-```
+Operator đọc CR → tự deploy Felix, BIRD, Typha, cni-plugin → Nodes chuyển `Ready`.
 
 ---
 
-<!-- _class: lab -->
-
-## Lab 2: Kiểm chứng tính năng NetworkPolicy Enforce
-
-**Bước 1: Triển khai Pod database (worker2) & Pod frontend (worker1)**
-```bash
-kubectl apply -f - <<'EOF'
-apiVersion: v1
-kind: Pod
-metadata:
-  name: database
-  labels: { app: database }
-spec:
-  nodeName: worker2
-  containers: [ { name: db, image: nicolaka/netshoot, command: ["nc", "-lk", "-p", "5432"] } ]
----
-apiVersion: v1
-kind: Pod
-metadata:
-  name: frontend
-  labels: { app: frontend }
-spec:
-  nodeName: worker1
-  containers: [ { name: app, image: nicolaka/netshoot, command: ["sleep", "infinity"] } ]
-EOF
-```
-
-**Bước 2: Test kết nối thông thường (kết nối thành công)**
-```bash
-DB_IP=$(kubectl get pod database -o jsonpath='{.status.podIP}')
-kubectl exec frontend -- nc -zv $DB_IP 5432
-# Connection to 10.244.2.X 5432 port succeeded! ✅
-```
-
----
-
-<!-- _class: lab -->
-
-## Lab 2 (tiếp): Áp dụng Default Deny Policy & Chặn kết nối
-
-**Bước 3: Apply chính sách Default Deny (Chặn hoàn toàn kết nối mặc định)**
-```bash
-kubectl apply -f - <<'EOF'
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny
-spec:
-  podSelector: {}
-  policyTypes: [Ingress, Egress]
-EOF
-```
-
-**Bước 4: Kiểm chứng tính năng Enforce của Calico CNI**
-```bash
-kubectl exec frontend -- nc -zv -w 3 $DB_IP 5432
-# nc: connect to 10.244.2.X port 5432 (tcp) timed out: Operation now in progress ❌
-# --> Calico chặn đứng kết nối! (Khác biệt hoàn toàn so với Flannel ở Tập 10)
-```
-
----
-
-<!-- _class: lab -->
-
-## Lab 3: Giải phẫu iptables chains Felix quản lý
-
-**Bước 1: SSH vào `worker1` và kiểm tra các chains mang tên Calico**
-```bash
-multipass shell worker1
-sudo iptables -L | grep "^Chain cali"
-# Chain cali-FORWARD (1 references)
-# Chain cali-INPUT (1 references)
-# Chain cali-OUTPUT (1 references)
-# Chain cali-fw-<endpoint-id>   ← Egress policy của Pod
-# Chain cali-tw-<endpoint-id>   ← Ingress policy của Pod
-```
-
-**Bước 2: Xem chi tiết chain cali-FORWARD để thấy logic lọc**
-```bash
-sudo iptables -L cali-FORWARD -n --line-numbers
-```
-
-**Bước 3: Đếm số lượng rules chứng tỏ Felix dịch chính sách trực tiếp xuống kernel**
-```bash
-sudo iptables -L | grep -c "cali"
-# Kết quả trả về hàng trăm rules hoạt động theo thời gian thực (realtime event-driven).
-```
-
----
-
-## So sánh cốt lõi: Flannel vs Calico
+## So sánh: Flannel vs Calico
 
 | Tiêu chí | Flannel | Calico |
 | :--- | :--- | :--- |
-| **NetworkPolicy** | Bị bỏ qua hoàn toàn | **Được enforce tuyệt đối** |
-| **Blast Radius** | **Toàn bộ cluster** (N-1) | Giới hạn tối thiểu (Least Privilege) |
-| **Bảo mật mặc định** | Cho phép tất cả (Allow all) | **Khóa tất cả (Deny all) qua Policy** |
-| **Cơ chế hoạt động** | Chỉ chuyển tiếp packet | **Chuyển tiếp + Firewall động (Felix)** |
-| **Cài đặt** | DaemonSet đơn giản | **Tigera Operator (Quản lý Lifecycle)** |
+| **NetworkPolicy** | Bị bỏ qua | **Enforce tuyệt đối** |
+| **Blast Radius** | Toàn cluster (N-1) | **Tối thiểu (Least Privilege)** |
+| **Bảo mật mặc định** | Allow all | **Deny all qua Policy** |
+| **Cơ chế** | Chuyển tiếp packet | **Chuyển tiếp + Felix Firewall** |
+| **Cài đặt** | DaemonSet đơn giản | **Tigera Operator** |
+
+---
+
+<!-- _class: lab -->
+
+## 🔬 Lab Time: Dựng cụm Calico & Kiểm chứng NetworkPolicy
+
+Thực hành theo thứ tự trong `lab-guide.md`:
+
+1. **TN1 — Dựng cụm K8s sạch:** xóa VM cũ, chạy `setup-lab.sh`, `kubeadm init`, join `worker1`/`worker2` → xác nhận `NotReady`.
+2. **TN2 — Cài Calico (Tigera Operator):** apply operator + `Installation` CR, theo dõi `calico-system` Pods → nodes chuyển `Ready`.
+3. **TN3 — Kiểm chứng NetworkPolicy enforce:** deploy `database`/`frontend`, test kết nối thông, apply Default Deny → kết nối bị chặn hoàn toàn.
+4. **TN4 — Giải phẫu Felix iptables:** liệt kê `cali-*` chains, xem `cali-FORWARD`, đếm rules → thấy Felix dịch policy xuống kernel realtime.
+
+👉 **Làm theo `lab-guide.md`**
 
 ---
 
 ## Key Takeaways
 
-```
-1. Cài mới Kubernetes bằng Kubeadm luôn để trạng thái "NotReady" cho đến khi có CNI.
-2. Calico CNI được cài đặt dễ dàng qua Tigera Operator với IP Pool chuẩn (10.244.0.0/16).
-3. Felix là bộ não an ninh của Calico, đồng bộ NetworkPolicy thành Linux iptables/eBPF.
-4. Triển khai Default Deny và Least Privilege là chìa khóa thu hẹp Blast Radius trong K8s.
-```
+- **Flannel không enforce NetworkPolicy** — Felix của Calico mới là security engine thực sự.
+- **Default Deny + Least Privilege** = thu hẹp Blast Radius từ toàn cluster xuống tối thiểu.
+- **Tigera Operator** quản lý toàn bộ lifecycle Calico — chỉ cần khai báo `Installation` CR.
+- **Felix event-driven**: Policy thay đổi → iptables update < 100ms, không restart gì cả.
 
-> **Tập tiếp theo:** Giải phẫu kiến trúc Calico — Felix, BIRD, Typha hoạt động tương tác với nhau như thế nào?
+> **Tập tiếp theo:** Giải phẫu kiến trúc Calico — Felix, BIRD, Typha hoạt động tương tác như thế nào?

@@ -31,76 +31,78 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 7
+# Tập 7 - Flannel - VXLAN
 ## VXLAN Backend: Flannel đóng gói packet như thế nào? (50 bytes overhead)
 
 **Phần 1 — Flannel** · `#VXLAN` `#encapsulation` `#tcpdump` `#MTU` `#overhead`
+![height:200px](https://github.com/flannel-io/flannel/blob/master/logos/flannel-horizontal-color.png?raw=true)
 
 ---
 
 ## Mục tiêu tập này
 
-- Phân tích cấu trúc VXLAN packet header (50 bytes overhead đến từ đâu).
-- Bắt VXLAN traffic bằng `tcpdump` và đọc inner/outer header.
-- Tính toán MTU thực tế cho payload và hiểu hệ quả TCP MSS.
-- Giải thích MSS Clamping — cách Flannel tránh fragmentation.
+- Phân tích cấu trúc VXLAN packet — 50 bytes overhead đến từ đâu.
+- Bắt VXLAN traffic bằng `tcpdump`, đọc outer/inner header và VNI.
+- Hiểu MTU 1450 của Pod và TCP MSS tự đàm phán.
+- Chẩn đoán và sửa lỗi **MTU Black Hole** — bệnh kinh điển của môi trường Overlay.
 
 **Prerequisites:** Cluster từ Tập 6 với Flannel VXLAN mode đang chạy.
 
 ---
 
-## VXLAN: Bọc Ethernet frame vào trong UDP
-
-**Ý tưởng:** Tunnel Layer 2 frame qua Layer 3 UDP — Node nguồn bọc gói, Node đích mở ra.
+## VXLAN đóng gói: Cấu trúc packet trên dây
 
 ```
-Wire (L2 frame):
-┌────────────┬──────────────────────────────────────────────────────────────────┐
-│ Outer Eth  │            IP packet (MTU = 1500 bytes)                          │
-│  14 bytes  │ Outer IP │  UDP 8472  │ VXLAN Hdr │ Inner Eth │ Inner IP │ Data  │
-│ (L2, NIC)  │ 20 bytes │   8 bytes  │  8 bytes  │  14 bytes │ 20 bytes │  ...  │
-└────────────┴──────────────────────────────────────────────────────────────────┘
-             └──────────── 50 bytes VXLAN overhead ──────────┘
-              (Outer IP + UDP + VXLAN + Inner Eth = 20+8+8+14 = 50)
+Outer Ethernet  14b  ← L2 frame, NIC xử lý, KHÔNG tính vào MTU 1500
+━━━━━━━━━━━━━━━━━━━━━━ 1500 bytes MTU bắt đầu từ đây ━━━━━━━━━━━━━━━━━━━━
+Outer IP        20b  ← 192.168.64.11 → 192.168.64.12  (Node-to-Node)
+UDP port 8472    8b  ← Cổng VXLAN Linux kernel
+VXLAN Header     8b  ← VNI = 1  (Virtual Network Identifier)
+━━━━━━━━━━━━━━━━━━━━━━━ 50 bytes overhead ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Inner Ethernet  14b  ← VTEP MAC nguồn → VTEP MAC đích
+Inner IP        20b  ← 10.244.1.5 → 10.244.2.7        (Pod-to-Pod)
+Payload        ...b  ← Dữ liệu thực sự của ứng dụng
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-**Outer Eth (14 bytes) là L2 header — NIC xử lý, không tính vào MTU 1500 bytes.**
-
-**Các trường quan trọng:**
-- **Outer IP:** Node nguồn → Node đích (`192.168.64.11 → 192.168.64.12`)
-- **UDP port 8472:** Port VXLAN của Linux kernel (khác IANA 4789)
-- **VXLAN Header — VNI = 1:** Virtual Network Identifier (Flannel dùng VNI 1)
-- **Inner Eth + Inner IP:** Ethernet frame gốc của Pod A → Pod B (`10.244.1.5 → 10.244.2.7`)
+> **tcpdump** trên `eth0` của Node sẽ thấy **cả 2 tầng**: outer IP (node) và inner IP (pod) trong cùng 1 gói.
 
 ---
 
-## MTU: 50 bytes overhead ảnh hưởng thế nào?
+## MTU: 50 bytes overhead bị trừ ở đâu?
 
 ```
-Physical MTU = 1500 bytes (IP packet, KHÔNG kể Outer Eth ở L2)
-  ├── Outer IP header:   20 bytes ─┐
-  ├── UDP header:         8 bytes  │ VXLAN overhead
-  ├── VXLAN header:       8 bytes  │ 20+8+8+14 = 50 bytes
-  ├── Inner Eth header:  14 bytes ─┘
-  └── Inner IP + Data: 1450 bytes ← Pod có thể dùng (MTU thực tế)
-
-Tại sao Outer Eth không tính?
-  MTU là khái niệm L3 — đo tại IP layer.
-  Outer Eth (14 bytes) là L2 framing, NIC xử lý transparent.
-  1500 bytes bắt đầu đếm từ Outer IP header trở đi.
-
-Flannel set MTU = 1450 trên cni0, eth0 của Pod, và flannel.1
+Physical MTU = 1500 bytes
+  − Outer IP   20b  ┐
+  − UDP         8b  ├─ VXLAN overhead = 50 bytes
+  − VXLAN Hdr   8b  │
+  − Inner Eth  14b  ┘
+  ─────────────────────
+  = 1450 bytes  ← MTU thực tế của Pod
 ```
 
-**Hệ quả TCP MSS:**
-- Thông thường: TCP MSS = 1500 - 20 (IP) - 20 (TCP) = **1460 bytes**
-- Trong cluster Flannel VXLAN: TCP MSS = 1450 - 20 - 20 = **1410 bytes**
-- Mỗi TCP segment nhỏ hơn 50 bytes → cần thêm ~3.4% segments
+**Tại sao Outer Ethernet (14b) không bị trừ?**
+MTU là khái niệm **L3** — đo kích thước IP packet. Outer Ethernet là L2 framing, NIC xử lý transparent, không tính vào MTU.
 
-**Tối ưu TCP MSS:**
-- Flannel **không** cài rule MSS Clamping trong iptables mặc định.
-- Do MTU của Pod = 1450, TCP stack trong Pod tự đàm phán MSS = 1410 lúc bắt tay.
-- Gói tin TCP tự động được giới hạn kích thước vừa vặn trong VXLAN tunnel.
+**Flannel tự set MTU = 1450** trên `cni0`, `eth0` của Pod, và `flannel.1`.
+
+---
+
+## TCP MSS: Pod tự tránh fragmentation
+
+| | Thông thường | Flannel VXLAN |
+|---|---|---|
+| MTU interface | 1500 bytes | **1450 bytes** |
+| TCP MSS | 1500 − 20 − 20 = **1460** | 1450 − 20 − 20 = **1410** |
+| Overhead | — | Thêm ~3.4% segments |
+
+**Cách tự xử lý:**
+1. Pod gửi TCP SYN → TCP stack đọc MTU interface = 1450 → tính MSS = 1410
+2. Ghi MSS = 1410 vào gói SYN gửi đến server
+3. Server cam kết chỉ gửi packet ≤ 1410 bytes payload
+4. Packet ra host + 50b VXLAN wrap = đúng 1500b → trơn tru, không bao giờ bị phân mảnh
+
+> Flannel **không dùng iptables MSS Clamping** — TCP stack trong Pod tự đàm phán qua MTU.
 
 ---
 
@@ -108,12 +110,13 @@ Flannel set MTU = 1450 trên cni0, eth0 của Pod, và flannel.1
 
 ## 🔬 Lab Time: Soi packet VXLAN thực tế
 
-Chúng ta sẽ thực hành:
+Thực hành theo thứ tự trong file `lab-guide.md`:
 
-1. **VTEP & Bắt VXLAN traffic:** Verify cấu hình VTEP (`flannel.1`) và dùng `tcpdump` trên physical interface để thấy outer/inner headers.
-2. **Đo MTU thực tế:** Ping với DF bit để xác định giới hạn packet size.
-3. **So sánh MTU:** Verify MTU 1450 trên Pod vs 1500 trên physical interface.
-4. **Benchmark:** Đo throughput và latency ở VXLAN mode bằng `iperf3` để làm baseline.
+1. **TN1** — Bắt VXLAN traffic (3 terminal song song): `tcpdump` trên `eth0`, xem VNI, đọc outer/inner headers.
+2. **TN2** — Chứng minh 50 bytes: ping payload 64b cố định → `length` outer − inner = **50**.
+3. **TN3** — Đo MTU bằng DF bit: `-s 1422 -M do` pass, `-s 1423 -M do` lỗi `message too long, mtu=1450`.
+4. **TN4** — Benchmark iperf3: đo throughput VXLAN 30 giây, ghi baseline so sánh với host-gw Tập 8.
+5. **Troubleshooting — MTU Black Hole**: ping nhỏ thông, HTTP/gRPC lớn treo → xác định MTU thật, sửa `kube-flannel-cfg`.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
@@ -121,27 +124,14 @@ Chúng ta sẽ thực hành:
 
 ## Key Takeaways
 
-**VXLAN overhead:**
-```
-Physical MTU: 1500 bytes
-  - VXLAN overhead: 50 bytes
-  = Effective MTU: 1450 bytes (Pod, bridge, VTEP)
+- **50 bytes overhead** = Outer IP (20) + UDP (8) + VXLAN Header (8) + Inner Ethernet (14).
+- **MTU Pod = 1450** — Flannel set tự động để nhường chỗ cho 50 bytes wrapper.
+- **TCP MSS = 1410** — Pod tự đàm phán trong SYN handshake, không cần can thiệp thêm.
+- **MTU Black Hole**: xảy ra khi MTU vật lý host < 1500 nhưng Flannel không biết → packet lớn bị drop âm thầm.
 
-TCP MSS = 1410 bytes (thay vì 1460 thông thường)
-→ ~3.4% overhead thêm cho cùng lượng data
-```
-
-**Đọc tcpdump VXLAN:**
-```
-Outer:  192.168.64.11.49152 > 192.168.64.12.8472  ← Node-to-Node
-Inner:  10.244.1.5 > 10.244.2.7: ICMP              ← Pod-to-Pod
-VNI:    1
-```
-
-**Debug VXLAN:**
 ```bash
-tcpdump -i eth0 -n udp port 8472 -v   # Xem VXLAN packets
-ip -d link show flannel.1              # VTEP details (VNI, local IP)
+tcpdump -i eth0 -n udp port 8472 -v   # Outer: node IP, Inner: pod IP, VNI
+ip -d link show flannel.1              # VTEP details (VNI, local IP, MTU)
 ip link show cni0                      # Verify MTU = 1450
 ```
 

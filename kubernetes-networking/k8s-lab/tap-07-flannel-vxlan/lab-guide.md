@@ -46,10 +46,10 @@ Câu trả lời là **Không**, nhờ vào cơ chế tự động đàm phán *
 1. Khi một ứng dụng bên trong Pod thiết lập một kết nối TCP (ví dụ gửi một HTTP request), nó sẽ bắt đầu bằng quá trình bắt tay 3 bước (3-way handshake).
 2. Khi gửi gói tin `SYN` khởi tạo, TCP stack trong nhân Linux của Pod sẽ kiểm tra MTU của interface ảo `eth0` (được gán mặc định là `1450`).
 3. TCP stack sẽ tự động tính toán kích thước Payload tối đa cho một phân đoạn TCP, gọi là **MSS**:
-   $$\text{TCP MSS} = \text{MTU} - \text{IP Header} (20\text{ bytes}) - \text{TCP Header} (20\text{ bytes}) = 1450 - 20 - 20 = 1410\text{ bytes}$$
+   `TCP MSS = MTU − IP Header (20b) − TCP Header (20b) = 1450 − 20 − 20 = 1410 bytes`
 4. Pod sẽ gửi thông số `MSS = 1410` này trong cờ SYN tới Server đích. Server nhận được thông số này và cam kết **chỉ** gửi các gói TCP có payload tối đa là `1410` bytes.
 5. Khi gói tin này ra tới host và được VTEP bọc thêm `50` bytes VXLAN overhead, tổng kích thước gói tin vật lý sẽ là đúng:
-   $$1410\text{ (Payload)} + 20\text{ (TCP)} + 20\text{ (Inner IP)} + 50\text{ (VXLAN Overhead)} = 1500\text{ bytes}$$
+   `1410 (TCP payload) + 20 (TCP header) + 20 (Inner IP) + 50 (VXLAN overhead) = 1500 bytes`
    Con số `1500` này khớp hoàn hảo với MTU chuẩn của hạ tầng vật lý, giúp gói tin đi qua các router trung gian trơn tru mà không bao giờ bị phân mảnh (fragmentation) ở mức vật lý!
 
 ---
@@ -173,7 +173,7 @@ kubectl run iperf3-client \
   --restart=Never \
   --overrides='{"spec":{"nodeName":"worker1"}}' \
   -- -c $IPERF_IP -t 30 -i 5
-kubectl wait --for=condition=completed pod/iperf3-client --timeout=90s
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/iperf3-client --timeout=90s
 kubectl logs iperf3-client
 ```
 
@@ -189,6 +189,151 @@ kubectl delete pod iperf3-server iperf3-client
 ## 💥 Thực hành Khắc phục Sự cố (Troubleshooting)
 
 ### 🔍 Sự cố 1: Sự cố "MTU Black Hole" (Ping gói tin nhỏ thì thông, kết nối HTTP/API lớn thì treo vĩnh viễn)
+
+#### Mô hình hạ tầng gây ra sự cố
+
+Dưới đây là sơ đồ chi tiết về mô hình hạ tầng mạng vật lý kết hợp ảo hóa OpenStack gây ra hiện tượng **MTU Black Hole**:
+
+![Mô hình hạ tầng gây sự cố và MTU Black Hole](./mtu_blackhole_diagram.png)
+
+##### Sơ đồ Khối Hạ Tầng (Mermaid Render):
+
+```mermaid
+graph TD
+    subgraph Physical_Network ["HẠ TẦNG VẬT LÝ (Physical NIC MTU = 1500)"]
+        style Physical_Network fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#fff
+        Switch["Physical Network Switch (MTU 1500)"]
+        style Switch fill:#1e293b,stroke:#06b6d4,stroke-width:2px,color:#fff
+        
+        subgraph Host1 ["Physical Host 1 (Bare Metal)"]
+            style Host1 fill:#1e293b,stroke:#64748b,stroke-width:1px,color:#fff
+            subgraph OS1 ["OpenStack Compute"]
+                style OS1 fill:#0f172a,stroke:#f43f5e,stroke-width:1px,color:#fff
+                Neutron1["Neutron VXLAN (Overhead 50B)<br/>→ VM MTU = 1450"]
+                style Neutron1 fill:#e11d48,stroke:#f43f5e,stroke-width:1px,color:#fff
+                VM1["K8s VM (control)<br/>eth0 MTU = 1450"]
+                style VM1 fill:#2563eb,stroke:#38bdf8,stroke-width:1px,color:#fff
+            end
+        end
+
+        subgraph Host2 ["Physical Host 2 (Bare Metal)"]
+            style Host2 fill:#1e293b,stroke:#64748b,stroke-width:1px,color:#fff
+            subgraph OS2 ["OpenStack Compute"]
+                style OS2 fill:#0f172a,stroke:#f43f5e,stroke-width:1px,color:#fff
+                Neutron2["Neutron VXLAN (Overhead 50B)<br/>→ VM MTU = 1450"]
+                style Neutron2 fill:#e11d48,stroke:#f43f5e,stroke-width:1px,color:#fff
+                VM2["K8s VM (worker1)<br/>eth0 MTU = 1450"]
+                style VM2 fill:#2563eb,stroke:#38bdf8,stroke-width:1px,color:#fff
+            end
+        end
+
+        subgraph Host3 ["Physical Host 3 (Bare Metal)"]
+            style Host3 fill:#1e293b,stroke:#64748b,stroke-width:1px,color:#fff
+            subgraph OS3 ["OpenStack Compute"]
+                style OS3 fill:#0f172a,stroke:#f43f5e,stroke-width:1px,color:#fff
+                Neutron3["Neutron VXLAN (Overhead 50B)<br/>→ VM MTU = 1450"]
+                style Neutron3 fill:#e11d48,stroke:#f43f5e,stroke-width:1px,color:#fff
+                VM3["K8s VM (worker2)<br/>eth0 MTU = 1450"]
+                style VM3 fill:#2563eb,stroke:#38bdf8,stroke-width:1px,color:#fff
+            end
+        end
+    end
+    
+    VM1 <===> Switch
+    VM2 <===> Switch
+    VM3 <===> Switch
+```
+
+##### Sơ đồ Khối Hạ Tầng (Unicode Art):
+
+```
+╔═════════════════════════════════════════════════════════════════════════════════════════╗
+║                      HẠ TẦNG VẬT LÝ (Bare Metal) — Physical NIC MTU = 1500              ║
+║                                                                                         ║
+║  ┌───────────────────────┐   ┌───────────────────────┐   ┌───────────────────────┐      ║
+║  │    Physical Host 1    │   │    Physical Host 2    │   │    Physical Host 3    │      ║
+║  │ ┌───────────────────┐ │   │ ┌───────────────────┐ │   │ ┌───────────────────┐ │      ║
+║  │ │ OpenStack Compute │ │   │ │ OpenStack Compute │ │   │ │ OpenStack Compute │ │      ║
+║  │ │ ┌───────────────┐ │ │   │ │ ┌───────────────┐ │ │   │ │ ┌───────────────┐ │ │      ║
+║  │ │ │    K8s VM     │ │ │   │ │ │    K8s VM     │ │ │   │ │ │    K8s VM     │ │ │      ║
+║  │ │ │ (controlplane)│ │ │   │ │ │   (worker1)   │ │ │   │ │ │   (worker2)   │ │ │      ║
+║  │ │ │  eth0         │ │ │   │ │ │  eth0         │ │ │   │ │ │  eth0         │ │ │      ║
+║  │ │ │  MTU = 1450   │ │ │   │ │ │  MTU = 1450   │ │ │   │ │ │  MTU = 1450   │ │ │      ║
+║  │ │ └───────┬───────┘ │ │   │ │ └───────┬───────┘ │ │   │ │ └───────┬───────┘ │ │      ║
+║  │ │         │         │ │   │ │         │         │ │   │ │         │         │ │      ║
+║  │ │   Neutron VXLAN   │ │   │ │   Neutron VXLAN   │ │   │ │   Neutron VXLAN   │ │      ║
+║  │ │   Overhead 50b    │ │   │ │   Overhead 50b    │ │   │ │   Overhead 50b    │ │      ║
+║  │ │  → VM MTU = 1450  │ │   │ │  → VM MTU = 1450  │ │   │ │  → VM MTU = 1450  │ │      ║
+║  │ └─────────┬─────────┘ │   │ └─────────┬─────────┘ │   │ └─────────┬─────────┘ │      ║
+║  └───────────┼───────────┘   └───────────┼───────────┘   └───────────┼───────────┘      ║
+║              │                           │                           │                  ║
+╚══════════════╪═══════════════════════════╪═══════════════════════════╪══════════════════╝
+               ▼                           ▼                           ▼
+    ┌─────────────────────────────────────────────────────────────────────────────┐
+    │                     Physical Network Switch (MTU 1500)                      │
+    └─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Tại sao xảy ra MTU Black Hole?
+
+##### Sơ đồ Luồng Đóng Gói và Lỗi Hủy Gói Tin (Mermaid Render):
+
+```mermaid
+graph TD
+    classDef pod fill:#38bdf8,stroke:#0284c7,stroke-width:2px,color:#000;
+    classDef flannel fill:#ec4899,stroke:#db2777,stroke-width:2px,color:#fff;
+    classDef vm fill:#8b5cf6,stroke:#7c3aed,stroke-width:2px,color:#fff;
+    classDef drop fill:#ef4444,stroke:#dc2626,stroke-width:3px,color:#fff,stroke-dasharray: 5 5;
+
+    Pod["Pod A (worker1)<br/>eth0 MTU = 1450<br/>(Flannel gán sai mặc định)<br/>Gửi TCP payload lớn: 1410B<br/>[DF bit = 1 (Don't Fragment)]"]:::pod
+    VTEP["flannel.1 (VTEP)<br/>Bọc thêm +50 bytes VXLAN<br/>(Outer IP + UDP + VXLAN Hdr + Inner Eth)<br/>Tổng packet vật lý = 1500 bytes"]:::flannel
+    eth0["VM eth0 Interface<br/>MTU vật lý thực tế = 1450<br/>(Do hạ tầng OpenStack giới hạn)"]:::vm
+    DropNode["✗ SILENT DROP ✗<br/>Packet size 1500B > MTU VM 1450B<br/>Cờ DF = 1: Cấm phân mảnh!<br/>Gói tin bị drop âm thầm không báo lại"]:::drop
+
+    Pod -->|"TCP Packet (1450B)"| VTEP
+    VTEP -->|"VXLAN Frame (1500B)"| eth0
+    eth0 -->|"1500B > 1450B (DF=1)"| DropNode
+```
+
+##### Sơ đồ Luồng Đóng Gói (Unicode Art):
+
+```
+Trên K8s VM (worker1) — eth0 MTU = 1450 (do OpenStack đã chiếm 50b)
+
+  ┌─────────────────── Pod A ──────────────────────────────────────────────┐
+  │  Interface eth0: MTU = 1450  (Flannel gán sai vì giả định host MTU=1500)│
+  │  Hành động: Gửi TCP data = 1450 bytes (IP+TCP+Payload)                  │
+  │  Cờ đặc biệt: [DF bit = 1] - Không cho phép phân mảnh                  │
+  └────────────────────────────────────┬───────────────────────────────────┘
+                                       │
+                                       ▼  (Gửi ra interface ảo)
+                            ┌─────────────────────┐
+                            │   flannel.1 (VTEP)  │
+                            │  Bọc +50 bytes      │  (20b Outer IP + 8b UDP
+                            │  VXLAN Overhead     │   + 8b VXLAN + 14b Inner Eth)
+                            └──────────┬──────────┘
+                                       │
+                                       ▼  (Kích thước mới)
+                            ┌─────────────────────┐
+                            │  VXLAN Packet: 1500B│
+                            └──────────┬──────────┘
+                                       │
+                                       ▼  (Chuyển sang card mạng vật lý)
+  ┌────────────────────────────────────┴───────────────────────────────────┐
+  │  VM Interface eth0: MTU = 1450                                         │
+  │  Trạng thái: 1500 bytes > 1450 bytes                                   │
+  │  Điều kiện: [DF bit = 1] (Cấm phân mảnh)                               │
+  └────────────────────────────────────┬───────────────────────────────────┘
+                                       │
+                                       ▼
+                            ❌   SILENT DROP   ❌
+                (Hủy gói tin âm thầm, không có ICMP error báo về!)
+
+  Hậu quả thực tế:
+  • ping -s 64   ────────> THÔNG (Kích thước nhỏ: 84 bytes < 1450 bytes MTU)
+  • curl / gRPC  ────────> TREO CỨNG VĨNH VIỄN (Packet lớn > 1450 bytes bị hủy)
+```
+
 * **Triệu chứng**: Bạn đứng từ `pod-a` ping sang `pod-b` thấy phản hồi rất nhanh và thông suốt. Tuy nhiên, khi bạn thực hiện gọi API lớn, `curl` lấy file HTML hoặc gửi dữ liệu qua `gRPC`/`HTTP` thì kết nối bị treo cứng (hoặc báo `Connection timed out` sau một thời gian dài).
 * **Nguyên nhân**: Cụm K8s của bạn chạy trên một hạ tầng ảo hóa (ví dụ chạy VM lồng nhau trong AWS/GCP, hoặc hạ tầng OpenStack doanh nghiệp) mà bản thân hạ tầng này đã dùng mạng Overlay sẵn. Do đó, MTU vật lý của card `eth0` trên Host của bạn không phải là `1500` mà chỉ là `1450` hoặc thấp hơn.
   Khi Flannel VXLAN mặc định cấu hình MTU cho Pod là `1450` (giả định MTU host là 1500), các packet ICMP nhỏ (~84 bytes) truyền bình thường. Nhưng khi gửi dữ liệu TCP lớn, packet đạt ngưỡng MTU `1450` bytes của Pod. Ra đến Host, VTEP bọc thêm 50 bytes thành `1500` bytes và phát ra card `eth0` (với MTU vật lý thực tế chỉ là `1450`). Do gói tin có cờ cấm phân mảnh **DF (Don't Fragment)**, Router vật lý sẽ âm thầm hủy gói tin đó (silent drop) mà không báo lại cho Pod. Đây gọi là hiện tượng **MTU Black Hole**.
@@ -197,8 +342,8 @@ kubectl delete pod iperf3-server iperf3-client
      ```bash
      ping -s 1422 -M do <IP_WORKER2_VẬT_LÝ>
      ```
-     Nếu bị lỗi `message too long`, hãy hạ nhỏ dần kích thước `-s` (ví dụ `1372`) cho đến khi ping thành công. MTU thực tế của Host = $\text{kích thước ping thành công} + 28\text{ bytes (IP/ICMP header)}$. Ví dụ ping thành công ở `1372` -> MTU Host thực tế là `1400`.
-  2. Chúng ta phải cấu hình lại MTU của Flannel Pods sao cho: $\text{MTU Pod} = \text{MTU Host} - 50\text{ bytes} = 1400 - 50 = 1350\text{ bytes}$.
+     Nếu bị lỗi `message too long`, hãy hạ nhỏ dần kích thước `-s` (ví dụ `1372`) cho đến khi ping thành công. MTU thực tế của Host = (kích thước ping thành công) + 28 bytes (IP/ICMP header). Ví dụ ping thành công ở `1372` → MTU Host thực tế là `1400`.
+  2. Cấu hình lại MTU của Flannel Pods: MTU Pod = MTU Host − 50 bytes = 1400 − 50 = **1350 bytes**.
   3. Sửa ConfigMap `kube-flannel-cfg`:
      ```bash
      kubectl edit configmap kube-flannel-cfg -n kube-flannel
@@ -219,6 +364,63 @@ kubectl delete pod iperf3-server iperf3-client
      ```
   5. **⚠️ CỰC KỲ QUAN TRỌNG:** Bạn phải xóa và khởi động lại toàn bộ các Pod ứng dụng hiện tại của mình để chúng nhận diện và tự áp dụng MTU mới (`1350`) từ CNI bridge.
 
+### 💡 Trường hợp thực tế: Hạ tầng chạy trên OpenStack VM (Host MTU = 1450)
+
+Đây là trường hợp cực kỳ phổ biến trong môi trường doanh nghiệp khi chạy K8s trên các máy ảo (VM) do OpenStack cấp phát. Bản thân hạ tầng OpenStack bên dưới đã sử dụng sẵn mạng overlay (VXLAN/GENEVE) dẫn tới card mạng ảo `eth0` của VM Host chỉ có MTU là `1450` bytes.
+
+Nếu gặp phải trường hợp này, các thông số sẽ được tính toán lại chính xác như sau:
+
+#### 1. Bảng tính toán thông số tối ưu:
+* **MTU VM Host thực tế**: `1450 bytes`
+* **VXLAN Overhead (Flannel)**: `50 bytes`
+* **MTU cấu hình cho Pod**: `1450 − 50 =` **`1400 bytes`** (Giảm bớt $50$ bytes để dành chỗ cho outer VXLAN header của Flannel).
+* **TCP MSS của Pod**: `1400 − 20 (IP) − 20 (TCP) =` **`1360 bytes`** (Hệ điều hành trong Pod tự động đàm phán khi thực hiện bắt tay TCP SYN).
+* **Ping Payload tối đa từ trong Pod (DF=1)**: `1400 − 20 (IP) − 8 (ICMP) =` **`1372 bytes`** (Để thực hiện ping kiểm tra đường truyền Pod-to-Pod).
+
+#### 2. Các bước cấu hình thực tế:
+
+* **Bước 1: Kiểm tra thực tế MTU của VM Host (từ Host này sang Host khác):**
+  ```bash
+  ping -s 1422 -M do <IP_VM_HOST_2>
+  ```
+  *(Nếu thành công ở payload `1422` và báo lỗi ở `1423`, MTU thực tế của Host đúng bằng `1422 + 28 = 1450`)*.
+
+* **Bước 2: Cập nhật ConfigMap của Flannel:**
+  ```bash
+  kubectl edit configmap kube-flannel-cfg -n kube-flannel
+  ```
+  Sửa trường `"MTU"` trong cấu hình `net-conf.json` thành **`1400`**:
+  ```json
+  {
+    "Network": "10.244.0.0/16",
+    "Backend": {
+      "Type": "vxlan",
+      "MTU": 1400
+    }
+  }
+  ```
+
+* **Bước 3: Khởi động lại Flannel DaemonSet:**
+  ```bash
+  kubectl rollout restart ds kube-flannel-ds -n kube-flannel
+  ```
+
+* **Bước 4: Tái khởi động Pod ứng dụng:**
+  Xóa và chạy lại toàn bộ các Pod ứng dụng của bạn để card `eth0` ảo nhận MTU mới = **`1400`**.
+  ```bash
+  kubectl delete pod --all -n <namespace_cua_ban>
+  ```
+
+* **Bước 5: Xác minh trong Pod:**
+  SSH hoặc Exec vào Pod bất kỳ và chạy lệnh ping cấm phân mảnh để test đường truyền Pod-to-Pod:
+  ```bash
+  # Ping thành công
+  ping -s 1372 -M do <IP_POD_DICH>
+  
+  # Báo lỗi "message too long" tại nguồn ngay lập tức (chứng minh MTU Pod đã giới hạn ở 1400)
+  ping -s 1373 -M do <IP_POD_DICH>
+  ```
+
 ---
 
 ## ✅ Tổng kết
@@ -226,4 +428,5 @@ kubectl delete pod iperf3-server iperf3-client
 Bài lab chứng minh bằng thực nghiệm:
 1. **VXLAN = UDP tunnel**: Outer packet chứa Node IP, inner packet chứa Pod IP — tcpdump thấy cả hai.
 2. **50 bytes overhead = thực**: Kernel enforce MTU 1450 để nhường chỗ cho 50 bytes bọc ngoài.
-3. **Tối ưu TCP MSS**: Pod tự động đàm phán TCP MSS = 1410 giúp packet đi qua mạng trơn tru không bị phân mảnh.
+3. **TCP MSS tự đàm phán**: Pod tự tính MSS = 1410 trong SYN handshake — không cần can thiệp thủ công, không bao giờ bị fragmentation.
+4. **Benchmark VXLAN baseline**: throughput đo được bằng iperf3 — ghi lại để so sánh với host-gw ở Tập 8.

@@ -31,111 +31,79 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 10
-## Kiến trúc Calico: Felix, BIRD, Datastore — Ai làm gì?
+# Tập 10 - Calico - Architecture
+## Kiến trúc Calico: Felix, BIRD, Typha — Ai làm gì?
 
-**Phần 2 — Calico** · `#calico` `#felix` `#BIRD` `#datastore` `#architecture`
+**Phần 2 — Calico** · `#calico` `#felix` `#BIRD` `#typha` `#architecture`
 
+![height:200px](https://www.tigera.io/app/uploads/2026/01/Calico-logo-2026-white-text.svg)
 ---
 
 ## Mục tiêu tập này
 
-- Giải thích vai trò chính xác của Felix, BIRD, Typha
-- Trace luồng từ NetworkPolicy CR → iptables rule trên Node
-- Quan sát Felix log khi policy thay đổi (event-driven)
-- Hiểu khi nào cần Typha và khi nào không cần
+- Hiểu vai trò chính xác của **Felix**, **BIRD**, **Typha** trong kiến trúc Calico.
+- Trace luồng từ `NetworkPolicy` YAML → iptables rule trên Node.
+- Quan sát Felix log khi policy thay đổi — event-driven trong ms.
+- Dùng `calicoctl` để debug workload endpoints, IP pools, BGP status.
 
-**Prerequisites:** Cluster từ Tập 9 với Calico đang chạy
-
----
-
-## Tổng quan kiến trúc Calico
-
-```
-┌──────────────────────────────────────────────────────────┐
-│               Kubernetes API Server                      │
-│   NetworkPolicy, IPPool, BGPPeer, FelixConfiguration    │
-└───────────────────────┬──────────────────────────────────┘
-                        │ watch (via Typha nếu cluster lớn)
-          ┌─────────────┼─────────────┐
-          │             │             │
-    ┌─────▼──────┐ ┌────▼───────┐ ┌──▼──────────┐
-    │   Felix    │ │    BIRD    │ │    Typha    │
-    │ (per node) │ │ (per node) │ │ (optional)  │
-    │            │ │            │ │             │
-    │ Policy →   │ │ BGP daemon │ │ Cache K8s   │
-    │ iptables / │ │ Route adv. │ │ API → fan   │
-    │ eBPF       │ │ peer nodes │ │ out to Felix│
-    └────────────┘ └────────────┘ └─────────────┘
-```
+**Prerequisites:** Cluster từ Tập 9 với Calico đang chạy.
 
 ---
 
-## Felix: Bộ não của Calico
+## Luồng dữ liệu trong Calico
 
-**Felix chạy gì?**
-- Watch K8s API (hoặc Typha) cho NetworkPolicy, Pod, Node updates
-- Dịch NetworkPolicy → iptables chains hoặc eBPF programs
-- Quản lý routes cho Pod IPs trên node này
-- Báo cáo health qua `felix_` metrics
-
-**Event-driven, không polling:**
 ```
-NetworkPolicy thay đổi
-    ↓
-K8s API webhook → Felix nhận event trong ms
-    ↓
-Felix recalculate rules
-    ↓
-Felix atomic update iptables/eBPF (< 100ms)
-    ↓
-Traffic bị enforce ngay lập tức
-```
+NetworkPolicy (YAML)
+        │
+        ▼
+  K8s API Server
+        │  watch
+        ▼
+  Typha (nếu cluster lớn)   ← cache, fan-out tới nhiều Felix
+        │
+        ▼
+  Felix (mỗi Node)          ← dịch policy → rules
+        │
+        ├── iptables chains  (cali-FORWARD, cali-fw-*, cali-tw-*)
+        └── eBPF maps        (nếu dùng eBPF dataplane)
 
-**Không cần restart pod hay node!**
+  BIRD (mỗi Node)           ← quảng bá Pod subnet qua BGP
+        │
+        └── Kernel routing table
+```
 
 ---
 
-## BIRD: BGP cho Calico
+## Felix: Policy Engine trên từng Node
 
-**BIRD (Bird Internet Routing Daemon)** — BGP daemon của Calico.
+Felix chạy như DaemonSet — 1 instance mỗi Node, luôn watch K8s API:
 
-```
-Mỗi Node chạy 1 BIRD instance:
-- Peer với BIRD của các Node khác (full mesh)
-- Hoặc peer với Route Reflector
-- Quảng bá: "Pod subnet 10.244.1.0/24 nằm ở tôi"
-- Nhận route từ peer: "10.244.2.0/24 ở Node 2"
-- Cài routes vào kernel routing table
-```
+- Nhận event `NetworkPolicy` / `Pod` / `Node` thay đổi → tính toán lại rules.
+- Dịch policy thành **iptables chains** (hoặc eBPF programs) và cập nhật atomic.
+- Toàn bộ quá trình: event nhận → iptables update **< 100ms**.
+- Không cần restart Pod, Node, hay DaemonSet.
 
-**Khi nào BIRD hoạt động?**
-- BGP mode (không dùng overlay)
-- Peer với ToR switch datacenter
-- Khi dùng VXLAN: BIRD vẫn chạy nhưng routes không cần thiết
+**Chain hierarchy Felix tạo:**
+- `FORWARD → cali-FORWARD → cali-from-wl-dispatch → cali-fw-<id>` (egress)
+- `cali-to-wl-dispatch → cali-tw-<id>` (ingress)
+
+> Mỗi lần apply `NetworkPolicy`, Felix tự đồng bộ — không có hành động thủ công nào cần thiết.
 
 ---
 
-## Key Takeaways
+## BIRD & Typha
 
-| Component | Location | Trách nhiệm |
-| :--- | :--- | :--- |
-| **Felix** | DaemonSet, mỗi Node | Policy → iptables/eBPF, routes |
-| **BIRD** | DaemonSet, mỗi Node | BGP route advertisement |
-| **Typha** | Deployment, vài Pods | Cache K8s API cho Felix (cluster lớn) |
-| **Tigera Operator** | Deployment | Quản lý lifecycle Calico components |
+**BIRD** — BGP daemon, chạy cùng Felix trong Pod `calico-node`:
+- Peer với BIRD của tất cả Nodes khác (full mesh) hoặc Route Reflector.
+- Quảng bá: *"Pod subnet `10.244.1.0/24` nằm ở Node này"*.
+- Cài routes nhận được vào kernel routing table.
+- Dùng khi chạy BGP mode (không overlay). Với VXLAN: vẫn chạy nhưng không cần thiết.
 
-**Luồng policy:**
-```
-NetworkPolicy (YAML) → K8s API → [Typha] → Felix → iptables/eBPF
-```
-
-**Debug Felix:**
-```bash
-kubectl -n calico-system logs daemonset/calico-node -c calico-node
-calicoctl get workloadendpoint
-calicoctl node status
-```
+**Typha** — cache layer tùy chọn:
+- Đứng giữa K8s API Server và tất cả Felix instances.
+- Mỗi Felix chỉ kết nối đến Typha thay vì trực tiếp API Server.
+- **Tigera Operator tự bật Typha khi node count > 3** (tùy version).
+- Cluster nhỏ (≤ 3 nodes): không cần — Felix kết nối thẳng API Server.
 
 ---
 
@@ -143,13 +111,28 @@ calicoctl node status
 
 ## 🔬 Lab Time: Giải phẫu Calico Architecture
 
-Chúng ta sẽ thực hành:
+Thực hành theo thứ tự trong `lab-guide.md`:
 
-1. **Felix log real-time:** Watch Felix xử lý policy update trong ms.
-2. **iptables chains:** Xem chains `cali-FORWARD`, `cali-fw-*`, `cali-tw-*` Felix tạo.
-3. **calicoctl:** Các lệnh quản lý workload endpoints, IP pools, Felix config.
-4. **Typha:** Verify Typha chạy hay không và tại sao.
+1. **TN1 — Felix log real-time:** mở 2 terminal song song — terminal 1 watch Felix log, terminal 2 apply NetworkPolicy mới → thấy Felix xử lý update trong ms.
+2. **TN2 — iptables chains:** liệt kê `cali-*` chains, xem `cali-FORWARD`, drill vào `cali-tw-<hash>` để thấy ACCEPT/DROP rule tương ứng với policy.
+3. **TN3 — calicoctl:** cài binary, dùng `get workloadendpoint`, `get ippool`, `get felixconfig`, `node status`.
+4. **TN4 — Typha:** kiểm tra Typha có chạy không, đếm Felix connections, xem Operator quyết định bật Typha khi nào.
 
-👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
+👉 **Làm theo `lab-guide.md`**
 
-> **Tập tiếp theo:** iptables vs eBPF dataplane trong Calico — khi nào upgrade?
+---
+
+## Key Takeaways
+
+- **Felix** là trái tim: event-driven, dịch NetworkPolicy → iptables/eBPF < 100ms, không polling.
+- **BIRD** quảng bá Pod routes qua BGP — cần thiết khi chạy BGP mode, không quan trọng với VXLAN.
+- **Typha** chỉ cần khi cluster lớn (> 50 nodes) để giảm tải K8s API Server.
+- **calicoctl** là `kubectl` cho Calico objects — dùng để debug endpoint, IP pool, BGP session.
+
+```bash
+kubectl -n calico-system logs daemonset/calico-node -c calico-node  # Felix logs
+calicoctl get workloadendpoint        # Pods được Calico quản lý
+calicoctl node status                 # BGP peers + health
+```
+
+> **Tập tiếp theo:** iptables vs eBPF dataplane — khi nào upgrade và đánh đổi là gì?

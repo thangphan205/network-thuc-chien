@@ -33,18 +33,19 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 8
-## Tối ưu Định tuyến host-gw & Khắc phục Sự cố trên Flannel CNI
+# Tập 8 - Flannel - host-gw
+## Flannel host-gw: Định tuyến Trực tiếp & So sánh Hiệu năng
 
-**Phần 1 — Flannel** · `#host-gw` `#underlay` `#routing` `#troubleshooting`
+**Phần 1 — Flannel** · `#host-gw` `#underlay` `#routing` `#iperf3`
+![height:200px](https://github.com/flannel-io/flannel/blob/master/logos/flannel-horizontal-color.png?raw=true)
 
 ---
 
 ## Mục tiêu tập này
 
 - Tìm hiểu cơ chế định tuyến trực tiếp **host-gw** (Underlay) thay thế VXLAN (Overlay).
-- Chuyển đổi backend, so sánh chi tiết hiệu năng và điều kiện L2 boundary.
-- Phân tích và thực hành các kịch bản khắc phục sự cố định tuyến trực tiếp nâng cao (card ảo flannel.1 cũ tồn đọng và tường lửa Host chặn forwarding).
+- Chuyển đổi backend, xử lý interface `flannel.1` tồn đọng sau khi switch mode.
+- So sánh hiệu năng thực tế host-gw vs VXLAN bằng iperf3, hiểu điều kiện L2 boundary bắt buộc.
 
 ---
 
@@ -84,7 +85,6 @@ Routing table trên worker1:
 | Throughput | Baseline | **Tăng 10 - 15%** |
 | Cloud compatibility | ✅ Rất tương thích | ❌ Thường bị Cloud drop packet chéo |
 
-*Điều kiện cứng của host-gw:* Node nguồn và Node đích bắt buộc phải cùng chung switch vật lý (L2 segment) để Router không drop gói tin có IP lạ.
 
 ---
 
@@ -92,9 +92,11 @@ Routing table trên worker1:
 
 ## 🔬 Lab Time: Định tuyến host-gw & Troubleshooting
 
-Chúng ta sẽ thực hành các kịch bản sau trong file `lab-guide.md`:
+Thực hành theo thứ tự trong file `lab-guide.md`:
 
-1. **Switch VXLAN → host-gw:** Thay đổi config, xóa `flannel.1` cũ và đo đạc iperf3 benchmark.
+1. **TN1 — Switch VXLAN → host-gw:** Xem config hiện tại, patch ConfigMap backend `host-gw`, restart DaemonSet.
+2. **TN2 — Kiểm tra routing & dọn dẹp:** Xóa `flannel.1` cũ tồn đọng (`ip link delete flannel.1`), xem routing table trực tiếp qua `eth0`, verify MTU bridge tăng lên `1500`.
+3. **TN3 — Benchmark iperf3:** Deploy iperf3 server/client cross-node, so sánh throughput với baseline VXLAN từ Tập 7.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
@@ -102,8 +104,8 @@ Chúng ta sẽ thực hành các kịch bản sau trong file `lab-guide.md`:
 
 ## Key Takeaways
 
-- **host-gw** là giải pháp định tuyến trực tiếp L3, tăng tốc độ mạng lên 10-15%, đưa MTU về 1500 nhưng bắt buộc phải cùng L2 segment.
-- **Troubleshooting thực chiến**: Hiểu rõ sự tương tác giữa Linux routing table và Host firewall đối với CNI định tuyến trực tiếp.
-- **Tầm quan trọng của Bảo mật**: Sự bất lực của Flannel trước NetworkPolicy sẽ là động lực để chúng ta học giải pháp Calico CNI.
+- **host-gw** định tuyến L3 trực tiếp, không bọc gói — MTU về 1500, throughput tăng ~10-15%.
+- **Điều kiện bắt buộc**: tất cả Node phải cùng L2 segment. Cloud thường chặn packet có "foreign IP" → dùng VXLAN thay thế.
+- **flannel.1 tồn đọng**: flanneld không tự xóa VTEP cũ khi switch mode — phải dọn thủ công `ip link delete flannel.1`.
 
 > **Chương tiếp theo (Tập 9):** Calico CNI — Cài đặt từ đầu, giải quyết triệt để bài toán Lateral Movement và thực thi NetworkPolicy thực sự.

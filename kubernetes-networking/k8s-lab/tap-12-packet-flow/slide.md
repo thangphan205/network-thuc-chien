@@ -31,11 +31,11 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 12
+# Tập 12 - Calico - Packet Flow
 ## veth pair & conntrack: Hành trình của 1 packet qua Calico
 
 **Phần 2 — Calico** · `#packet-flow` `#veth` `#conntrack` `#iptables` `#trace`
-
+![height:200px](https://www.tigera.io/app/uploads/2026/01/Calico-logo-2026-white-text.svg)
 ---
 
 ## Mục tiêu tập này
