@@ -3,14 +3,44 @@
 Tập này giải phẫu từng thành phần của Calico và trace luồng từ NetworkPolicy CR → iptables rule trên Node.
 
 ### Sơ đồ luồng đồng bộ cấu hình trong cụm Calico:
+
 ```mermaid
 sequenceDiagram
   autonumber
-  K8s API Server->>Typha (Optional): Watch event thay đổi NetworkPolicy / Pods / Nodes
-  Typha (Optional)->>Felix: Fan-out các sự kiện cập nhật cấu hình tới từng Node
-  Felix->>Linux Kernel: Dịch NetworkPolicy thành iptables rules hoặc eBPF maps ở kernel cấp Node
-  BIRD->>Các Peer Nodes: Quảng bá route IP của Pod qua BGP (định tuyến L3)
+  actor Admin as Quản trị viên
+  participant K8s as K8s API Server
+  participant Typha as Typha (API Cache Proxy)
+  participant Felix as Felix (Policy Engine)
+  participant Kernel as Linux Kernel (iptables/eBPF)
+  participant BIRD as BIRD (BGP Agent)
+  participant Peer as BGP Peers (Other Nodes)
+
+  box grey Cấu hình & Đồng bộ Chính sách Bảo mật (Security Policy)
+  participant K8s
+  participant Typha
+  participant Felix
+  participant Kernel
+  end
+
+  box rgba(34, 139, 34, 0.1) Định tuyến chéo Node qua BGP (L3 Routing)
+  participant BIRD
+  participant Peer
+  end
+
+  %% Luồng chính sách bảo mật
+  Admin->>K8s: 1. Apply NetworkPolicy CRD (YAML)
+  K8s-->>Typha: 2. Stream event thay đổi (NetworkPolicy, Pods, Nodes)
+  Note over Typha: Cache cấu hình để giảm tải cho API Server khi cụm phình to
+  Typha-->>Felix: 3. Fan-out & Đồng bộ cấu hình thời gian thực xuống các Node
+  Note over Felix: Felix tính toán & tối ưu hóa tập rule của các Endpoint local
+  Felix->>Kernel: 4. Nạp trực tiếp vào iptables rules (cali-*) hoặc eBPF Maps (< 100ms)
+
+  %% Luồng định tuyến BGP
+  BIRD->>Kernel: 5. Monitor trạng thái gán IP ảo của Pod local
+  BIRD->>Peer: 6. Quảng bá dải Pod Subnet local qua giao thức BGP (Port 179)
+  Peer->>Kernel: 7. Ghi đè cấu hình định tuyến mới nhận vào Kernel Routing Table chéo Node
 ```
+
 
 ## 🛠 Yêu cầu chuẩn bị
 - Cụm K8s với Calico đang chạy (từ Tập 9).

@@ -37,6 +37,7 @@ style: |
 **Phần 2 — Calico** · `#calico` `#felix` `#BIRD` `#typha` `#architecture`
 
 ![height:200px](https://www.tigera.io/app/uploads/2026/01/Calico-logo-2026-white-text.svg)
+
 ---
 
 ## Mục tiêu tập này

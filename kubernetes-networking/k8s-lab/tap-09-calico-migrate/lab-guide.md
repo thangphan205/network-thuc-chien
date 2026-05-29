@@ -208,7 +208,7 @@ kubectl exec frontend -- nc -zv -w 3 $DB_IP 5432
 # Kết quả mong đợi:
 # nc: connect to 10.244.2.X port 5432 (tcp) timed out: Operation now in progress ❌
 ```
-> **Nhận xét:** Calico đã thực thi (enforce) chính sách chặn chính xác. Đây là điều mà Flannel không thể làm được ở Tập 10 do thiếu cơ chế Security Engine.
+> **Nhận xét:** Calico đã thực thi (enforce) chính sách chặn chính xác. Đây là điều mà Flannel không thể làm được ở Tập 8 do thiếu cơ chế Security Engine.
 
 ---
 
