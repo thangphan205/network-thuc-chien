@@ -46,7 +46,7 @@ style: |
 - Bật eBPF dataplane trong Calico (cần kernel 5.3+)
 - Xem `tc filter` programs được load vào network interfaces
 
-**Prerequisites:** Cluster Calico từ Tập 9. Ubuntu 26.04 có kernel 7.x — đủ điều kiện eBPF.
+**Prerequisites:** Cluster Calico từ Tập 9. Ubuntu 26.04 có kernel 6.x/7.x+ — đủ điều kiện eBPF.
 
 ---
 

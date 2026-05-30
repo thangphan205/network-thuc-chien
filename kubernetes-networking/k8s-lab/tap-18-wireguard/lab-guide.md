@@ -4,7 +4,7 @@ Tập này bật WireGuard encryption, verify traffic được mã hóa, và rep
 
 ## 🛠 Yêu cầu chuẩn bị
 - Cụm K8s với Calico từ Tập 9.
-- Ubuntu 26.04 — WireGuard được build sẵn trong kernel 6.x.
+- Ubuntu 26.04 — WireGuard được build sẵn trong kernel 6.x/7.x+.
 - `pod-a` trên `worker1`, `pod-b` trên `worker2`.
 
 ---
@@ -32,7 +32,7 @@ multipass shell worker1
 3. Kiểm tra kernel version đủ điều kiện:
    ```bash
    uname -r
-   # 6.x.x-xx-generic   ← Đủ điều kiện (cần 5.6+)
+   # 6.x.x/7.x.x-generic   ← Đủ điều kiện (cần 5.6+)
    ```
 
 ---
@@ -193,7 +193,7 @@ kubectl patch felixconfiguration default \
 
 ## ✅ Tổng kết
 
-1. **WireGuard kernel-native:** Ubuntu 26.04 kernel 6.x có sẵn — không cần cài thêm gì.
+1. **WireGuard kernel-native:** Ubuntu 26.04 kernel 6.x/7.x+ có sẵn — không cần cài thêm gì.
 2. **Interface `wireguard.cali`:** Xuất hiện trên mỗi Node sau khi bật, MTU 1420, UDP port 51820.
 3. **Traffic encrypted:** tcpdump thấy UDP 51820 với payload gibberish — không đọc được nội dung.
 4. **PMTUD Black Hole:** MTU sai → file nhỏ OK, file lớn hang — diagnose bằng `ping -M do -s 1440`.

@@ -15,13 +15,11 @@ Tập này bật eBPF dataplane, quan sát BPF programs được load vào tc ho
 
 ## 🛠 Yêu cầu chuẩn bị
 - Cụm K8s với Calico từ Tập 9 (Calico **3.20+** — eBPF stable từ version này).
-- Ubuntu 26.04 (kernel 6.x) — đủ điều kiện eBPF.
+- Ubuntu 26.04 (kernel 6.x/7.x+) — đủ điều kiện eBPF.
 - Không có NetworkPolicy nào đang active (dọn dẹp từ tập trước nếu cần).
 - `bpftool` đã cài trên **tất cả worker nodes**:
   ```bash
-  sudo apt install -y linux-tools-common linux-tools-$(uname -r)
-  # Nếu package không tìm thấy:
-  sudo apt install -y bpftool
+  sudo apt update && sudo apt install -y bpftool
   ```
 
 ---
@@ -174,9 +172,16 @@ multipass shell worker1
    # POLICY_MAP_ID=$(sudo bpftool map list | grep cali_v4_pol | head -1 | awk '{print $1}' | tr -d ':')
    # sudo bpftool map dump id $POLICY_MAP_ID | head -20
    ```
-   > 💡 **Giải thích chi tiết Map Dump (Dữ liệu byte thô hệ 16 - Hex):**
-   > * `key`: Ví dụ `0a f4 01 05 00 00 00 00` -> Dịch từ Hex sang hệ 10: `0a`=10, `f4`=244, `01`=1, `05`=5 -> Đại diện cho địa chỉ IP Pod: **`10.244.1.5`**.
-   > * `value`: Ví dụ `01 00 00 00` -> Cờ nhị phân đại diện cho hành động **`ALLOW`** (Cho phép đi qua). Nếu là `00 00 00 00` hoặc mã khác sẽ tương đương hành động **`DROP`** (Chặn gói tin).
+   > 💡 **Giải thích chi tiết Map Dump (JSON cấu trúc trên Kernel mới hoặc Hex trên Kernel cũ):**
+   > * **Nếu hiển thị dạng JSON (Nhờ BTF metadata trên Ubuntu mới):**
+   >   * `"protocol": 1`: Đại diện cho giao thức **ICMP** (Ping). Nếu là `17` thì là **UDP**, `6` là **TCP**.
+   >   * `"addr_a": 1136522250`: Địa chỉ IP nguồn dạng số nguyên (Little-endian). Đổi `1136522250` sang Hex là `0x43be140a` -> đọc ngược từ phải sang trái: `0a.14.be.43` -> IP Pod: **`10.20.190.67`**!
+   >   * `"addr_b": 2213278730`: Địa chỉ IP đích dạng số nguyên. Đổi `2213278730` sang Hex là `0x83eefc0a` -> đọc ngược: `0a.fc.ee.83` -> IP Pod: **`10.252.238.131`**!
+   >   * `"packets": 208`: Thống kê số lượng gói tin đi qua luồng này do eBPF tự động ghi nhận theo thời gian thực!
+   > * **Nếu hiển thị dạng Hex thô (Trên các Kernel cũ không có BTF):**
+   >   * `key`: Ví dụ `0a f4 01 05 00 00 00 00` -> Dịch từ Hex sang hệ 10: `0a`=10, `f4`=244, `01`=1, `05`=5 -> Đại diện cho địa chỉ IP Pod: **`10.244.1.5`**.
+   >   * `value`: Ví dụ `01 00 00 00` -> Cờ nhị phân đại diện cho hành động **`ALLOW`** (Cho phép đi qua). Nếu là `00 00 00 00` hoặc mã khác sẽ tương đương hành động **`DROP`** (Chặn gói tin).
+
 
 
 ---
@@ -207,13 +212,67 @@ multipass shell worker1
 
 3. Test kết nối Pod-to-Pod vẫn hoạt động:
    ```bash
-   # Từ controlplane:
-
-   # kubectl exec <pod> -- ping -c 3 <other-pod-ip>
-   # Kết nối phải vẫn OK — eBPF xử lý thay vì iptables
+   # Lấy IP của pod-b (trên worker2) từ controlplane:
+   POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
+   
+   # Ping thử từ pod-a (trên worker1):
+   kubectl exec pod-a -- ping -c 3 $POD_B_IP
+   # Kết quả: Kết nối thành công bình thường — eBPF định tuyến siêu tốc thay vì iptables!
    ```
+   * **Xác minh eBPF thực sự đang xử lý traffic (Qua eBPF Conntrack Map):**
+     Khi gói tin ping đi qua, bộ theo dõi kết nối (Conntrack) của eBPF sẽ ghi nhận dòng traffic này vào map `cali_v4_ct`. 
+     Hãy chạy lệnh sau trên **`worker1`** để kiểm chứng dòng traffic đang được eBPF theo dõi trực tiếp trong Kernel:
+     ```bash
+     # Lấy ID của map conntrack cali_v4_ct
+     CT_MAP_ID=$(sudo bpftool map list | grep -E "cali_v4_ct|conntrack" | head -1 | awk '{print $1}' | tr -d ':')
+     
+     # Dump bảng conntrack và lọc dải IP 10.244.x.x (Hex là 0a f4)
+     sudo bpftool map dump id $CT_MAP_ID | grep -E "0a f4"
+     # Kết quả: Thấy các dòng bản ghi Hex chứa địa chỉ IP Pod của bạn đang được eBPF giám sát trực tiếp!
+     ```
 
-4. Khôi phục iptables mode (cho các lab tiếp theo cần iptables để trace):
+4. Thử nghiệm chặn lọc bằng eBPF (Áp dụng Deny-All & Xem BPF Map thay đổi):
+
+   **Trên `controlplane`:**
+   * Tạo chính sách chặn toàn bộ Ingress (Deny-All) vào cụm:
+     ```bash
+     kubectl apply -f - <<'EOF'
+     apiVersion: networking.k8s.io/v1
+     kind: NetworkPolicy
+     metadata:
+       name: deny-all-test
+     spec:
+       podSelector: {}
+       policyTypes:
+       - Ingress
+     EOF
+     ```
+   * Ping lại để kiểm tra:
+     ```bash
+     kubectl exec pod-a -- ping -c 3 $POD_B_IP -W 2
+     # Kết quả: Bị CHẶN đứng hoàn toàn (Packet Loss 100%)!
+     ```
+
+   **Quay lại `worker1` để kiểm tra BPF Map:**
+   * Lúc này Calico đã tạo bảng chính sách `cali_v4_pol` vì đã có policy active. Hãy tìm ID của map này:
+     ```bash
+     POLICY_MAP_ID=$(sudo bpftool map list | grep cali_v4_pol | head -1 | awk '{print $1}' | tr -d ':')
+     echo "ID của Policy Map là: $POLICY_MAP_ID"
+     ```
+   * Dump nội dung bảng chính sách BPF để chứng minh gói tin bị chặn ở mức O(1):
+     ```bash
+     sudo bpftool map dump id $POLICY_MAP_ID | head -25
+     # Bạn sẽ thấy các bản ghi chính sách chặn lọc (Hex) đã được nạp trực tiếp vào Kernel RAM!
+     ```
+
+   **Dọn dẹp chính sách test trên `controlplane`:**
+   * Xóa chính sách deny-all để trả lại trạng thái kết nối sạch:
+     ```bash
+     kubectl delete netpol deny-all-test
+     ```
+
+5. Khôi phục iptables mode (cho các lab tiếp theo cần iptables để trace):
+
    ```bash
    # Từ controlplane:
    kubectl patch felixconfiguration default \
@@ -229,7 +288,7 @@ multipass shell worker1
 
 ## ✅ Tổng kết
 
-1. **eBPF yêu cầu kernel 5.3+ nhưng Ubuntu 26.04 luôn đủ** (kernel 6.x).
+1. **eBPF yêu cầu kernel 5.3+ nhưng Ubuntu 26.04 luôn đủ** (kernel 6.x/7.x+).
 2. **tc filter = attachment point:** eBPF programs gắn vào `ingress`/`egress` của từng network interface.
 3. **bpftool:** Công cụ debug xem programs đang load và map entries (policy rules).
 4. **eBPF thay kube-proxy:** Calico eBPF mode không cần kube-proxy — service routing được xử lý trong BPF maps.
