@@ -114,16 +114,20 @@ multipass shell controlplane
 multipass shell worker1
 ```
 
-1. Xem tc filter programs trên eth0:
-   ```bash
-   tc filter show dev eth0 ingress
-   # filter protocol all pref 1 bpf chain 0 handle 0x1
-   #   [calico_from_host_ep] tag <hash> jited
+1. Xem các eBPF programs được load trên network interfaces:
+   * **Cách 1: Sử dụng bpftool net (KHUYÊN DÙNG cho Kernel 6.x trở lên):**
+     Vì Ubuntu 26.04 chạy Kernel 6.x mới, Calico tự động sử dụng cơ chế nạp eBPF hiện đại tên là **`tcx`** (thông qua BPF links) thay thế cho cơ chế `tc filter` cổ điển. Vì gắn qua `tcx`, lệnh `tc filter show` cũ sẽ trả về kết quả trống trơn.
+     Hãy chạy lệnh sau để quét toàn bộ:
+     ```bash
+     sudo bpftool net show
+     # Bạn sẽ thấy các card mạng enp0s1, vxlan.calico, cali...
+     # đều đã được gắn chương trình `cali_tc_preamble` qua tcx/ingress và tcx/egress!
+     ```
+   * **Cách 2: Sử dụng `tc filter` cổ điển (Chỉ hoạt động trên Kernel cũ < 6.2):**
+     ```bash
+     tc filter show dev enp0s1 ingress
+     ```
 
-   tc filter show dev eth0 egress
-   # filter protocol all pref 1 bpf chain 0 handle 0x1
-   #   [calico_to_host_ep] tag <hash> jited
-   ```
 
 2. Xem tất cả BPF programs đang chạy:
    ```bash
