@@ -161,14 +161,18 @@ multipass shell worker1
    > * `key 8B / value 4B`: Kích thước Khóa tìm kiếm (8 Bytes) và Giá trị hành động trả về (4 Bytes).
    > * `max_entries 1048576`: Dung lượng tối đa của bảng băm (lên đến hơn 1 triệu dòng băm), cho thấy khả năng scale khổng lồ của eBPF.
 
-4. Dump BPF map entries (policy rules):
+4. Dump BPF map entries (Ví dụ: Xem bảng định tuyến hoặc bảng chính sách):
    ```bash
-   # Lấy ID của một map từ bước trên, ví dụ ID=10
-   MAP_ID=$(sudo bpftool map list | grep cali_v4_pol | head -1 | awk '{print $1}' | tr -d ':')
-   sudo bpftool map dump id $MAP_ID | head -20
-   # Nếu không có map nào tên cali_v4_pol, thử:
-   sudo bpftool map list | grep cali
-   # Chọn ID phù hợp và dump
+   # Lấy ID của map định tuyến cali_v4_routes (Map này luôn luôn có sẵn mặc định)
+   MAP_ID=$(sudo bpftool map list | grep cali_v4_routes | head -1 | awk '{print $1}' | tr -d ':')
+   
+   # Dump bảng định tuyến eBPF để xem dải IP Pod và IP các Node
+   sudo bpftool map dump id $MAP_ID | head -25
+
+   # Lưu ý: Bảng map lưu chính sách (cali_v4_pol) chỉ được khởi tạo khi có ít nhất 1 NetworkPolicy đang active trong cụm.
+   # Nếu có policy hoạt động, bạn có thể dump bảng chính sách bằng lệnh:
+   # POLICY_MAP_ID=$(sudo bpftool map list | grep cali_v4_pol | head -1 | awk '{print $1}' | tr -d ':')
+   # sudo bpftool map dump id $POLICY_MAP_ID | head -20
    ```
    > 💡 **Giải thích chi tiết Map Dump (Dữ liệu byte thô hệ 16 - Hex):**
    > * `key`: Ví dụ `0a f4 01 05 00 00 00 00` -> Dịch từ Hex sang hệ 10: `0a`=10, `f4`=244, `01`=1, `05`=5 -> Đại diện cho địa chỉ IP Pod: **`10.244.1.5`**.
@@ -188,15 +192,23 @@ multipass shell worker1
    ```
 
 2. Verify veth interfaces cũng có BPF programs:
-   ```bash
-   # Lấy tên veth của một Pod (loại bỏ hậu tố liên kết @if để tránh lỗi tc)
-   VETH=$(ip link show | grep cali | head -1 | awk '{print $2}' | cut -d'@' -f1 | tr -d ':')
-   tc filter show dev $VETH ingress
-   ```
+   * **Cách 1: Xem qua bpftool net (KHUYÊN DÙNG cho Kernel 6.x/7.x):**
+     Các interface ảo `cali...` nối từ Host vào Pod cũng sử dụng cơ chế nạp `tcx` hiện đại. Hãy chạy lệnh:
+     ```bash
+     sudo bpftool net show | grep cali
+     # Bạn sẽ thấy các card cali... được gắn tcx/ingress và egress thành công!
+     ```
+   * **Cách 2: Sử dụng `tc filter` cổ điển (Chỉ chạy trên Kernel cũ < 6.2):**
+     ```bash
+     # Lấy tên veth của một Pod (loại bỏ hậu tố liên kết @if để tránh lỗi tc)
+     VETH=$(ip link show | grep cali | head -1 | awk '{print $2}' | cut -d'@' -f1 | tr -d ':')
+     tc filter show dev $VETH ingress
+     ```
 
 3. Test kết nối Pod-to-Pod vẫn hoạt động:
    ```bash
    # Từ controlplane:
+
    # kubectl exec <pod> -- ping -c 3 <other-pod-ip>
    # Kết nối phải vẫn OK — eBPF xử lý thay vì iptables
    ```
