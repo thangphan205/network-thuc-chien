@@ -33,10 +33,12 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 14
+# Tập 14 - Calico - Cross-namespace Policy
 ## Cross-namespace Policy: AND vs OR — Dấu gạch "-" quan trọng thế nào!
 
 **Phần 2 — Calico** · `#NetworkPolicy` `#cross-namespace` `#AND` `#OR` `#YAML`
+
+![height:200px](https://www.tigera.io/app/uploads/2026/01/Calico-logo-2026-white-text.svg)
 
 ---
 
