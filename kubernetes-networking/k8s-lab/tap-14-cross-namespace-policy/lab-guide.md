@@ -55,13 +55,16 @@ graph TD
 
 ## 🔬 Thí nghiệm 1: Deploy môi trường test
 
+> Trước tiên chúng ta sẽ dựng toàn bộ hạ tầng cho bài lab: tạo namespace, deploy backend cùng Service trong `production`, rồi deploy prometheus và rogue pod trong `monitoring`. Sau đó kiểm tra baseline để xác nhận chưa có policy nào chặn traffic.
+
 **SSH vào `controlplane`:**
 
 ```bash
 multipass shell controlplane
 ```
 
-1. Tạo namespaces và label:
+1. **Tạo namespaces và gán label.**
+   Chúng ta cần label cho cả hai namespace vì `namespaceSelector` trong NetworkPolicy chỉ hoạt động dựa trên label — không phải tên namespace.
    ```bash
    kubectl create namespace production 2>/dev/null || true
    kubectl create namespace monitoring 2>/dev/null || true
@@ -71,7 +74,8 @@ multipass shell controlplane
    kubectl label namespace production name=production --overwrite
    ```
 
-2. Deploy backend với metrics endpoint và Service trong production:
+2. **Deploy backend với metrics endpoint và Service trong `production`.**
+   Pod backend lắng nghe trên port `9090` — đây là endpoint mà Prometheus sẽ scrape. Service `backend-metrics` đóng vai trò entry point từ bên ngoài namespace.
    ```bash
    kubectl apply -n production -f - <<'EOF'
    apiVersion: v1
@@ -100,7 +104,8 @@ multipass shell controlplane
    EOF
    ```
 
-3. Deploy prometheus và rogue trong monitoring:
+3. **Deploy prometheus và rogue pod trong `monitoring`.**
+   `prometheus` có label `role: prometheus` — đây là pod hợp lệ. `rogue` không có label nào — đây là kẻ xâm nhập mà chúng ta muốn chặn.
    ```bash
    kubectl apply -n monitoring -f - <<'EOF'
    apiVersion: v1
@@ -129,13 +134,15 @@ multipass shell controlplane
    EOF
    ```
 
-4. Chờ tất cả ready:
+4. **Chờ tất cả pod sẵn sàng.**
+   Đừng chuyển bước nếu lệnh này báo lỗi hoặc timeout — pod chưa ready thì kết quả test sẽ không chính xác.
    ```bash
    kubectl -n production wait --for=condition=Ready pod/backend --timeout=60s
    kubectl -n monitoring wait --for=condition=Ready pod/prometheus pod/rogue --timeout=60s
    ```
 
-5. Verify baseline — chưa có policy, tất cả đều kết nối được:
+5. **Verify baseline — chưa có policy nào, tất cả đều kết nối được.**
+   Đây là trạng thái "mặc định mở" của Kubernetes. Kết quả này xác nhận môi trường hoạt động đúng trước khi chúng ta thêm policy.
    ```bash
    kubectl -n monitoring exec prometheus -- nc -zv backend-metrics.production.svc.cluster.local 9090
    # Connection succeeded! ✅ (default allow — chưa có policy)
@@ -143,14 +150,18 @@ multipass shell controlplane
    kubectl -n monitoring exec rogue -- nc -zv backend-metrics.production.svc.cluster.local 9090
    # Connection succeeded! ✅ (default allow — chưa có policy)
    ```
+   > Cả hai đều vào được — đây là hành vi bình thường. Nguy hiểm bắt đầu khi chúng ta apply policy sai ở bước tiếp theo.
 
 ---
 
 ## 💥 Thí nghiệm 2: Apply OR policy (buggy) và chứng minh lỗ hổng
 
+> Đây là phần cốt lõi của bài lab. Chúng ta sẽ apply đúng đoạn YAML mà "đồng nghiệp" đã viết — trông có vẻ đúng nhưng thực ra có lỗ hổng nghiêm trọng do dấu `-` đặt sai chỗ. Hãy quan sát kỹ kết quả test để thấy rogue pod vẫn lọt qua được.
+
 **Trên `controlplane`:**
 
-1. Apply default deny cho production:
+1. **Apply default deny cho `production`.**
+   Bước này khóa toàn bộ ingress traffic vào namespace `production`. Từ đây, mọi kết nối sẽ bị chặn trừ khi có policy cho phép tường minh.
    ```bash
    kubectl apply -n production -f - <<'EOF'
    apiVersion: networking.k8s.io/v1
@@ -164,7 +175,8 @@ multipass shell controlplane
    EOF
    ```
 
-2. Apply policy OR (buggy) — dấu `-` tạo 2 items riêng biệt:
+2. **Apply policy OR (buggy) — dấu `-` tạo 2 items riêng biệt.**
+   Nhìn qua YAML này trông khá hợp lý: có cả `namespaceSelector` lẫn `podSelector`. Nhưng hãy chú ý dấu `-` trước `podSelector` — đó chính là điểm chết người. Kubernetes sẽ diễn giải đây là **OR** (một trong hai điều kiện thỏa mãn là đủ), không phải AND.
    ```bash
    kubectl apply -n production -f - <<'EOF'
    apiVersion: networking.k8s.io/v1
@@ -191,13 +203,15 @@ multipass shell controlplane
    EOF
    ```
 
-3. Test: Rogue pod phải bị chặn nhưng thực ra KHÔNG:
+3. **Test: Rogue pod phải bị chặn — nhưng thực ra KHÔNG bị chặn.**
+   Đây là khoảnh khắc "aha". Rogue pod không có nhãn nào cả, nhưng vẫn vào được vì policy chỉ cần thỏa điều kiện 1: nằm trong namespace `monitoring` — và rogue đang ở đó.
    ```bash
    kubectl -n monitoring exec rogue -- nc -zv backend-metrics.production.svc.cluster.local 9090
    # Connection succeeded! ← BUG! Rogue vào được vì match namespace monitoring
    ```
 
-4. Test: Prometheus cũng vào được (đúng, nhưng vì lý do sai):
+4. **Test: Prometheus cũng vào được — nhưng vì lý do sai.**
+   Prometheus thông mạng trông có vẻ đúng, nhưng thực ra nó thông vì điều kiện `namespaceSelector` mở toang, không phải vì `podSelector` chặt chẽ. Điều này che giấu lỗ hổng.
    ```bash
    kubectl -n monitoring exec prometheus -- nc -zv backend-metrics.production.svc.cluster.local 9090
    # Connection succeeded! ✅ (nhưng lý do thông mạng là sai)
@@ -208,14 +222,18 @@ multipass shell controlplane
 
 ## 🔬 Thí nghiệm 3: Fix thành AND và verify
 
+> Bây giờ chúng ta sẽ sửa lỗi bằng cách loại bỏ dấu `-` thừa trước `podSelector`. Chỉ một ký tự thay đổi nhưng hành vi hoàn toàn khác: từ OR sang AND. Sau đó verify lại để xác nhận rogue bị chặn và prometheus vẫn thông.
+
 **Trên `controlplane`:**
 
-1. Xóa policy buggy:
+1. **Xóa policy buggy trước khi apply bản fix.**
+   Không nên để hai policy cùng tên tồn tại song song — xóa sạch để tránh nhầm lẫn khi debug.
    ```bash
    kubectl delete -n production networkpolicy allow-prometheus-OR-bug
    ```
 
-2. Apply policy AND (correct) — không có dấu `-` trước podSelector:
+2. **Apply policy AND (correct) — không có dấu `-` trước `podSelector`.**
+   So sánh YAML này với bản trước: `podSelector` không có dấu `-` dẫn đầu, nghĩa là nó là **thuộc tính của cùng một item** với `namespaceSelector`. Kubernetes diễn giải: cả hai điều kiện phải đồng thời thỏa mãn — đây là AND logic.
    ```bash
    kubectl apply -n production -f - <<'EOF'
    apiVersion: networking.k8s.io/v1
@@ -242,7 +260,8 @@ multipass shell controlplane
    EOF
    ```
 
-3. Test kết quả:
+3. **Verify kết quả — đây là bài test cuối cùng.**
+   Chạy cả ba lệnh và quan sát: prometheus thông, rogue bị timeout. Đây là hành vi đúng theo yêu cầu của CISO.
    ```bash
    # Prometheus được vào ✅
    kubectl -n monitoring exec prometheus -- nc -zv backend-metrics.production.svc.cluster.local 9090
@@ -252,21 +271,26 @@ multipass shell controlplane
    kubectl -n monitoring exec rogue -- nc -zv -w 3 backend-metrics.production.svc.cluster.local 9090
    # (timeout) ← Đúng! Rogue không có role=prometheus
    ```
+   > Kết quả timeout có thể mất 3 giây — đây là bình thường, `-w 3` đặt timeout 3 giây.
 
 ---
 
 ## 🔬 Thí nghiệm 4: Verify namespace labels
 
+> Thí nghiệm này chứng minh tại sao bước label namespace ở đầu bài là bắt buộc. Chúng ta sẽ cố tình xóa label rồi quan sát policy tự động "vô hiệu hóa" — ngay cả khi policy YAML vẫn còn đó. Sau đó restore để trạng thái trở về bình thường.
+
 **Trên `controlplane`:**
 
-1. Xem labels của namespace:
+1. **Xem labels hiện tại của namespace `monitoring`.**
+   Đây là lệnh nên chạy đầu tiên mỗi khi debug NetworkPolicy không hoạt động — kiểm tra label namespace trước.
    ```bash
    kubectl get namespace monitoring --show-labels
    # NAME        LABELS
    # monitoring  name=monitoring   ← OK
    ```
 
-2. Thử xóa label và xem policy break:
+2. **Xóa label và quan sát policy bị vô hiệu hóa.**
+   Policy vẫn tồn tại trong cluster, nhưng `namespaceSelector` không còn tìm thấy namespace nào match — nên prometheus cũng bị chặn luôn.
    ```bash
    kubectl label namespace monitoring name-
    # Label bị xóa
@@ -274,8 +298,10 @@ multipass shell controlplane
    kubectl -n monitoring exec prometheus -- nc -zv -w 3 backend-metrics.production.svc.cluster.local 9090
    # (timeout) ← Policy không match nữa! namespaceSelector không có label để match
    ```
+   > Đây là một trong những nguyên nhân phổ biến nhất khiến NetworkPolicy "bỗng nhiên không hoạt động" trên môi trường thực tế — ai đó vô tình xóa hoặc đổi label namespace.
 
-3. Restore label:
+3. **Restore label và xác nhận policy hoạt động lại.**
+   Chỉ cần thêm lại đúng label là policy tự động kích hoạt — không cần chỉnh sửa hay apply lại YAML.
    ```bash
    kubectl label namespace monitoring name=monitoring
    kubectl -n monitoring exec prometheus -- nc -zv backend-metrics.production.svc.cluster.local 9090
@@ -285,6 +311,8 @@ multipass shell controlplane
 ---
 
 ## 🧹 Dọn dẹp
+
+> Sau khi hoàn thành lab, dọn sạch tài nguyên để tránh ảnh hưởng đến các bài lab tiếp theo.
 
 ```bash
 kubectl -n production delete networkpolicy --all
