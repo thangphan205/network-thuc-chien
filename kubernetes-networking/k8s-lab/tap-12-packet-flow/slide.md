@@ -46,7 +46,7 @@ style: |
 - Quan sát conntrack table entries
 - Hiểu tại sao conntrack quan trọng với NetworkPolicy
 
-**Prerequisites:** Cluster Calico từ Tập 9-13 đang chạy iptables mode
+**Prerequisites:** Cluster Calico từ Tập 9 đang chạy iptables mode
 
 ---
 

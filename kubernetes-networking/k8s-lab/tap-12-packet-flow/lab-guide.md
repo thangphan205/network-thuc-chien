@@ -101,8 +101,24 @@ flowchart TD
 > - **BGP mode** (Calico với bird): không có encap, bước ⑤-⑩ là IP routing thuần, không qua VTEP
 
 ## 🛠 Yêu cầu chuẩn bị
-- Cụm K8s với Calico đang chạy iptables mode (không phải eBPF) từ Tập 9-11.
-- Nếu đang ở eBPF mode, chạy: `kubectl patch felixconfiguration default --type merge --patch '{"spec":{"bpfEnabled":false}}'`
+- Cụm K8s với Calico đang chạy iptables mode (không phải eBPF) từ Tập 9.
+- > ⚠️ **QUAN TRỌNG:** Nếu anh vừa hoàn thành **Tập 11 (eBPF mode)**, anh bắt buộc phải hoàn trả hệ thống mạng về **iptables mode** và khôi phục `kube-proxy`. Nếu không làm bước này, cụm K8s sẽ bị mất NAT dịch vụ khiến Calico CNI không thể liên lạc với API Server (`10.96.0.1:443`), dẫn đến lỗi `FailedCreatePodSandBox (i/o timeout)` khi deploy Pod mới.
+  >
+  > Thực hiện hoàn trả theo đúng 3 bước sau trên `controlplane`:
+  >
+  > 1. **Tắt eBPF mode của Calico:**
+  >    ```bash
+  >    kubectl patch felixconfiguration default --type merge --patch '{"spec":{"bpfEnabled":false}}'
+  >    ```
+  > 2. **Khôi phục kube-proxy DaemonSet:**
+  >    ```bash
+  >    kubectl patch ds kube-proxy -n kube-system -p '{"spec":{"template":{"spec":{"nodeSelector":{"kubernetes.io/os":"linux"}}}}}'
+  >    ```
+  > 3. **Đợi toàn bộ các Pod `kube-proxy` ở trạng thái `Running`:**
+  >    ```bash
+  >    kubectl get pods -n kube-system -l k8s-app=kube-proxy -w
+  >    ```
+  >    *(Khi toàn bộ Pod kube-proxy đã Running, bấm `Ctrl+C` để thoát và bắt đầu làm Lab).*
 
 ---
 
