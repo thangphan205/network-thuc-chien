@@ -110,10 +110,12 @@ flowchart TD
   >    ```bash
   >    kubectl patch felixconfiguration default --type merge --patch '{"spec":{"bpfEnabled":false}}'
   >    ```
-  > 2. **Khôi phục kube-proxy DaemonSet:**
+  > 2. **Khôi phục kube-proxy DaemonSet** (xóa label `non-calico=true` khỏi nodeSelector):
   >    ```bash
-  >    kubectl patch ds kube-proxy -n kube-system -p '{"spec":{"template":{"spec":{"nodeSelector":{"kubernetes.io/os":"linux"}}}}}'
+  >    kubectl patch ds kube-proxy -n kube-system --type=json \
+  >      -p '[{"op":"remove","path":"/spec/template/spec/nodeSelector/non-calico"}]'
   >    ```
+  >    > ⚠️ Không dùng strategic merge patch (`-p '{"spec":...}'`) cho bước này — nó chỉ **merge** key chứ không **xóa** `non-calico=true`. Kết quả sẽ báo `patched (no change)` và DESIRED vẫn bằng 0.
   > 3. **Đợi toàn bộ các Pod `kube-proxy` ở trạng thái `Running`:**
   >    ```bash
   >    kubectl get pods -n kube-system -l k8s-app=kube-proxy -w
@@ -123,7 +125,7 @@ flowchart TD
   > 💡 **Mẹo xử lý sự cố (Troubleshooting):**
   > Nếu anh chạy lệnh ở bước 3 mà **không thấy bất kỳ Pod `kube-proxy` nào xuất hiện** trong danh sách:
   > - Hãy kiểm tra xem DaemonSet `kube-proxy` có tồn tại trong cụm không bằng lệnh: `kubectl get ds -n kube-system kube-proxy`.
-  > - Nếu cột `DESIRED` và `CURRENT` hiển thị bằng `0`, nghĩa là lệnh `patch` ở Bước 2 chưa được áp dụng thành công. Hãy chạy lại lệnh `patch` thật kỹ và chính xác.
+  > - Nếu cột `DESIRED` và `CURRENT` hiển thị bằng `0`: nodeSelector vẫn còn key `non-calico=true` mà các node không có label đó. Kiểm tra: `kubectl get ds kube-proxy -n kube-system -o jsonpath='{.spec.template.spec.nodeSelector}'` — nếu thấy `non-calico`, chạy lại lệnh JSON patch ở Bước 2 để xóa nó.
   > - Nếu báo lỗi `NotFound`, có thể DaemonSet `kube-proxy` đã bị xóa trước đó. Hãy cài đặt lại hoặc khôi phục cấu hình DaemonSet gốc của cụm Lab.
   > - **Sau khi `kube-proxy` đã Running**, nếu Pod mới vẫn báo lỗi CNI, hãy restart lại Calico-node để dọn dẹp cache kết nối lỗi cũ: `kubectl rollout restart daemonset calico-node -n calico-system` (hoặc `-n kube-system`).
 
