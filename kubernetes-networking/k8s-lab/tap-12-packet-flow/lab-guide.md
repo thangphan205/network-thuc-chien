@@ -38,10 +38,13 @@ flowchart TD
   vethB   -->|"⑨ vào pod NS"| PodB
 ```
 
-> **Ghi chú chain:**
-> - `FORWARD → cali-FORWARD → cali-from-wl-dispatch → cali-fw-<iface>` — kiểm tra **egress** Pod nguồn
-> - `cali-to-wl-dispatch → cali-tw-<iface>` — kiểm tra **ingress** Pod đích
-> - Cả 2 check xảy ra trong cùng 1 lần đi qua FORWARD hook
+> **Ghi chú chain và Thuật ngữ viết tắt:**
+> - **`wl` (Workload)**: Chỉ các Pod/Container chạy ứng dụng (được Calico gọi chung là Workload).
+> - **`fw` (From Workload)**: Chiều dữ liệu đi **từ** Pod ra ngoài (Egress check). Ví dụ: `cali-from-wl-dispatch`, `cali-fw-<iface>`.
+> - **`tw` (To Workload)**: Chiều dữ liệu đi **vào** Pod (Ingress check). Ví dụ: `cali-to-wl-dispatch`, `cali-tw-<iface>`.
+> - `FORWARD → cali-FORWARD → cali-from-wl-dispatch → cali-fw-<iface>` — kiểm tra **egress** Pod nguồn.
+> - `cali-to-wl-dispatch → cali-tw-<iface>` — kiểm tra **ingress** Pod đích.
+> - Cả 2 check xảy ra trong cùng 1 lần đi qua FORWARD hook.
 
 ---
 
