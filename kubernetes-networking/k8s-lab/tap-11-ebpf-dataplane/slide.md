@@ -104,7 +104,24 @@ Thêm rule mới:
 | Traffic during update | Brief disruption | **Zero downtime** |
 | Conntrack | Linux conntrack | **eBPF per-flow state** |
 | Kube-proxy required | ✅ | ❌ (Calico thay thế) |
-| Kernel requirement | Any | **5.3+ (Ubuntu 26.04: 6.x)** |
+| Kernel requirement | Any | **5.3+ (Ubuntu 26.04: 6.x/7.x+)** |
+
+---
+
+## Cơ chế nạp BPF vào Card mạng: tc filter vs tcx (Mới)
+
+Trong nhân Linux, chương trình BPF được "treo" vào Traffic Control (TC) subsystem:
+
+- **Cơ chế cũ (< Kernel 6.2): `tc filter` (cls_bpf)**
+  - Gói tin đi qua bộ máy phân loại mạng truyền thống của TC.
+  - Sử dụng lệnh cổ điển: `tc filter show dev eth0 ingress` để verify.
+  - Hạn chế: Có overhead nhỏ của bộ lọc cũ, khó quản lý nhiều programs.
+
+- **Cơ chế mới (≥ Kernel 6.6): `tcx` (BPF Link-based)**
+  - Gói tin bypass bộ lọc cũ, BPF program được thực thi trực tiếp trên card.
+  - **LƯU Ý:** Vì gắn qua BPF links, lệnh `tc filter show` sẽ hoàn toàn trống trơn!
+  - Sử dụng lệnh tối tân: `sudo bpftool net show` để verify.
+  - Calico tự động nâng cấp lên `tcx` nếu phát hiện nhân Kernel mới (6.x/7.x+).
 
 ---
 
@@ -122,10 +139,11 @@ Thêm rule mới:
 
 **Debug eBPF:**
 ```bash
-tc filter show dev <interface> ingress   # eBPF programs
-sudo bpftool prog list                   # Tất cả BPF programs
-sudo bpftool map list                    # BPF maps (policy tables)
-sudo bpftool map dump name calico_policy_map  # Policy entries
+sudo bpftool net show                     # Xem programs gắn qua tcx (Kernel 6.x/7.x+)
+tc filter show dev <interface> ingress   # Xem programs gắn qua tc filter (Kernel cũ)
+sudo bpftool prog list                   # Tất cả BPF programs đang chạy
+sudo bpftool map list                    # Tất cả BPF maps (routes, conntrack...)
+sudo bpftool map dump name cali_v4_routes # Dump bảng định tuyến eBPF
 ```
 
 ---
@@ -138,9 +156,10 @@ Chúng ta sẽ thực hành:
 
 1. **Kiểm tra kernel:** `uname -r` và BPF filesystem trên worker.
 2. **Bật eBPF:** Patch kube-proxy + FelixConfiguration để bật eBPF dataplane.
-3. **Xem programs:** `tc filter show` và `bpftool prog list` để verify BPF programs được load.
+3. **Xem programs:** `bpftool net show` / `tc filter` để verify BPF programs được load thành công.
 4. **So sánh rule count:** iptables rule count vs BPF map size.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
 > **Tập tiếp theo:** Packet flow qua veth pair và conntrack — hành trình đầy đủ của 1 packet qua Calico.
+

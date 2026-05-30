@@ -128,7 +128,7 @@ multipass shell worker1
      > * `prog_id`: ID định danh duy nhất của chương trình eBPF trong bộ nhớ Kernel.
      > * `link_id`: ID biểu diễn BPF Link liên kết chặt chẽ chương trình BPF với card mạng đó.
 
-   * **Cách 2: Sử dụng `tc filter` cổ điển (Chỉ hoạt động trên Kernel cũ < 6.2):**
+   * **Cách 2: Sử dụng `tc filter` cổ điển (Chỉ hoạt động trên Kernel cũ < 6.6):**
      ```bash
      tc filter show dev enp0s1 ingress
      ```
@@ -203,7 +203,7 @@ multipass shell worker1
      sudo bpftool net show | grep cali
      # Bạn sẽ thấy các card cali... được gắn tcx/ingress và egress thành công!
      ```
-   * **Cách 2: Sử dụng `tc filter` cổ điển (Chỉ chạy trên Kernel cũ < 6.2):**
+   * **Cách 2: Sử dụng `tc filter` cổ điển (Chỉ chạy trên Kernel cũ < 6.6):**
      ```bash
      # Lấy tên veth của một Pod (loại bỏ hậu tố liên kết @if để tránh lỗi tc)
      VETH=$(ip link show | grep cali | head -1 | awk '{print $2}' | cut -d'@' -f1 | tr -d ':')
