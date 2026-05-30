@@ -253,17 +253,21 @@ multipass shell worker1
      # Kết quả: Bị CHẶN đứng hoàn toàn (Packet Loss 100%)!
      ```
 
-   **Quay lại `worker1` để kiểm tra BPF Map:**
-   * Lúc này Calico đã tạo bảng chính sách `cali_v4_pol` vì đã có policy active. Hãy tìm ID của map này:
+   **Quay lại `worker1` để kiểm tra BPF Maps:**
+   * **Một sự thật kiến trúc thú vị:** Nếu chạy lệnh `sudo bpftool map list | grep cali_v4`, bạn sẽ **không thấy** bất kỳ bảng map nào tên là `cali_v4_pol`.
+     *Lý do:* Trong thiết kế của Calico eBPF, **NetworkPolicies không được lưu trong BPF Maps** (khác biệt lớn so với Cilium). Thay vào đó, Felix sẽ **biên dịch trực tiếp (JIT-compile) các luật chính sách mạng thành tập lệnh mã máy eBPF (bytecode)** và nạp đè nguyên khối (atomic swap) vào card mạng ảo `cali...` của Pod. 
+     Do đó, luật chặn `deny-all` đã biến thành các dòng code lệnh rẽ nhánh chạy trực tiếp trong nhân Kernel thay vì lưu trong bảng tra cứu!
+
+   * **Cách kiểm chứng eBPF đang thực thi chặn:**
+     Mặc dù không có Map chính sách, chúng ta có thể kiểm tra bảng theo dõi kết nối **`cali_v4_ct4`** (Bảng Conntrack của Calico eBPF trên máy bạn chính là `cali_v4_ct4`) để xem luồng traffic ping vừa rồi đã bị ngắt hoặc không được duyệt (`approved` chuyển về false):
      ```bash
-     POLICY_MAP_ID=$(sudo bpftool map list | grep cali_v4_pol | head -1 | awk '{print $1}' | tr -d ':')
-     echo "ID của Policy Map là: $POLICY_MAP_ID"
+     # Lấy ID của map conntrack cali_v4_ct4
+     CT_MAP_ID=$(sudo bpftool map list | grep cali_v4_ct4 | head -1 | awk '{print $1}' | tr -d ':')
+     
+     # Dump bảng conntrack để xem trạng thái kết nối
+     sudo bpftool map dump id $CT_MAP_ID | head -30
      ```
-   * Dump nội dung bảng chính sách BPF để chứng minh gói tin bị chặn ở mức O(1):
-     ```bash
-     sudo bpftool map dump id $POLICY_MAP_ID | head -25
-     # Bạn sẽ thấy các bản ghi chính sách chặn lọc (Hex) đã được nạp trực tiếp vào Kernel RAM!
-     ```
+
 
    **Dọn dẹp chính sách test trên `controlplane`:**
    * Xóa chính sách deny-all để trả lại trạng thái kết nối sạch:
