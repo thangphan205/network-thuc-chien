@@ -5,52 +5,103 @@ Tập này dùng iptables LOG để trace từng packet qua các Calico chains v
 ### Sơ đồ Packet Flow di chuyển qua các thành phần của Calico:
 
 #### 1. Trường hợp cùng một Node (Same-Node Packet Flow)
+
 ```mermaid
-graph TD
-  subgraph Node_1 [Cùng một Node]
-    PodA[Pod A eth0: 10.244.1.5]
-    vethA[vethA in Root NS]
-    Routing[Linux Routing Table]
-    vethB[vethB in Root NS]
-    PodB[Pod B eth0: 10.244.1.6]
-    
-    PodA -->|1. Gửi Packet| vethA
-    vethA -->|2. Egress Check: cali-from-wl-dispatch| Routing
-    Routing -->|3. Route: 10.244.1.6/32 via vethB| vethB
-    vethB -->|4. Ingress Check: cali-to-wl-dispatch| PodB
+flowchart LR
+  subgraph PodA_NS ["🟦 Pod A Netns"]
+    PodA["eth0\n10.244.1.5"]
   end
+
+  subgraph RootNS ["⬜ Root Network Namespace (Node)"]
+    direction LR
+    vethA["vethXXX\n(veth peer của Pod A)"]
+    FWD["iptables\nFORWARD"]
+    FromDisp["cali-from-wl-dispatch\n(dispatcher egress)"]
+    FWPol["cali-fw-vethXXX\n✅ Egress Policy"]
+    Route["Routing Table\n10.244.1.6/32 → vethYYY"]
+    ToDisp["cali-to-wl-dispatch\n(dispatcher ingress)"]
+    TWPol["cali-tw-vethYYY\n✅ Ingress Policy"]
+    vethB["vethYYY\n(veth peer của Pod B)"]
+  end
+
+  subgraph PodB_NS ["🟩 Pod B Netns"]
+    PodB["eth0\n10.244.1.6"]
+  end
+
+  PodA    -->|"① gửi packet"| vethA
+  vethA   -->|"② vào root NS"| FWD
+  FWD     -->|"③ jump"| FromDisp
+  FromDisp-->|"④ jump"| FWPol
+  FWPol   -->|"⑤ ACCEPT"| Route
+  Route   -->|"⑥ chọn iface out"| ToDisp
+  ToDisp  -->|"⑦ jump"| TWPol
+  TWPol   -->|"⑧ ACCEPT"| vethB
+  vethB   -->|"⑨ vào pod NS"| PodB
 ```
+
+> **Ghi chú chain:**
+> - `FORWARD → cali-FORWARD → cali-from-wl-dispatch → cali-fw-<iface>` — kiểm tra **egress** Pod nguồn
+> - `cali-to-wl-dispatch → cali-tw-<iface>` — kiểm tra **ingress** Pod đích
+> - Cả 2 check xảy ra trong cùng 1 lần đi qua FORWARD hook
+
+---
 
 #### 2. Trường hợp khác Node (Cross-Node Packet Flow)
+
 ```mermaid
-graph TD
-  subgraph Node_1 [Node 1 - Source]
-    PodA[Pod A eth0: 10.244.1.5]
-    vethA[vethA in Root NS]
-    Routing1[Routing Table Node 1]
-    Phys1[eth0 Node 1]
-    
-    PodA -->|1. Gửi Packet| vethA
-    vethA -->|2. Egress Check: cali-from-wl-dispatch| Routing1
-    Routing1 -->|3. Route: 10.244.2.0/24 via Node 2| Phys1
+flowchart LR
+  subgraph PodA_NS ["🟦 Pod A Netns — Node 1"]
+    PodA["eth0\n10.244.1.5"]
   end
 
-  subgraph Node_2 [Node 2 - Destination]
-    Phys2[eth0 Node 2]
-    Routing2[Routing Table Node 2]
-    vethB[vethB in Root NS]
-    PodB[Pod B eth0: 10.244.2.7]
-    
-    Phys2 -->|4. Nhận Encapsulated Packet| Routing2
-    Routing2 -->|5. Route: 10.244.2.7/32 via vethB| vethB
-    vethB -->|6. Ingress Check: cali-to-wl-dispatch| PodB
+  subgraph Node1 ["⬜ Root NS — Node 1"]
+    direction LR
+    vethA["vethXXX"]
+    N1_FWD["iptables FORWARD"]
+    N1_EgressPol["cali-fw-vethXXX\n✅ Egress Policy"]
+    N1_Route["Routing\n10.244.2.0/24 → vxlan.calico"]
+    N1_VTEP["vxlan.calico\n🔒 Encapsulate\nouter: NodeIP1→NodeIP2"]
+    N1_eth0["eth0\nNode 1"]
   end
-  
-  Phys1 -->|Đường truyền vật lý / Overlay Tunnel (VXLAN/BGP)| Phys2
+
+  Network(["🌐 Underlay Network\n(L3 between nodes)"])
+
+  subgraph Node2 ["⬜ Root NS — Node 2"]
+    direction LR
+    N2_eth0["eth0\nNode 2"]
+    N2_VTEP["vxlan.calico\n🔓 Decapsulate\nrestore inner packet"]
+    N2_Route["Routing\n10.244.2.7/32 → vethYYY"]
+    N2_FWD["iptables FORWARD"]
+    N2_IngressPol["cali-tw-vethYYY\n✅ Ingress Policy"]
+    vethB["vethYYY"]
+  end
+
+  subgraph PodB_NS ["🟩 Pod B Netns — Node 2"]
+    PodB["eth0\n10.244.2.7"]
+  end
+
+  PodA        -->|"① gửi packet"| vethA
+  vethA       -->|"②"| N1_FWD
+  N1_FWD      -->|"③ egress check"| N1_EgressPol
+  N1_EgressPol-->|"④ ACCEPT"| N1_Route
+  N1_Route    -->|"⑤ next-hop"| N1_VTEP
+  N1_VTEP     -->|"⑥ encapped packet"| N1_eth0
+  N1_eth0     -->|"⑦ UDP/4789"| Network
+  Network     -->|"⑧"| N2_eth0
+  N2_eth0     -->|"⑨"| N2_VTEP
+  N2_VTEP     -->|"⑩ inner packet"| N2_Route
+  N2_Route    -->|"⑪ next-hop"| N2_FWD
+  N2_FWD      -->|"⑫ ingress check"| N2_IngressPol
+  N2_IngressPol-->|"⑬ ACCEPT"| vethB
+  vethB       -->|"⑭ vào pod NS"| PodB
 ```
 
+> **Ghi chú mode:**
+> - **VXLAN mode** (default Calico): bước ⑤-⑩ dùng `vxlan.calico` tunnel, port UDP 4789
+> - **BGP mode** (Calico với bird): không có encap, bước ⑤-⑩ là IP routing thuần, không qua VTEP
+
 ## 🛠 Yêu cầu chuẩn bị
-- Cụm K8s với Calico đang chạy iptables mode (không phải eBPF) từ Tập 9-13.
+- Cụm K8s với Calico đang chạy iptables mode (không phải eBPF) từ Tập 9-11.
 - Nếu đang ở eBPF mode, chạy: `kubectl patch felixconfiguration default --type merge --patch '{"spec":{"bpfEnabled":false}}'`
 
 ---
@@ -153,25 +204,26 @@ multipass shell worker1
    which conntrack || sudo apt-get install -y conntrack
    ```
 
-2. **Từ controlplane:** Gửi traffic và ngay lập tức xem conntrack trên worker1:
+2. **Watch conntrack events trước, rồi gửi traffic:**
    ```bash
-   # Terminal 1 (worker1):
-   sudo conntrack -L -p tcp 2>/dev/null | grep "8080"
+   # Terminal 1 (worker1) — bắt event realtime:
+   sudo conntrack -E -p tcp -s $SRC_IP 2>/dev/null | grep "8080" &
+   CONNTRACK_PID=$!
 
-   # Terminal 2 (controlplane):
+   # Terminal 2 (controlplane) — gửi traffic:
    kubectl exec trace-src -- nc -zv $DST_IP 8080
    ```
    *Kết quả trên worker1:*
    ```
-   tcp  ESTABLISHED src=10.244.1.X dst=10.244.1.Y sport=XXXXX dport=8080
-         src=10.244.1.Y dst=10.244.1.X sport=8080 dport=XXXXX
+   [NEW]  tcp ESTABLISHED src=10.244.1.X dst=10.244.1.Y sport=XXXXX dport=8080 ...
+   [UPDATE] tcp ESTABLISHED ...
+   [DESTROY] tcp ...
    ```
-   *Nhận xét:* conntrack lưu cả 2 chiều (request và expected response).
+   *Nhận xét:* conntrack lưu cả 2 chiều (request và expected response). Dùng `-E` thay `-L` để tránh race condition (nc -zv disconnect nhanh, `-L` có thể miss entry đã DESTROY).
 
-3. Xem conntrack realtime watch:
+3. Dừng conntrack watch:
    ```bash
-   sudo conntrack -E -p tcp 2>/dev/null | grep "8080" &
-   # Từ controlplane: gửi thêm traffic, xem events NEW → ESTABLISHED → DESTROY
+   kill $CONNTRACK_PID 2>/dev/null
    ```
 
 ---
@@ -201,6 +253,7 @@ multipass shell worker1
    sudo iptables -t filter -I cali-FORWARD 1 \
      -j LOG --log-prefix "CALICO-DROP: " --log-level 4
    sudo dmesg -w | grep "CALICO-DROP" &
+   DMESG_PID2=$!
    ```
 
 3. **Từ controlplane** — thử kết nối (sẽ bị DROP):
@@ -221,6 +274,7 @@ multipass shell worker1
 
 5. Cleanup:
    ```bash
+   kill $DMESG_PID2 2>/dev/null
    sudo iptables -t filter -D cali-FORWARD 1
    kubectl delete networkpolicy deny-trace-dst
    kubectl delete pod trace-src trace-dst
@@ -231,6 +285,6 @@ multipass shell worker1
 ## ✅ Tổng kết
 
 1. **Packet path cùng node:** `Pod-A eth0 → vethXXX → cali-FORWARD → routing → cali-FORWARD → vethYYY → Pod-B eth0`.
-2. **Zero Trust — 2 lần check:** Egress của Pod nguồn (cali-fw-) và Ingress của Pod đích (cali-tw-) đều được kiểm tra.
+2. **Zero Trust — 2 lần check:** `cali-from-wl-dispatch` (egress Pod nguồn) jump sang `cali-fw-<iface>` (policy chain), sau đó `cali-to-wl-dispatch` (ingress Pod đích) jump sang `cali-tw-<iface>` — dispatcher chain → per-interface policy chain.
 3. **conntrack = stateful firewall:** Chỉ cần allow ingress port 8080 — response tự động được allow vì conntrack ESTABLISHED.
 4. **DROP không tạo ESTABLISHED:** Khi Calico DROP packet, conntrack không ghi nhận ESTABLISHED → TCP sender biết bị từ chối sau timeout.
