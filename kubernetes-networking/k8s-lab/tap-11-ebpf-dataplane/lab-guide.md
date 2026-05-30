@@ -2,10 +2,27 @@
 
 Tập này bật eBPF dataplane, quan sát BPF programs được load vào tc hooks, và so sánh với iptables mode.
 
+## Tại sao eBPF?
+
+| | iptables | eBPF |
+|---|---|---|
+| Policy lookup | O(n) — duyệt tuần tự từng rule | O(1) — hash map lookup |
+| Service routing | kube-proxy + iptables DNAT | BPF maps, bypass netfilter |
+| Latency | +overhead mỗi rule thêm | flat, không phụ thuộc số rules |
+| DSR | Không hỗ trợ | Direct Server Return — client thấy server IP thật |
+
+---
+
 ## 🛠 Yêu cầu chuẩn bị
-- Cụm K8s với Calico từ Tập 9/12.
+- Cụm K8s với Calico từ Tập 9 (Calico **3.20+** — eBPF stable từ version này).
 - Ubuntu 26.04 (kernel 6.x) — đủ điều kiện eBPF.
 - Không có NetworkPolicy nào đang active (dọn dẹp từ tập trước nếu cần).
+- `bpftool` đã cài trên **tất cả worker nodes**:
+  ```bash
+  sudo apt install -y linux-tools-common linux-tools-$(uname -r)
+  # Nếu package không tìm thấy:
+  sudo apt install -y bpftool
+  ```
 
 ---
 
@@ -29,10 +46,10 @@ multipass shell worker1
    # cgroup  tc  xdp    ← BPF filesystem mounted
    ```
 
-3. Kiểm tra tc có hỗ trợ eBPF:
+3. Kiểm tra bpftool có sẵn (sẽ dùng ở thí nghiệm sau):
    ```bash
-   tc qdisc show dev eth0
-   # qdisc noqueue 0: root refcnt 2   ← Có thể attach eBPF program
+   sudo bpftool version
+   # libbpf v1.x.x
    ```
 
 4. Đếm iptables rules hiện tại (iptables mode):
@@ -75,6 +92,18 @@ multipass shell controlplane
    kubectl -n calico-system rollout status daemonset/calico-node
    ```
 
+5. **Verify eBPF thực sự đã bật:**
+   ```bash
+   # Confirm config
+   kubectl get felixconfiguration default -o jsonpath='{.spec.bpfEnabled}'
+   # true
+
+   # Confirm calico-node logs nhận eBPF mode
+   kubectl logs -n calico-system daemonset/calico-node -c calico-node \
+     | grep -i "BPF\|eBPF" | tail -10
+   # ... "BPF enabled" hoặc "Starting BPF endpoint manager"
+   ```
+
 ---
 
 ## 🔬 Thí nghiệm 3: Xem eBPF programs được load
@@ -88,30 +117,37 @@ multipass shell worker1
 1. Xem tc filter programs trên eth0:
    ```bash
    tc filter show dev eth0 ingress
-   # filter protocol all pref 1 bpf chain 0
-   #   calico_from_host_ep.o:[calico_from_host_ep] direct-action not_in_hw...
+   # filter protocol all pref 1 bpf chain 0 handle 0x1
+   #   [calico_from_host_ep] tag <hash> jited
 
    tc filter show dev eth0 egress
-   # filter protocol all pref 1 bpf chain 0
-   #   calico_to_host_ep.o:[calico_to_host_ep] direct-action not_in_hw...
+   # filter protocol all pref 1 bpf chain 0 handle 0x1
+   #   [calico_to_host_ep] tag <hash> jited
    ```
 
 2. Xem tất cả BPF programs đang chạy:
    ```bash
    sudo bpftool prog list | grep calico
-   # 42: sched_cls  name calico_from_host  ...
-   # 43: sched_cls  name calico_to_host    ...
+   # 42: sched_cls  name calico_from_host  tag ...
+   # 43: sched_cls  name calico_to_host    tag ...
    ```
 
 3. Xem BPF maps (policy lookup tables):
    ```bash
-   sudo bpftool map list | grep calico
-   # 10: hash  name calico_policy_map  flags 0x0
+   sudo bpftool map list | grep cali
+   # 10: hash  name cali_v4_pol_pf   flags 0x0
+   # 11: hash  name cali_v4_nat_fe   flags 0x0
+   # ...
    ```
 
 4. Dump BPF map entries (policy rules):
    ```bash
-   sudo bpftool map dump name calico_policy_map 2>/dev/null | head -20
+   # Lấy ID của một map từ bước trên, ví dụ ID=10
+   MAP_ID=$(sudo bpftool map list | grep cali_v4_pol | head -1 | awk '{print $1}' | tr -d ':')
+   sudo bpftool map dump id $MAP_ID | head -20
+   # Nếu không có map nào tên cali_v4_pol, thử:
+   sudo bpftool map list | grep cali
+   # Chọn ID phù hợp và dump
    ```
 
 ---
@@ -128,9 +164,9 @@ multipass shell worker1
 
 2. Verify veth interfaces cũng có BPF programs:
    ```bash
-    # Lấy tên veth của một Pod (loại bỏ hậu tố liên kết @if để tránh lỗi tc)
-    VETH=$(ip link show | grep cali | head -1 | awk '{print $2}' | cut -d'@' -f1 | tr -d ':')
-    tc filter show dev $VETH ingress
+   # Lấy tên veth của một Pod (loại bỏ hậu tố liên kết @if để tránh lỗi tc)
+   VETH=$(ip link show | grep cali | head -1 | awk '{print $2}' | cut -d'@' -f1 | tr -d ':')
+   tc filter show dev $VETH ingress
    ```
 
 3. Test kết nối Pod-to-Pod vẫn hoạt động:
@@ -160,4 +196,5 @@ multipass shell worker1
 2. **tc filter = attachment point:** eBPF programs gắn vào `ingress`/`egress` của từng network interface.
 3. **bpftool:** Công cụ debug xem programs đang load và map entries (policy rules).
 4. **eBPF thay kube-proxy:** Calico eBPF mode không cần kube-proxy — service routing được xử lý trong BPF maps.
-5. **Lab tiếp theo dùng iptables mode** để dễ trace bằng `iptables -L` và LOG rules.
+5. **DSR (Direct Server Return):** Client thấy server IP thật thay vì node IP — chỉ có trong eBPF mode.
+6. **Lab tiếp theo dùng iptables mode** để dễ trace bằng `iptables -L` và LOG rules.
