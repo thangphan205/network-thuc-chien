@@ -267,6 +267,14 @@ multipass shell worker1
      # Dump bảng conntrack để xem trạng thái kết nối
      sudo bpftool map dump id $CT_MAP_ID | head -30
      ```
+     > 💡 **Giải thích chi tiết Kết quả Conntrack Map Dump (Dạng JSON nhờ BTF):**
+     > * **Khóa tìm kiếm luồng (`"key"`):**
+     >   * `"protocol": 17`: Giao thức **UDP** (hoặc `1` là **ICMP Ping**).
+     >   * `"port_b": 123`: Cổng đích `123` của dịch vụ **NTP** đồng bộ giờ hệ thống.
+     >   * `"addr_a": 1039968448`: Địa chỉ IP nguồn dạng số nguyên (Little-Endian). Đổi `1039968448` sang Hex là `0x3dfca8c0` -> đọc ngược byte mạng: `c0.a8.fc.3d` -> dịch sang hệ 10 chính là **`192.168.252.61`** (IP vật lý của máy `worker1`!).
+     > * **Hành động của eBPF (`"value"`):**
+     >   * `"a_to_b" → "approved": 0x0`: Dòng traffic từ Host gửi yêu cầu ra ngoài **không được eBPF phê duyệt** (`approved` bằng 0). Đây là bằng chứng thép eBPF đang chặn đứng hoàn toàn kết nối này ngay tại tầng Kernel!
+
 
 
    **Dọn dẹp chính sách test trên `controlplane`:**
