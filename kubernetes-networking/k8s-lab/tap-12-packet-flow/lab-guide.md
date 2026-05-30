@@ -255,7 +255,7 @@ multipass shell worker1
 
 ## 🔬 Thí nghiệm 4: Demo DROP và conntrack không có ESTABLISHED
 
-**Trên `controlplane`:**
+**Từ Terminal 2 (controlplane):**
 
 1. Apply policy chặn ingress đến trace-dst:
    ```bash
@@ -273,36 +273,57 @@ multipass shell worker1
    EOF
    ```
 
-2. **Trên worker1** — thêm LOG rule trong FORWARD chain (dùng chain `FORWARD` tiêu chuẩn của Linux để tránh bị chu kỳ đồng bộ - sync loop - của Calico Felix tự động ghi đè và xóa mất):
+**Từ Terminal 1 (worker1):**
+
+2. Cắm cờ theo dõi (LOG và Conntrack events chạy ngầm):
    ```bash
-   sudo iptables -t filter -I FORWARD 1 \
-     -j LOG --log-prefix "CALICO-PRE-DROP: " --log-level 4
+   # Thêm LOG rule vào FORWARD chain tiêu chuẩn
+   sudo iptables -t filter -I FORWARD 1 -j LOG --log-prefix "CALICO-PRE-DROP: " --log-level 4
+   
+   # Bật dmesg chạy ngầm
    sudo dmesg -w | grep "CALICO-PRE-DROP" &
    DMESG_PID2=$!
+
+   # Bật màn hình theo dõi conntrack realtime chạy ngầm:
+   sudo conntrack -E -p tcp 2>/dev/null | grep "8080" &
+   CONNTRACK_PID2=$!
    ```
    > **Lưu ý:** LOG rule này nằm ở đầu `FORWARD` chain — fires TRƯỚC khi Calico xử lý. Mục đích là chứng minh packet **có tới node**, nhưng DROP thực sự xảy ra sâu bên trong `cali-tw-<vethYYY>` (ingress policy chain của Pod đích).
 
-3. **Từ controlplane** — thử kết nối (sẽ bị DROP):
+**Từ Terminal 2 (controlplane):**
+
+3. Thử kết nối (lệnh sẽ bị treo vì gói tin bị DROP):
    ```bash
    kubectl exec trace-src -- nc -zv -w 3 $DST_IP 8080
-   # (timeout)
+   # (timeout sau 3 giây)
    ```
 
-4. **Trên worker1** — xem log:
+**Từ Terminal 1 (worker1):**
+
+4. Xem kết quả tự động nổ ra màn hình:
+   Ngay khi lệnh `nc` vừa chạy, anh sẽ thấy Terminal 1 in ra 2 dòng sự kiện cùng lúc.
+   
+   Từ lệnh `dmesg` (Gói tin đã đến node):
    ```
    CALICO-PRE-DROP: ... DPT=8080 ... SYN
    ```
-   Và conntrack **không có** ESTABLISHED — chỉ thấy `SYN_SENT [UNREPLIED]`:
-   ```bash
-   sudo conntrack -L -p tcp 2>/dev/null | grep "8080"
-   # tcp 6 117 SYN_SENT src=10.244.1.X dst=10.244.1.Y sport=XXXXX dport=8080 [UNREPLIED] ...
+   
+   Và từ lệnh `conntrack -E` (Bị kẹt vĩnh viễn ở trạng thái SYN_SENT):
    ```
-   *`[UNREPLIED]` là dấu hiệu chính: không có response về = packet bị DROP trước khi tới Pod đích, conntrack không bao giờ chuyển sang ESTABLISHED.*
+   [NEW] tcp      6 120 SYN_SENT src=10.244.1.X dst=10.244.1.Y sport=XXXXX dport=8080 [UNREPLIED] ...
+   ```
+   *`[UNREPLIED]` là dấu hiệu chính: không có response về = packet bị DROP trước khi tới Pod đích, conntrack không thể chuyển sang ESTABLISHED. Việc dùng `-E` giúp chúng ta bắt được sự kiện này ngay lập tức trước khi nó bị Linux xóa khỏi bảng trạng thái.*
 
-5. Cleanup:
+5. Cleanup (Dọn dẹp worker1):
    ```bash
-   kill $DMESG_PID2 2>/dev/null
+   kill $DMESG_PID2 $CONNTRACK_PID2 2>/dev/null
    sudo iptables -t filter -D FORWARD 1
+   ```
+
+**Từ Terminal 2 (controlplane):**
+
+6. Cleanup (Dọn dẹp cluster):
+   ```bash
    kubectl delete networkpolicy deny-trace-dst
    kubectl delete pod trace-src trace-dst
    ```
