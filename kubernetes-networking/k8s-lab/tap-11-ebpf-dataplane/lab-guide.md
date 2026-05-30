@@ -123,6 +123,13 @@ multipass shell worker1
      # Bạn sẽ thấy các card mạng enp0s1, vxlan.calico, cali...
      # đều đã được gắn chương trình `cali_tc_preamble` qua tcx/ingress và tcx/egress!
      ```
+     > 💡 **Giải thích chi tiết Output `bpftool net show`:**
+     > * `enp0s1(2)` / `vxlan.calico(13)` / `cali...`: Tên card mạng vật lý hoặc ảo và ID trong OS.
+     > * `tcx/ingress` / `tcx/egress`: Điểm gắn BPF hook theo cơ chế tcx hiện đại (ingress: chiều đi vào card, egress: chiều đi ra).
+     > * `cali_tc_preamble`: Tên chương trình BPF mồi của Calico chạy trước để giải phóng/phân tích sơ bộ gói tin.
+     > * `prog_id`: ID định danh duy nhất của chương trình eBPF trong bộ nhớ Kernel.
+     > * `link_id`: ID biểu diễn BPF Link liên kết chặt chẽ chương trình BPF với card mạng đó.
+
    * **Cách 2: Sử dụng `tc filter` cổ điển (Chỉ hoạt động trên Kernel cũ < 6.2):**
      ```bash
      tc filter show dev enp0s1 ingress
@@ -131,10 +138,14 @@ multipass shell worker1
 
 2. Xem tất cả BPF programs đang chạy:
    ```bash
-   sudo bpftool prog list | grep calico
-   # 42: sched_cls  name calico_from_host  tag ...
-   # 43: sched_cls  name calico_to_host    tag ...
+   sudo bpftool prog list | grep cali
+   # 42: sched_cls  name cali_tc_ingress  tag ...
    ```
+   > 💡 **Giải thích chi tiết Output `bpftool prog list`:**
+   > * `sched_cls`: Loại chương trình eBPF (Classifier dùng cho bộ điều phối Traffic Control của Linux).
+   > * `tag <hash>`: Mã băm đại diện cho tập chỉ thị lệnh (instructions) của chương trình này.
+   > * `xlated / jited`: Kích thước bytecode ảo và kích thước mã máy thật được JIT (Just-In-Time) biên dịch để CPU thực thi trực tiếp ở tầng phần cứng với tốc độ ánh sáng.
+   > * `map_ids`: ID của các bảng BPF Maps mà chương trình này được phép đọc/ghi dữ liệu để tra cứu trạng thái mạng.
 
 3. Xem BPF maps (policy lookup tables):
    ```bash
@@ -143,6 +154,12 @@ multipass shell worker1
    # 11: hash  name cali_v4_nat_fe   flags 0x0
    # ...
    ```
+   > 💡 **Giải thích chi tiết Output `bpftool map list`:**
+   > * `hash`: Kiểu cấu trúc dữ liệu bảng băm, giúp tìm kiếm với độ phức tạp phẳng $O(1)$ bất kể số lượng Pod.
+   > * `cali_v4_pol_pf`: Map chứa các chính sách bảo mật NetworkPolicy IPv4 dành cho Pods.
+   > * `cali_v4_nat_fe`: Map lưu trữ cấu hình NAT Frontend (thay thế cho kube-proxy để cân bằng tải Service).
+   > * `key 8B / value 4B`: Kích thước Khóa tìm kiếm (8 Bytes) và Giá trị hành động trả về (4 Bytes).
+   > * `max_entries 1048576`: Dung lượng tối đa của bảng băm (lên đến hơn 1 triệu dòng băm), cho thấy khả năng scale khổng lồ của eBPF.
 
 4. Dump BPF map entries (policy rules):
    ```bash
@@ -153,6 +170,10 @@ multipass shell worker1
    sudo bpftool map list | grep cali
    # Chọn ID phù hợp và dump
    ```
+   > 💡 **Giải thích chi tiết Map Dump (Dữ liệu byte thô hệ 16 - Hex):**
+   > * `key`: Ví dụ `0a f4 01 05 00 00 00 00` -> Dịch từ Hex sang hệ 10: `0a`=10, `f4`=244, `01`=1, `05`=5 -> Đại diện cho địa chỉ IP Pod: **`10.244.1.5`**.
+   > * `value`: Ví dụ `01 00 00 00` -> Cờ nhị phân đại diện cho hành động **`ALLOW`** (Cho phép đi qua). Nếu là `00 00 00 00` hoặc mã khác sẽ tương đương hành động **`DROP`** (Chặn gói tin).
+
 
 ---
 
