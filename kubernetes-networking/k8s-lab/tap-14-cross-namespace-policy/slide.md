@@ -59,10 +59,11 @@ Namespace: monitoring
 
 Namespace: production
   Pod: backend (label: app=backend)
-  Port: 9090 (metrics endpoint)
+  Service: backend-metrics → port 9090
+  → DNS: backend-metrics.production.svc.cluster.local
 
 Goal: Chỉ cho phép prometheus trong namespace monitoring
-      scrape backend metrics (port 9090)
+      scrape backend metrics (port 9090) qua Service DNS
       KHÔNG cho phép prometheus nào khác scrape
 ```
 

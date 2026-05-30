@@ -2,6 +2,43 @@
 
 Tập này chứng minh sự khác biệt sống còn giữa AND và OR logic trong NetworkPolicy YAML bằng cách demo rogue pod vào được hay không.
 
+## 📖 Đề bài & Kịch bản thực tế
+Hệ thống `backend` của bạn đang chạy an toàn trong namespace `production`. Bây giờ, đội vận hành (Ops) yêu cầu bạn mở một chính sách tường lửa chéo (Cross-namespace) để hệ thống giám sát **Prometheus** (nằm ở namespace `monitoring`) có thể truy cập vào cổng `9090` của backend nhằm thu thập số liệu (metrics).
+
+**Yêu cầu an ninh từ Giám đốc bảo mật (CISO):**
+- Chỉ cấp quyền truy cập một cách cực kỳ khắt khe (AND logic): **CHỈ CÓ** Pod mang nhãn `role: prometheus` **VÀ** bắt buộc phải nằm trong namespace `monitoring` mới được phép truy cập.
+- Hệ thống phải miễn nhiễm với các Pod giả mạo (Rogue Pod): Ví dụ một Pod lạ trà trộn vào namespace `monitoring` nhưng không có nhãn prometheus, hoặc một Pod có nhãn prometheus nhưng nằm ở namespace khác đều tuyệt đối không được phép lọt qua.
+
+Một đồng nghiệp của bạn vừa viết xong một đoạn YAML NetworkPolicy và khẳng định nó rất an toàn. Nhiệm vụ của bạn là kiểm chứng xem file YAML đó có thực sự chặn được các Pod giả mạo hay không, tìm ra lỗ hổng và học cách viết lại cho chuẩn xác nhất!
+
+**Mô hình mục tiêu:**
+```mermaid
+graph TD
+    subgraph NS_MON [Namespace: monitoring]
+        Prom["✅ Pod: prometheus<br>(role=prometheus)"]
+        Rogue["❌ Pod: rogue<br>(không có nhãn)"]
+    end
+    
+    subgraph NS_OTHER [Namespace: any-other]
+        FakeProm["❌ Pod: fake-prom<br>(role=prometheus)"]
+    end
+
+    subgraph NS_PROD [Namespace: production]
+        Svc["Service: backend-metrics<br>:9090"]
+        Backend["🎯 Pod: backend<br>Port: 9090"]
+        Svc --> Backend
+    end
+
+    Prom -->|Được phép (AND Logic)| Svc
+    Rogue -.->|Bị chặn (Sai Pod Label)| Svc
+    FakeProm -.->|Bị chặn (Sai Namespace)| Svc
+
+    style Prom fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#fff
+    style Rogue fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fff
+    style FakeProm fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fff
+    style Backend fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff
+```
+
 ## 🛠 Yêu cầu chuẩn bị
 - Cụm K8s với Calico từ Tập 9.
 - Không có NetworkPolicy nào đang active trong `production`.
@@ -26,7 +63,7 @@ multipass shell controlplane
    kubectl label namespace production name=production --overwrite
    ```
 
-2. Deploy backend với metrics endpoint trong production:
+2. Deploy backend với metrics endpoint và Service trong production:
    ```bash
    kubectl apply -n production -f - <<'EOF'
    apiVersion: v1
@@ -36,14 +73,26 @@ multipass shell controlplane
      labels:
        app: backend
    spec:
+     nodeName: worker1
      containers:
      - name: app
        image: nicolaka/netshoot
        command: ["nc", "-lk", "-p", "9090"]
+   ---
+   apiVersion: v1
+   kind: Service
+   metadata:
+     name: backend-metrics
+   spec:
+     selector:
+       app: backend
+     ports:
+     - port: 9090
+       targetPort: 9090
    EOF
    ```
 
-3. Deploy prometheus trong monitoring:
+3. Deploy prometheus và rogue trong monitoring:
    ```bash
    kubectl apply -n monitoring -f - <<'EOF'
    apiVersion: v1
@@ -53,28 +102,38 @@ multipass shell controlplane
      labels:
        role: prometheus
    spec:
+     nodeName: worker2
      containers:
      - name: prom
+       image: nicolaka/netshoot
+       command: ["sleep", "infinity"]
+   ---
+   apiVersion: v1
+   kind: Pod
+   metadata:
+     name: rogue
+   spec:
+     nodeName: worker2
+     containers:
+     - name: shell
        image: nicolaka/netshoot
        command: ["sleep", "infinity"]
    EOF
    ```
 
-4. Deploy rogue pod trong monitoring (KHÔNG có label role=prometheus):
-   ```bash
-   kubectl run rogue -n monitoring --image=nicolaka/netshoot -- sleep infinity
-   ```
-
-5. Chờ tất cả ready:
+4. Chờ tất cả ready:
    ```bash
    kubectl -n production wait --for=condition=Ready pod/backend --timeout=60s
    kubectl -n monitoring wait --for=condition=Ready pod/prometheus pod/rogue --timeout=60s
    ```
 
-6. Ghi lại backend IP:
+5. Verify baseline — chưa có policy, tất cả đều kết nối được:
    ```bash
-   BACKEND_IP=$(kubectl -n production get pod backend -o jsonpath='{.status.podIP}')
-   echo "Backend IP: $BACKEND_IP"
+   kubectl -n monitoring exec prometheus -- nc -zv backend-metrics.production.svc.cluster.local 9090
+   # Connection succeeded! ✅ (default allow — chưa có policy)
+
+   kubectl -n monitoring exec rogue -- nc -zv backend-metrics.production.svc.cluster.local 9090
+   # Connection succeeded! ✅ (default allow — chưa có policy)
    ```
 
 ---
@@ -126,13 +185,13 @@ multipass shell controlplane
 
 3. Test: Rogue pod phải bị chặn nhưng thực ra KHÔNG:
    ```bash
-   kubectl -n monitoring exec rogue -- nc -zv $BACKEND_IP 9090
+   kubectl -n monitoring exec rogue -- nc -zv backend-metrics.production.svc.cluster.local 9090
    # Connection succeeded! ← BUG! Rogue vào được vì match namespace monitoring
    ```
 
 4. Test: Prometheus cũng vào được (đúng, nhưng vì lý do sai):
    ```bash
-   kubectl -n monitoring exec prometheus -- nc -zv $BACKEND_IP 9090
+   kubectl -n monitoring exec prometheus -- nc -zv backend-metrics.production.svc.cluster.local 9090
    # Connection succeeded! ✅ (nhưng lý do thông mạng là sai)
    ```
    > **Phân tích bản chất:** Prometheus vào được thực tế là do điều kiện thứ nhất (`namespaceSelector` match namespace `monitoring`) mở toang cho tất cả, chứ không phải do điều kiện thứ hai match được nó! Trong K8s NetworkPolicy, luật `- podSelector` khi viết độc lập (không đi kèm `namespaceSelector` trong cùng một phần tử danh sách) sẽ chỉ áp dụng kiểm tra Pod có nhãn đó chạy **ở nội bộ namespace của Policy đó** (ở đây là namespace `production`). Nó không có tác dụng kiểm tra Pod ở namespace khác!
@@ -178,11 +237,11 @@ multipass shell controlplane
 3. Test kết quả:
    ```bash
    # Prometheus được vào ✅
-   kubectl -n monitoring exec prometheus -- nc -zv $BACKEND_IP 9090
+   kubectl -n monitoring exec prometheus -- nc -zv backend-metrics.production.svc.cluster.local 9090
    # Connection succeeded!
 
    # Rogue bị chặn ✅
-   kubectl -n monitoring exec rogue -- nc -zv -w 3 $BACKEND_IP 9090
+   kubectl -n monitoring exec rogue -- nc -zv -w 3 backend-metrics.production.svc.cluster.local 9090
    # (timeout) ← Đúng! Rogue không có role=prometheus
    ```
 
@@ -204,14 +263,14 @@ multipass shell controlplane
    kubectl label namespace monitoring name-
    # Label bị xóa
 
-   kubectl -n monitoring exec prometheus -- nc -zv -w 3 $BACKEND_IP 9090
+   kubectl -n monitoring exec prometheus -- nc -zv -w 3 backend-metrics.production.svc.cluster.local 9090
    # (timeout) ← Policy không match nữa! namespaceSelector không có label để match
    ```
 
 3. Restore label:
    ```bash
    kubectl label namespace monitoring name=monitoring
-   kubectl -n monitoring exec prometheus -- nc -zv $BACKEND_IP 9090
+   kubectl -n monitoring exec prometheus -- nc -zv backend-metrics.production.svc.cluster.local 9090
    # Connection succeeded! ✅ Label restore → policy hoạt động lại
    ```
 
@@ -221,7 +280,7 @@ multipass shell controlplane
 
 ```bash
 kubectl -n production delete networkpolicy --all
-kubectl -n production delete pod backend 2>/dev/null || true
+kubectl -n production delete pod backend service/backend-metrics 2>/dev/null || true
 kubectl -n monitoring delete pod prometheus rogue 2>/dev/null || true
 ```
 
