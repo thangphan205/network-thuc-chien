@@ -119,6 +119,13 @@ flowchart TD
   >    kubectl get pods -n kube-system -l k8s-app=kube-proxy -w
   >    ```
   >    *(Khi toàn bộ Pod kube-proxy đã Running, bấm `Ctrl+C` để thoát và bắt đầu làm Lab).*
+  >
+  > 💡 **Mẹo xử lý sự cố (Troubleshooting):**
+  > Nếu anh chạy lệnh ở bước 3 mà **không thấy bất kỳ Pod `kube-proxy` nào xuất hiện** trong danh sách:
+  > - Hãy kiểm tra xem DaemonSet `kube-proxy` có tồn tại trong cụm không bằng lệnh: `kubectl get ds -n kube-system kube-proxy`.
+  > - Nếu cột `DESIRED` và `CURRENT` hiển thị bằng `0`, nghĩa là lệnh `patch` ở Bước 2 chưa được áp dụng thành công. Hãy chạy lại lệnh `patch` thật kỹ và chính xác.
+  > - Nếu báo lỗi `NotFound`, có thể DaemonSet `kube-proxy` đã bị xóa trước đó. Hãy cài đặt lại hoặc khôi phục cấu hình DaemonSet gốc của cụm Lab.
+  > - **Sau khi `kube-proxy` đã Running**, nếu Pod mới vẫn báo lỗi CNI, hãy restart lại Calico-node để dọn dẹp cache kết nối lỗi cũ: `kubectl rollout restart daemonset calico-node -n calico-system` (hoặc `-n kube-system`).
 
 ---
 
