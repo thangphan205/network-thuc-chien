@@ -2,6 +2,17 @@
 
 Tập này thực hành viết NetworkPolicy từ đầu với thứ tự đúng và test từng bước.
 
+## 📖 Đề bài & Kịch bản thực tế
+Giả sử bạn được giao quản lý hệ thống mạng cho một dự án quan trọng của công ty, chạy trong namespace `production`. Dự án gồm có một ứng dụng web (`frontend`) và một API server (`backend`).
+
+**Yêu cầu an ninh từ Giám đốc bảo mật (CISO):**
+1. **Zero Trust (Không tin tưởng ai):** Mặc định phải khóa chặt toàn bộ kết nối đi vào (Ingress) của tất cả các dịch vụ trong cụm.
+2. **Đặc quyền tối thiểu (Least Privilege):** Chỉ cho phép duy nhất ứng dụng `frontend` được phép kết nối tới cổng `8080` của ứng dụng `backend`.
+3. **Phòng chống nội gián:** Nếu có một Pod lạ (`attacker`) bằng cách nào đó lọt được vào namespace, nó cũng tuyệt đối không được phép gọi vào `backend`.
+4. **Đảm bảo vận hành (Critical):** Hệ thống dù có bị khóa chặt đến đâu cũng tuyệt đối không được làm "chết" chức năng phân giải tên miền (DNS) của Kubernetes.
+
+Nhiệm vụ của bạn là sử dụng Kubernetes NetworkPolicy để hóa giải từng yêu cầu trên!
+
 ## 🛠 Yêu cầu chuẩn bị
 - Cụm K8s với Calico từ Tập 9.
 - Không có NetworkPolicy nào đang active trong namespace `production` (xóa nếu có từ tập trước).
@@ -9,6 +20,10 @@ Tập này thực hành viết NetworkPolicy từ đầu với thứ tự đúng
 ---
 
 ## 🔬 Thí nghiệm 1: Deploy namespace và Pods
+
+**🎯 Mục tiêu:**
+- Khởi tạo môi trường mạng cho bài lab với các Pod `frontend` và `backend`.
+- Chứng minh nguyên tắc **Default Allow** của Kubernetes: Khi chưa có NetworkPolicy nào, mọi Pod đều có thể tự do kết nối với nhau mà không bị cấm cản.
 
 **SSH vào `controlplane`:**
 
@@ -76,6 +91,10 @@ multipass shell controlplane
 
 ## 🔬 Thí nghiệm 2: Apply Default Deny Ingress
 
+**🎯 Mục tiêu:**
+- Thiết lập chốt chặn an ninh đầu tiên: Khóa toàn bộ Ingress (chiều vào) trong namespace.
+- Áp dụng nguyên tắc **Least Privilege** (Đặc quyền tối thiểu) bằng cách viết rule chỉ "đục lỗ" cho phép đúng Pod `frontend` kết nối vào `backend`.
+
 **Trên `controlplane`:**
 
 1. Apply default deny ingress cho toàn namespace:
@@ -86,9 +105,9 @@ multipass shell controlplane
    metadata:
      name: default-deny-ingress
    spec:
-     podSelector: {}
+     podSelector: {} # Để trống {} nghĩa là chọn TẤT CẢ các Pod trong namespace
      policyTypes:
-     - Ingress
+     - Ingress       # Khai báo quản lý Ingress. Vì không có luật 'ingress:' nào ở dưới -> MẶC ĐỊNH CẤM TẤT CẢ
    EOF
    ```
 
@@ -108,17 +127,17 @@ multipass shell controlplane
    spec:
      podSelector:
        matchLabels:
-         app: backend
+         app: backend     # Áp dụng lớp khiên bảo vệ này lên Pod 'backend'
      policyTypes:
      - Ingress
      ingress:
      - from:
        - podSelector:
            matchLabels:
-             app: frontend
+             app: frontend # Phía gửi: Chỉ cho phép các Pod có nhãn 'app: frontend'
        ports:
        - protocol: TCP
-         port: 8080
+         port: 8080        # Phía nhận: Chỉ mở duy nhất cổng 8080
    EOF
    ```
 
@@ -131,6 +150,10 @@ multipass shell controlplane
 ---
 
 ## 🔬 Thí nghiệm 3: Deploy attacker pod và verify bị chặn
+
+**🎯 Mục tiêu:**
+- Giả lập một mối đe dọa nội bộ (Internal Threat) bằng cách tạo một Pod `attacker` lạ, không có nhãn hợp lệ.
+- Kiểm chứng xem hệ thống an ninh Ingress vừa thiết lập ở Thí nghiệm 2 có thực sự chặn đứng được các nỗ lực xâm nhập trái phép hay không.
 
 **Trên `controlplane`:**
 
@@ -157,6 +180,10 @@ multipass shell controlplane
 
 ## 🔬 Thí nghiệm 4: Demo DNS break và fix
 
+**🎯 Mục tiêu:**
+- Trải nghiệm lỗi kinh điển nhất khi làm NetworkPolicy: Chặn nhầm Egress (chiều ra) làm hỏng hoàn toàn tính năng phân giải tên miền (CoreDNS).
+- Học cách sửa lỗi bằng tư duy chuẩn xác: **Luôn ưu tiên Allow DNS port 53 trước tiên**.
+
 **Trên `controlplane`:**
 
 1. Apply default deny egress (mạnh nhất):
@@ -167,9 +194,9 @@ multipass shell controlplane
    metadata:
      name: default-deny-egress
    spec:
-     podSelector: {}
+     podSelector: {} # Áp dụng cho TẤT CẢ các Pod
      policyTypes:
-     - Egress
+     - Egress        # Quản lý Egress nhưng không có khối 'egress:' -> MẶC ĐỊNH CẤM MỌI TRAFFIC ĐI RA
    EOF
    ```
 
@@ -187,13 +214,13 @@ multipass shell controlplane
    metadata:
      name: allow-dns
    spec:
-     podSelector: {}
+     podSelector: {} # Mở đường cho TẤT CẢ các Pod trong namespace
      policyTypes:
      - Egress
      egress:
-     - ports:
+     - ports:        # Không giới hạn IP đích đến, chỉ mở dựa trên port
        - protocol: UDP
-         port: 53
+         port: 53    # Port chuẩn của DNS (CoreDNS)
        - protocol: TCP
          port: 53
    EOF
@@ -221,17 +248,17 @@ multipass shell controlplane
    spec:
      podSelector:
        matchLabels:
-         app: frontend
+         app: frontend # Cấp quyền đi ra (egress) cho Pod 'frontend'
      policyTypes:
      - Egress
      egress:
      - to:
        - podSelector:
            matchLabels:
-             app: backend
+             app: backend # Hướng đích đến: cho phép gọi tới các Pod 'backend'
        ports:
        - protocol: TCP
-         port: 8080
+         port: 8080       # Phải chỉ định rõ gọi vào port nào
    EOF
 
    kubectl -n production exec frontend -- nc -zv backend-svc 8080
