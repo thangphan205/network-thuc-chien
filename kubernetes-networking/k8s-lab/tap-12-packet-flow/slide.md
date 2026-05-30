@@ -36,6 +36,7 @@ style: |
 
 **Phần 2 — Calico** · `#packet-flow` `#veth` `#conntrack` `#iptables` `#trace`
 ![height:200px](https://www.tigera.io/app/uploads/2026/01/Calico-logo-2026-white-text.svg)
+
 ---
 
 ## Mục tiêu tập này
