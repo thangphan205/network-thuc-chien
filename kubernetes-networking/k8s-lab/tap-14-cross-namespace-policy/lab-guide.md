@@ -29,9 +29,9 @@ graph TD
         Svc --> Backend
     end
 
-    Prom -->|Được phép (AND Logic)| Svc
-    Rogue -.->|Bị chặn (Sai Pod Label)| Svc
-    FakeProm -.->|Bị chặn (Sai Namespace)| Svc
+    Prom -->|"Được phép (AND Logic)"| Svc
+    Rogue -.->|"Bị chặn (Sai Pod Label)"| Svc
+    FakeProm -.->|"Bị chặn (Sai Namespace)"| Svc
 
     style Prom fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#fff
     style Rogue fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fff
