@@ -273,13 +273,14 @@ multipass shell worker1
    EOF
    ```
 
-2. **Trên worker1** — thêm LOG rule trong cali-FORWARD:
+2. **Trên worker1** — thêm LOG rule trong FORWARD chain (dùng chain `FORWARD` tiêu chuẩn của Linux để tránh bị chu kỳ đồng bộ - sync loop - của Calico Felix tự động ghi đè và xóa mất):
    ```bash
-   sudo iptables -t filter -I cali-FORWARD 1 \
-     -j LOG --log-prefix "CALICO-DROP: " --log-level 4
-   sudo dmesg -w | grep "CALICO-DROP" &
+   sudo iptables -t filter -I FORWARD 1 \
+     -j LOG --log-prefix "CALICO-PRE-DROP: " --log-level 4
+   sudo dmesg -w | grep "CALICO-PRE-DROP" &
    DMESG_PID2=$!
    ```
+   > **Lưu ý:** LOG rule này nằm ở đầu `FORWARD` chain — fires TRƯỚC khi Calico xử lý. Mục đích là chứng minh packet **có tới node**, nhưng DROP thực sự xảy ra sâu bên trong `cali-tw-<vethYYY>` (ingress policy chain của Pod đích).
 
 3. **Từ controlplane** — thử kết nối (sẽ bị DROP):
    ```bash
@@ -289,18 +290,19 @@ multipass shell worker1
 
 4. **Trên worker1** — xem log:
    ```
-   CALICO-DROP: ... DPT=8080 ... SYN
+   CALICO-PRE-DROP: ... DPT=8080 ... SYN
    ```
-   Và conntrack **không có** ESTABLISHED (chỉ có SYN_SENT không chuyển sang ESTABLISHED):
+   Và conntrack **không có** ESTABLISHED — chỉ thấy `SYN_SENT [UNREPLIED]`:
    ```bash
    sudo conntrack -L -p tcp 2>/dev/null | grep "8080"
-   # (trống hoặc chỉ thấy SYN_SENT, không phải ESTABLISHED)
+   # tcp 6 117 SYN_SENT src=10.244.1.X dst=10.244.1.Y sport=XXXXX dport=8080 [UNREPLIED] ...
    ```
+   *`[UNREPLIED]` là dấu hiệu chính: không có response về = packet bị DROP trước khi tới Pod đích, conntrack không bao giờ chuyển sang ESTABLISHED.*
 
 5. Cleanup:
    ```bash
    kill $DMESG_PID2 2>/dev/null
-   sudo iptables -t filter -D cali-FORWARD 1
+   sudo iptables -t filter -D FORWARD 1
    kubectl delete networkpolicy deny-trace-dst
    kubectl delete pod trace-src trace-dst
    ```
