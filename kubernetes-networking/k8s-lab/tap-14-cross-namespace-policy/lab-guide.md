@@ -24,18 +24,26 @@ graph TD
     end
 
     subgraph NS_PROD [Namespace: production]
+        Frontend["✅ Pod: frontend<br>(app=frontend)"]
+        Attacker["❌ Pod: attacker<br>(từ Tập 13)"]
+        
         Svc["Service: backend-metrics<br>:9090"]
-        Backend["🎯 Pod: backend<br>Port: 9090"]
+        Backend["🎯 Pod: backend<br>Port: 8080 & 9090"]
+        
         Svc --> Backend
+        Frontend -->|"Được phép (Port 8080)"| Backend
+        Attacker -.->|"Bị chặn (Port 8080)"| Backend
     end
 
-    Prom -->|"Được phép (AND Logic)"| Svc
+    Prom -->|"Được phép (AND Logic - Port 9090)"| Svc
     Rogue -.->|"Bị chặn (Sai Pod Label)"| Svc
     FakeProm -.->|"Bị chặn (Sai Namespace)"| Svc
 
     style Prom fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#fff
+    style Frontend fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#fff
     style Rogue fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fff
     style FakeProm fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fff
+    style Attacker fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fff
     style Backend fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff
 ```
 
