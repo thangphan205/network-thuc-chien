@@ -7,13 +7,12 @@ Tập này dùng iptables LOG để trace từng packet qua các Calico chains v
 #### 1. Trường hợp cùng một Node (Same-Node Packet Flow)
 
 ```mermaid
-flowchart LR
+flowchart TD
   subgraph PodA_NS ["🟦 Pod A Netns"]
     PodA["eth0\n10.244.1.5"]
   end
 
   subgraph RootNS ["⬜ Root Network Namespace (Node)"]
-    direction LR
     vethA["vethXXX\n(veth peer của Pod A)"]
     FWD["iptables\nFORWARD"]
     FromDisp["cali-from-wl-dispatch\n(dispatcher egress)"]
@@ -49,13 +48,12 @@ flowchart LR
 #### 2. Trường hợp khác Node (Cross-Node Packet Flow)
 
 ```mermaid
-flowchart LR
+flowchart TD
   subgraph PodA_NS ["🟦 Pod A Netns — Node 1"]
     PodA["eth0\n10.244.1.5"]
   end
 
   subgraph Node1 ["⬜ Root NS — Node 1"]
-    direction LR
     vethA["vethXXX"]
     N1_FWD["iptables FORWARD"]
     N1_EgressPol["cali-fw-vethXXX\n✅ Egress Policy"]
@@ -67,7 +65,6 @@ flowchart LR
   Network(["🌐 Underlay Network\n(L3 between nodes)"])
 
   subgraph Node2 ["⬜ Root NS — Node 2"]
-    direction LR
     N2_eth0["eth0\nNode 2"]
     N2_VTEP["vxlan.calico\n🔓 Decapsulate\nrestore inner packet"]
     N2_Route["Routing\n10.244.2.7/32 → vethYYY"]
