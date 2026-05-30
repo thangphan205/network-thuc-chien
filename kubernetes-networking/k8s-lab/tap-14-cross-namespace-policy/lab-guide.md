@@ -74,10 +74,11 @@ multipass shell controlplane
    kubectl label namespace production name=production --overwrite
    ```
 
-2. **Deploy backend với metrics endpoint và Service trong `production`.**
-   Pod backend lắng nghe trên port `9090` — đây là endpoint mà Prometheus sẽ scrape. Service `backend-metrics` đóng vai trò entry point từ bên ngoài namespace.
+2. **Deploy backend với metrics endpoint (Sidecar Pattern) và Service trong `production`.**
+   Trong thực tế, container ứng dụng chính sẽ chạy trên port `8080`, và một Sidecar container chạy song song để expose metrics trên port `9090` cho Prometheus scrape. Service `backend-metrics` đóng vai trò entry point từ bên ngoài namespace.
+   *(Lưu ý: Dùng `replace --force` để ghi đè Pod cũ nếu bạn đang làm tiếp từ kịch bản Tập 13).*
    ```bash
-   kubectl apply -n production -f - <<'EOF'
+   kubectl replace --force -n production -f - <<'EOF'
    apiVersion: v1
    kind: Pod
    metadata:
@@ -87,7 +88,12 @@ multipass shell controlplane
    spec:
      nodeName: worker1
      containers:
+     # 1. Container ứng dụng chính (Kế thừa từ Tập 13)
      - name: app
+       image: nicolaka/netshoot
+       command: ["nc", "-lk", "-p", "8080"]
+     # 2. Container sidecar để expose metrics (Mới ở Tập 14)
+     - name: metrics-exporter
        image: nicolaka/netshoot
        command: ["nc", "-lk", "-p", "9090"]
    ---
