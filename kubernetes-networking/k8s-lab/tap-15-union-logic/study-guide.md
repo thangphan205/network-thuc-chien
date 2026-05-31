@@ -119,6 +119,26 @@ order: 1000 → K8s NetworkPolicy allow-frontend
                action: Allow từ frontend   ← frontend đi qua bình thường
 ```
 
+### 2.6 Cách phân biệt nhanh Rule Allow và Deny trong NetworkPolicy
+
+Để làm chủ việc thiết kế và giám sát hệ thống bảo mật, kỹ sư DevOps bắt buộc phải phân biệt được chính xác một rule trong policy đang hoạt động ở chế độ **Allow (Cho phép)** hay **Deny (Chặn)**.
+
+#### 🟢 Nhận diện luật ALLOW:
+*   **Kubernetes NetworkPolicy chuẩn:**
+    *   Tất cả các định nghĩa dưới trường `ingress:` (luồng vào) hoặc `egress:` (luồng ra) đều mặc định là luật **Allow** (Allowlist thuần túy). 
+    *   Không hề tồn tại bất cứ từ khóa hay thuộc tính `action` nào. Mọi dòng cấu hình IP, Namespace Selector hay Pod Selector đều mang ý nghĩa: *"Cho phép traffic đi qua"*.
+*   **Calico GlobalNetworkPolicy / NetworkPolicy mở rộng:**
+    *   Nhận diện trực tiếp qua khai báo trường **`action: Allow`** bên trong các quy tắc của `ingress` hoặc `egress`.
+
+#### 🔴 Nhận diện luật DENY:
+*   **Kubernetes NetworkPolicy chuẩn:**
+    *   **Không thể viết luật Deny tường minh (Explicit Deny).**
+    *   Luật Deny chỉ tồn tại ở dạng **Ngầm định (Implicit Deny / Default Deny)**: Khi một Pod bị chọn bởi `podSelector` của bất kỳ policy nào, nó sẽ tự động bị "cô lập" và chặn toàn bộ các traffic khác ngoài các luồng được allowlist cho phép.
+*   **Calico GlobalNetworkPolicy / NetworkPolicy mở rộng:**
+    *   Nhận diện trực tiếp qua khai báo trường **`action: Deny`** dưới mỗi rule. Lúc này gói tin khớp điều kiện sẽ bị Drop chủ động ngay lập tức.
+*   **Kubernetes AdminNetworkPolicy (K8s 1.29+):**
+    *   Nhận diện thông qua thuộc tính **`action: Deny`** ở tầng Cluster-scoped.
+
 ---
 
 ## 3. Mô hình mục tiêu của Lab
