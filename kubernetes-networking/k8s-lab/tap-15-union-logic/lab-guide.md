@@ -407,6 +407,34 @@ graph TD
 
 ---
 
+## 🏆 Thực chiến: Best Practices khi kết hợp Calico GNP & K8s NetworkPolicy
+
+Để vận hành hệ thống tường lửa mạng an toàn, hiệu quả và tránh các lỗ hổng bảo mật logic trên Kubernetes, hãy tuân thủ 3 nguyên tắc thực chiến vàng sau đây:
+
+### 1. Phân tầng bảo mật rõ ràng (Security Tiering)
+*   **Tầng SecOps / Platform (Calico GlobalNetworkPolicy):** 
+    *   Dành cho đội quản trị bảo mật hệ thống để cấu hình các luật chặn cứng (Explicit Deny), chặn IP độc hại, hoặc thiết lập baseline an toàn cho toàn bộ Cluster.
+    *   **Quy tắc:** Luôn đặt chỉ số `order` nhỏ hơn `1000` (Ví dụ: `order: 100` - `500`).
+*   **Tầng App Dev / DevOps (Kubernetes NetworkPolicy):** 
+    *   Dành cho các đội phát triển ứng dụng tự chủ động khai báo mở cổng kết nối (Allowlist) cho các microservices của mình.
+    *   **Quy tắc:** Để chỉ số `order` mặc định (`1000`) bằng cách không khai báo trường `order` trong YAML tiêu chuẩn.
+
+### 2. Tuyệt đối tránh xung đột trùng chỉ số `order` (Tie-Breaker Danger)
+*   **Hiểm họa:** Nếu bạn đặt `order: 1000` cho cả Calico GNP và K8s NetworkPolicy, Calico sẽ phân xử thứ tự ưu tiên bằng cách **sắp xếp tên policy theo bảng chữ cái (A-Z)**.
+*   Điều này khiến hệ thống mạng bị **nhạy cảm với cách đặt tên (Name-sensitive)** — cực kỳ nguy hiểm và dễ tạo ra hành vi mạng không xác định (race condition) trên môi trường Production chỉ vì đổi tên file YAML.
+*   **Quy tắc vàng:** Luôn dùng `order < 1000` cho các GNP mang tính chất chặn (Deny) hoặc ghi đè (Override).
+
+### 3. Luôn giới hạn Namespace Scope cho GlobalNetworkPolicy
+*   Do `GlobalNetworkPolicy` có phạm vi tác động trên toàn Cluster (Cluster-scoped), nếu bạn viết `selector: app == 'backend'`, nó sẽ select **TẤT CẢ** các pod có nhãn `app=backend` ở mọi namespace (bao gồm `production`, `staging`, `dev`).
+*   **Quy tắc vàng:** Luôn giới hạn phạm vi tác động của GNP bằng cách kết hợp nhãn namespace của Calico:
+    ```yaml
+    spec:
+      # Chỉ tác động lên pod app=backend chạy trong namespace production
+      selector: app == 'backend' && projectcalico.org/namespace == 'production'
+    ```
+
+---
+
 ## 🧹 Dọn dẹp
 
 ```bash

@@ -502,6 +502,8 @@ Trả lời không cần nhìn tài liệu:
 
 5. Sự khác biệt giữa implicit deny và explicit deny trong ngữ cảnh vận hành là gì?
 
+6. Nếu có 2 policy đồng thời active: một K8s NetworkPolicy cho phép `frontend2` truy cập `backend`, và một Calico GlobalNetworkPolicy (có `order: 100`) cấu hình `action: Deny` đối với `frontend2`. Kết quả kết nối từ `frontend2` đến `backend` sẽ ra sao? Giải thích tại sao.
+
 <details>
 <summary>Đáp án</summary>
 
@@ -514,6 +516,8 @@ Trả lời không cần nhìn tài liệu:
 4. **Giới hạn scope của GlobalNetworkPolicy trong namespace `production`.** Bỏ đi thì policy áp dụng cho tất cả pods có label `app=backend` trên toàn cluster — có thể ảnh hưởng các namespace khác.
 
 5. **Implicit deny:** Traffic bị drop vì không có rule allow nào khớp — không có log entry rõ ràng, khó debug. **Explicit deny:** Traffic bị drop bởi rule cụ thể — có thể log, audit, và intent rõ ràng trong codebase policy.
+
+6. **Kết nối bị CHẶN ĐỨNG HOÀN TOÀN.** Vì Calico đánh giá các policy theo thứ tự chỉ số `order` từ thấp đến cao. Calico GlobalNetworkPolicy có `order: 100`, trong khi K8s NetworkPolicy chuẩn được Calico tự động biên dịch và gán `order: 1000` mặc định. Vì `100 < 1000`, rule Deny của Calico GNP được chạy trước và drop gói tin ngay lập tức. Gói tin không bao giờ tiếp cận được luật Allow của K8s NetworkPolicy ở mức 1000.
 
 </details>
 
