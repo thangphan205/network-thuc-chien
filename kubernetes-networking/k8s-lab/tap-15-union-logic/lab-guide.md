@@ -2,13 +2,60 @@
 
 Tập này chứng minh NetworkPolicy là allowlist thuần túy: nhiều policies cộng hưởng, không có cancel, không có priority.
 
+## 📖 Đề bài & Kịch bản thực tế
+Hệ thống ứng dụng `backend` của bạn đang chạy trong namespace `production` và được cấu hình chính sách mặc định chặn toàn bộ Ingress (`default-deny`).
+
+Hôm nay, bạn đối mặt với 2 bài toán thực tế để kiểm chứng cơ chế vận hành mạng của Kubernetes và Calico:
+
+1. **Bài toán 1 (Chứng minh Union Logic):**
+   - Đội vận hành muốn cho phép `frontend` truy cập vào `backend` cổng `8080`. Bạn apply `Policy A` (`allow-frontend`).
+   - Ngay sau đó, một dự án phụ yêu cầu mở thêm cho `frontend2` truy cập vào `backend` cổng `8080`. Bạn apply tiếp `Policy B` (`allow-frontend2`).
+   - Chúng ta cần chứng minh rằng hai policy này hoạt động theo cơ chế **Union (cộng dồn)** — tức là cả hai client đều truy cập thành công đồng thời, không có chính sách nào ghi đè hay phủ quyết chính sách nào.
+
+2. **Bài toán 2 (Thử thách chặn tường minh - Explicit Deny):**
+   - Giám đốc bảo mật (CISO) bất ngờ đưa ra yêu cầu khẩn cấp: **Tuyệt đối cấm** riêng biệt Pod `frontend2` truy cập vào `backend`, trong khi `frontend` vẫn phải được phép hoạt động bình thường.
+   - Sử dụng K8s NetworkPolicy chuẩn, bạn nhận ra không cách nào làm được vì spec chỉ hỗ trợ Allowlist (chỉ cho phép).
+   - Giải pháp là bạn phải sử dụng **Calico GlobalNetworkPolicy** với thuộc tính `action: Deny` và cơ chế ưu tiên `order: 100` để chặn đứng `frontend2` một cách chủ động trước khi các luật Allow chuẩn (`order: 1000`) được khớp.
+
+**Mô hình mục tiêu:**
+```mermaid
+graph TD
+    subgraph NS_PROD [Namespace: production]
+        Frontend["✅ Pod: frontend<br>(app=frontend)"]
+        Frontend2["❌ Pod: frontend2<br>(app=frontend2)"]
+        DBPod["❌ Pod: db-pod<br>(app=database)"]
+        
+        Backend["🎯 Pod: backend<br>(app=backend)<br>Port: 8080"]
+        
+        Frontend -->|"1. Allow (K8s Policy A)<br>Port: 8080"| Backend
+        Frontend2 -->|"2. Bị chặn bởi Calico GNP<br>(action: Deny, order: 100)"| Backend
+        DBPod -.->|"3. Bị chặn (Default Deny)"| Backend
+    end
+
+    classDef allow fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#fff;
+    classDef deny fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fff;
+    classDef target fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff;
+
+    class Frontend allow;
+    class Frontend2 deny;
+    class DBPod deny;
+    class Backend target;
+```
+
 ## 🛠 Yêu cầu chuẩn bị
 - Cụm K8s với Calico từ Tập 9.
 - Namespace `production` với `backend` pod từ Tập 14 (hoặc tạo lại bên dưới).
 
 ---
 
-## 🔬 Thí nghiệm 1: Setup — Default deny và tạo thêm pods
+## 🔬 Thí nghiệm 1: Khởi tạo môi trường mạng và Thiết lập Default Deny
+
+### 🎯 Mục đích:
+- Chuẩn bị một hệ thống hoàn toàn cô lập để làm nền móng cho các thí nghiệm kiểm chứng.
+- Tạo ra 4 Pod khác nhau (`backend`, `frontend`, `frontend2`, `db-pod`) đại diện cho các vai trò khác nhau trong cùng một namespace `production`.
+- Thiết lập cơ chế **Default Deny** để khóa chặt tất cả Ingress traffic đi vào namespace, nhằm đảm bảo từ thời điểm này, mọi traffic muốn đi vào các Pod phải được cấp quyền chủ động (Allowlist) bởi một NetworkPolicy cụ thể.
+
+### 📝 Chi tiết các bước thực hiện:
 
 **SSH vào `controlplane`:**
 
@@ -78,7 +125,14 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 2: Thêm policies từng bước và verify union
+## 🔬 Thí nghiệm 2: Áp dụng các Policy độc lập và Chứng minh tính cộng hưởng (Union Logic)
+
+### 🎯 Mục đích:
+- Chứng minh rằng các Kubernetes NetworkPolicy chuẩn hoạt động theo cơ chế **Union (phép hợp)**. Mỗi policy mới được thêm vào chỉ có tác dụng mở rộng thêm cổng (allowlist), hoàn toàn không thể triệt tiêu hay ghi đè lên quyền của các policy đã có trước đó.
+- Giúp người học thấy trực quan hành vi: Cả `frontend` và `frontend2` đều có thể đồng thời truy cập thành công vào `backend` khi cả hai policy tương ứng được áp dụng song song.
+- Đối chiếu thực tế: Cơ chế này giống hệt như các **Security Group** trên AWS.
+
+### 📝 Chi tiết các bước thực hiện:
 
 **Trên `controlplane`:**
 
@@ -162,7 +216,13 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 3: Chứng minh không có DENY tường minh
+## 🔬 Thí nghiệm 3: Thử thách chặn tường minh (Explicit Deny) bằng Calico GlobalNetworkPolicy
+
+### 🎯 Mục đích:
+- Chứng minh giới hạn của K8s NetworkPolicy chuẩn: Hoàn toàn không thể viết một rule mang tính chất loại trừ (ví dụ: mở hết nhưng cấm riêng một Pod cụ thể) vì spec của K8s chỉ hỗ trợ `Allow` (implicit deny).
+- Thực hành giải pháp nâng cao: Tận dụng cơ chế mở rộng của Calico (**GlobalNetworkPolicy**) với thuộc tính `action: Deny` kết hợp với chỉ số ưu tiên (`order: 100`) để viết luật chặn tường minh có hiệu lực trước các luật Allow mặc định của K8s (`order: 1000`).
+
+### 📝 Chi tiết các bước thực hiện:
 
 **Trên `controlplane`:**
 
