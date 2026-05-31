@@ -107,7 +107,7 @@ Cách duy nhất để deny: KHÔNG CÓ rule allow cho traffic đó.
 
 ```yaml
 # Calico mở rộng: GlobalNetworkPolicy với action: Deny
-apiVersion: projectcalico.org/v3
+apiVersion: crd.projectcalico.org/v1
 kind: GlobalNetworkPolicy
 metadata:
   name: deny-frontend2-explicit

@@ -405,7 +405,7 @@ kubectl -n production exec frontend2 -- nc -zv -w 5 $BACKEND_IP 8080  # ✅
 
 ```bash
 cat <<'EOF' | kubectl apply -f -
-apiVersion: projectcalico.org/v3
+apiVersion: crd.projectcalico.org/v1
 kind: GlobalNetworkPolicy
 metadata:
   name: deny-frontend2-explicit

@@ -342,7 +342,7 @@ graph TD
 
    # Apply Calico GlobalNetworkPolicy để DENY frontend2 explicitly
    cat <<'EOF' | kubectl apply -f -
-   apiVersion: projectcalico.org/v3
+   apiVersion: crd.projectcalico.org/v1
    kind: GlobalNetworkPolicy
    metadata:
      name: deny-frontend2-explicit
