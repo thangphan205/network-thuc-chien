@@ -73,14 +73,14 @@ graph TD
 > ```
 >
 > **Bước 3: Xóa chọn lọc các policy cũ phục vụ bài lab này:**
-> Để tránh xung đột với các thí nghiệm của Tập 14 (yêu cầu trạng thái ban đầu chưa chặn port 9090 để thấy rõ hành vi "mặc định mở"), nhưng vẫn tuân thủ đúng chuẩn quy trình vận hành an toàn (chỉ xóa đúng những gì mình tạo ra và kiểm soát), hãy xóa **chọn lọc** các policy của Tập 13:
+> Để tránh xung đột với các thực nghiệm của Tập 14 (yêu cầu trạng thái ban đầu chưa chặn port 9090 để thấy rõ hành vi "mặc định mở"), nhưng vẫn tuân thủ đúng chuẩn quy trình vận hành an toàn (chỉ xóa đúng những gì mình tạo ra và kiểm soát), hãy xóa **chọn lọc** các policy của Tập 13:
 > ```bash
 > kubectl -n production delete networkpolicy default-deny-ingress default-deny-egress allow-frontend allow-dns allow-frontend-egress
 > ```
 
 ---
 
-## 🔬 Thí nghiệm 1: Deploy môi trường test
+## 🔬 Thực nghiệm 1: Deploy môi trường test
 
 > Trước tiên chúng ta sẽ dựng toàn bộ hạ tầng cho bài lab: tạo namespace, deploy backend cùng Service trong `production`, rồi deploy prometheus và rogue pod trong `monitoring`. Sau đó kiểm tra baseline để xác nhận chưa có policy nào chặn traffic.
 
@@ -187,7 +187,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 2: Apply OR policy (buggy) và chứng minh lỗ hổng
+## 💥 Thực nghiệm 2: Apply OR policy (buggy) và chứng minh lỗ hổng
 
 > Đây là phần cốt lõi của bài lab. Chúng ta sẽ apply đúng đoạn YAML mà "đồng nghiệp" đã viết — trông có vẻ đúng nhưng thực ra có lỗ hổng nghiêm trọng do dấu `-` đặt sai chỗ. Hãy quan sát kỹ kết quả test để thấy rogue pod vẫn lọt qua được.
 
@@ -253,7 +253,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 3: Fix thành AND và verify
+## 🔬 Thực nghiệm 3: Fix thành AND và verify
 
 > Bây giờ chúng ta sẽ sửa lỗi bằng cách loại bỏ dấu `-` thừa trước `podSelector`. Chỉ một ký tự thay đổi nhưng hành vi hoàn toàn khác: từ OR sang AND. Sau đó verify lại để xác nhận rogue bị chặn và prometheus vẫn thông.
 
@@ -308,9 +308,9 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Verify namespace labels
+## 🔬 Thực nghiệm 4: Verify namespace labels
 
-> Thí nghiệm này chứng minh tại sao bước label namespace ở đầu bài là bắt buộc. Chúng ta sẽ cố tình xóa label rồi quan sát policy tự động "vô hiệu hóa" — ngay cả khi policy YAML vẫn còn đó. Sau đó restore để trạng thái trở về bình thường.
+> Thực nghiệm này chứng minh tại sao bước label namespace ở đầu bài là bắt buộc. Chúng ta sẽ cố tình xóa label rồi quan sát policy tự động "vô hiệu hóa" — ngay cả khi policy YAML vẫn còn đó. Sau đó restore để trạng thái trở về bình thường.
 
 **Trên `controlplane`:**
 

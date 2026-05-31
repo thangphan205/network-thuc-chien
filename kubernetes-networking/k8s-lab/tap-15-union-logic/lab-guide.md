@@ -48,14 +48,14 @@ graph TD
 
 ---
 
-## 🔬 Thí nghiệm 1: Khởi tạo môi trường mạng và Thiết lập Default Deny
+## 🔬 Thực nghiệm 1: Khởi tạo môi trường mạng và Thiết lập Default Deny
 
 ### 🎯 Mục đích:
-- Chuẩn bị một hệ thống hoàn toàn cô lập để làm nền móng cho các thí nghiệm kiểm chứng.
+- Chuẩn bị một hệ thống hoàn toàn cô lập để làm nền móng cho các thực nghiệm kiểm chứng.
 - Tạo ra 4 Pod khác nhau (`backend`, `frontend`, `frontend2`, `db-pod`) đại diện cho các vai trò khác nhau trong cùng một namespace `production`.
 - Thiết lập cơ chế **Default Deny** để khóa chặt tất cả Ingress traffic đi vào namespace, nhằm đảm bảo từ thời điểm này, mọi traffic muốn đi vào các Pod phải được cấp quyền chủ động (Allowlist) bởi một NetworkPolicy cụ thể.
 
-**Mô hình trạng thái Thí nghiệm 1 (Default Deny):**
+**Mô hình trạng thái Thực nghiệm 1 (Default Deny):**
 ```mermaid
 graph TD
     subgraph NS_PROD [Namespace: production]
@@ -149,14 +149,14 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 2: Áp dụng các Policy độc lập và Chứng minh tính cộng hưởng (Union Logic)
+## 🔬 Thực nghiệm 2: Áp dụng các Policy độc lập và Chứng minh tính cộng hưởng (Union Logic)
 
 ### 🎯 Mục đích:
 - Chứng minh rằng các Kubernetes NetworkPolicy chuẩn hoạt động theo cơ chế **Union (phép hợp)**. Mỗi policy mới được thêm vào chỉ có tác dụng mở rộng thêm cổng (allowlist), hoàn toàn không thể triệt tiêu hay ghi đè lên quyền của các policy đã có trước đó.
 - Giúp người học thấy trực quan hành vi: Cả `frontend` và `frontend2` đều có thể đồng thời truy cập thành công vào `backend` khi cả hai policy tương ứng được áp dụng song song.
 - Đối chiếu thực tế: Cơ chế này giống hệt như các **Security Group** trên AWS.
 
-**Mô hình trạng thái Thí nghiệm 2 (Union Logic):**
+**Mô hình trạng thái Thực nghiệm 2 (Union Logic):**
 ```mermaid
 graph TD
     subgraph NS_PROD [Namespace: production]
@@ -265,13 +265,13 @@ graph TD
 
 ---
 
-## 🔬 Thí nghiệm 3: Thử thách chặn tường minh (Explicit Deny) bằng Calico GlobalNetworkPolicy
+## 🔬 Thực nghiệm 3: Thử thách chặn tường minh (Explicit Deny) bằng Calico GlobalNetworkPolicy
 
 ### 🎯 Mục đích:
 - Chứng minh giới hạn của K8s NetworkPolicy chuẩn: Hoàn toàn không thể viết một rule mang tính chất loại trừ (ví dụ: mở hết nhưng cấm riêng một Pod cụ thể) vì spec của K8s chỉ hỗ trợ `Allow` (implicit deny).
 - Thực hành giải pháp nâng cao: Tận dụng cơ chế mở rộng của Calico (**GlobalNetworkPolicy**) với thuộc tính `action: Deny` kết hợp với chỉ số ưu tiên (`order: 100`) để viết luật chặn tường minh có hiệu lực trước các luật Allow mặc định của K8s (`order: 1000`).
 
-**Mô hình trạng thái Thí nghiệm 3 (Explicit Deny):**
+**Mô hình trạng thái Thực nghiệm 3 (Explicit Deny):**
 ```mermaid
 graph TD
     subgraph NS_PROD [Namespace: production]
@@ -363,7 +363,7 @@ graph TD
 
 ---
 
-## ⚙️ Cơ chế & Thứ tự thực thi Rule ở Thí nghiệm 3
+## ⚙️ Cơ chế & Thứ tự thực thi Rule ở Thực nghiệm 3
 
 Để hiểu tại sao quy tắc **Deny** của Calico GlobalNetworkPolicy lại có thể ghi đè (override) các quy tắc **Allow** của Kubernetes NetworkPolicy chuẩn, chúng ta cần phân tích sâu vào **Cơ chế đánh giá gói tin của Calico Engine**:
 

@@ -143,7 +143,7 @@ order: 1000 → K8s NetworkPolicy allow-frontend
 
 ## 3. Mô hình mục tiêu của Lab
 
-Sau khi hoàn thành tất cả thí nghiệm, trạng thái cuối cùng là:
+Sau khi hoàn thành tất cả thực nghiệm, trạng thái cuối cùng là:
 
 ```
 Namespace: production
@@ -182,7 +182,7 @@ Policies đang active:
 multipass shell controlplane
 ```
 
-### 4.2 Thí nghiệm 1: Khởi tạo và Default Deny
+### 4.2 Thực nghiệm 1: Khởi tạo và Default Deny
 
 **Mục đích:** Thiết lập môi trường sạch với `default-deny` — mọi traffic đều bị block, đây là điểm xuất phát.
 
@@ -269,7 +269,7 @@ kubectl -n production exec db-pod    -- nc -zv -w 2 $BACKEND_IP 8080  # ❌ time
 
 ---
 
-### 4.3 Thí nghiệm 2: Chứng minh Union Logic
+### 4.3 Thực nghiệm 2: Chứng minh Union Logic
 
 **Mục đích:** Thêm Policy A và Policy B từng bước một. Quan sát cách chúng cộng hưởng — không xung đột, không cancel.
 
@@ -357,7 +357,7 @@ kubectl -n production get networkpolicy
 
 ---
 
-### 4.4 Thí nghiệm 3: Chứng minh giới hạn K8s NetworkPolicy và Explicit Deny với Calico
+### 4.4 Thực nghiệm 3: Chứng minh giới hạn K8s NetworkPolicy và Explicit Deny với Calico
 
 **Mục đích:** Chứng minh K8s NetworkPolicy chuẩn không thể deny tường minh. Sau đó dùng Calico GlobalNetworkPolicy để giải quyết.
 
