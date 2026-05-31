@@ -51,6 +51,33 @@ graph TD
 - Cụm K8s với Calico từ Tập 9.
 - Không có NetworkPolicy nào đang active trong `production`.
 
+> ⚠️ **Thực tế Production (Quan trọng):** Trong môi trường thực tế, tuyệt đối **KHÔNG** bao giờ tự ý chạy lệnh xóa toàn bộ NetworkPolicy (`kubectl delete networkpolicy --all`) vì việc này có thể mở toang hệ thống đang được bảo vệ, hoặc làm gián đoạn các ứng dụng khác đang chạy trong cùng namespace.
+>
+> Thay vào đó, quy trình chuẩn là chúng ta phải kiểm tra các NetworkPolicy hiện có trước khi quyết định điều chỉnh:
+>
+> **Bước 1: Liệt kê các NetworkPolicy hiện có trong namespace:**
+> ```bash
+> kubectl -n production get networkpolicy
+> ```
+> Nếu bạn vừa làm xong **Tập 13**, bạn sẽ thấy các policy sau đang hoạt động:
+> - `default-deny-ingress` (Chặn toàn bộ ingress)
+> - `allow-frontend` (Cho phép frontend gọi backend:8080)
+> - `default-deny-egress` (Chặn toàn bộ egress)
+> - `allow-dns` (Cho phép DNS)
+> - `allow-frontend-egress` (Cho phép frontend gọi ra ngoài đến backend:8080)
+>
+> **Bước 2: Kiểm tra chi tiết một NetworkPolicy cụ thể:**
+> Để xem chi tiết các rule trong policy (ví dụ `allow-frontend`), hãy chạy:
+> ```bash
+> kubectl -n production describe networkpolicy allow-frontend
+> ```
+>
+> **Bước 3: Xóa chọn lọc các policy cũ phục vụ bài lab này:**
+> Để tránh xung đột với các thí nghiệm của Tập 14 (yêu cầu trạng thái ban đầu chưa chặn port 9090 để thấy rõ hành vi "mặc định mở"), nhưng vẫn tuân thủ đúng chuẩn quy trình vận hành an toàn (chỉ xóa đúng những gì mình tạo ra và kiểm soát), hãy xóa **chọn lọc** các policy của Tập 13:
+> ```bash
+> kubectl -n production delete networkpolicy default-deny-ingress default-deny-egress allow-frontend allow-dns allow-frontend-egress
+> ```
+
 ---
 
 ## 🔬 Thí nghiệm 1: Deploy môi trường test
@@ -318,10 +345,11 @@ multipass shell controlplane
 
 ## 🧹 Dọn dẹp
 
-> Sau khi hoàn thành lab, dọn sạch tài nguyên để tránh ảnh hưởng đến các bài lab tiếp theo.
+> Sau khi hoàn thành lab, dọn sạch tài nguyên để tránh ảnh hưởng đến các bài lab tiếp theo. Nhớ chỉ dọn dẹp có chọn lọc các tài nguyên do bài lab này tạo ra.
 
 ```bash
-kubectl -n production delete networkpolicy --all
+# Chỉ xóa các policy được tạo trong bài lab này
+kubectl -n production delete networkpolicy default-deny allow-prometheus-AND-correct 2>/dev/null || true
 kubectl -n production delete pod backend service/backend-metrics 2>/dev/null || true
 kubectl -n monitoring delete pod prometheus rogue 2>/dev/null || true
 ```
