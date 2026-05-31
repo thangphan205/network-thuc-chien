@@ -31,10 +31,12 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 15
+# Tập 15 - Union Logic
 ## Union Logic: NetworkPolicy hoạt động như Security Group, không phải ACL
 
 **Phần 2 — Calico** · `#NetworkPolicy` `#union-logic` `#allow-list` `#SecurityGroup`
+
+![height:200px](https://www.tigera.io/app/uploads/2026/01/Calico-logo-2026-white-text.svg)
 
 ---
 
@@ -45,7 +47,7 @@ style: |
 - Demo không có cách "deny" cụ thể bằng NetworkPolicy chuẩn
 - Giới thiệu Calico GlobalNetworkPolicy cho DENY tường minh
 
-**Prerequisites:** Cluster Calico từ Tập 13-16
+**Prerequisites:** Cluster Calico từ Tập 9-14
 
 ---
 
@@ -108,15 +110,17 @@ Cách duy nhất để deny: KHÔNG CÓ rule allow cho traffic đó.
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: deny-specific
+  name: deny-frontend2-explicit
 spec:
-  selector: app == 'backend'
+  selector: app == 'backend' && projectcalico.org/namespace == 'production'
   order: 100            # Thứ tự ưu tiên (số thấp = ưu tiên cao hơn)
   ingress:
   - action: Deny
     source:
       selector: app == 'frontend2'
 ```
+
+*Lưu ý: Calico coi K8s NetworkPolicy chuẩn có `order: 1000`. Vì `100 < 1000`, Deny Rule sẽ chạy trước.*
 
 **Hoặc dùng AdminNetworkPolicy (K8s 1.29+):**
 - Cluster-scope (không giới hạn namespace)

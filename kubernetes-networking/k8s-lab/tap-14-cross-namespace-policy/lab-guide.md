@@ -215,7 +215,7 @@ multipass shell controlplane
    apiVersion: networking.k8s.io/v1
    kind: NetworkPolicy
    metadata:
-     name: allow-prometheus-OR-bug
+     name: allow-prometheus-or-bug
    spec:
      podSelector:
        matchLabels:
@@ -262,7 +262,7 @@ multipass shell controlplane
 1. **Xóa policy buggy trước khi apply bản fix.**
    Không nên để hai policy cùng tên tồn tại song song — xóa sạch để tránh nhầm lẫn khi debug.
    ```bash
-   kubectl delete -n production networkpolicy allow-prometheus-OR-bug
+   kubectl delete -n production networkpolicy allow-prometheus-or-bug
    ```
 
 2. **Apply policy AND (correct) — không có dấu `-` trước `podSelector`.**
@@ -272,7 +272,7 @@ multipass shell controlplane
    apiVersion: networking.k8s.io/v1
    kind: NetworkPolicy
    metadata:
-     name: allow-prometheus-AND-correct
+     name: allow-prometheus-and-correct
    spec:
      podSelector:
        matchLabels:
@@ -349,7 +349,7 @@ multipass shell controlplane
 
 ```bash
 # Chỉ xóa các policy được tạo trong bài lab này
-kubectl -n production delete networkpolicy default-deny allow-prometheus-AND-correct 2>/dev/null || true
+kubectl -n production delete networkpolicy default-deny allow-prometheus-and-correct 2>/dev/null || true
 kubectl -n production delete pod backend service/backend-metrics 2>/dev/null || true
 kubectl -n monitoring delete pod prometheus rogue 2>/dev/null || true
 ```

@@ -86,6 +86,7 @@ multipass shell controlplane
    ```bash
    kubectl -n production exec frontend -- nc -zv -w 2 $BACKEND_IP 8080   # ❌
    kubectl -n production exec frontend2 -- nc -zv -w 2 $BACKEND_IP 8080  # ❌
+   kubectl -n production exec db-pod -- nc -zv -w 2 $BACKEND_IP 8080     # ❌ db-pod cũng bị deny
    ```
 
 2. Apply Policy A — Allow frontend → backend:
@@ -113,8 +114,9 @@ multipass shell controlplane
    ```
 
    ```bash
-   kubectl -n production exec frontend -- nc -zv $BACKEND_IP 8080    # ✅ Policy A
-   kubectl -n production exec frontend2 -- nc -zv -w 2 $BACKEND_IP 8080  # ❌ Không có rule
+   kubectl -n production exec frontend -- nc -zv -w 5 $BACKEND_IP 8080    # ✅ Policy A
+   kubectl -n production exec frontend2 -- nc -zv -w 2 $BACKEND_IP 8080   # ❌ Không có rule
+   kubectl -n production exec db-pod -- nc -zv -w 2 $BACKEND_IP 8080      # ❌ Không có rule
    ```
 
 3. Apply Policy B — Allow frontend2 → backend:
@@ -143,8 +145,9 @@ multipass shell controlplane
 
 4. Cả hai policies active đồng thời:
    ```bash
-   kubectl -n production exec frontend -- nc -zv $BACKEND_IP 8080    # ✅ Policy A vẫn đúng
-   kubectl -n production exec frontend2 -- nc -zv $BACKEND_IP 8080   # ✅ Policy B thêm vào
+   kubectl -n production exec frontend -- nc -zv -w 5 $BACKEND_IP 8080    # ✅ Policy A vẫn đúng
+   kubectl -n production exec frontend2 -- nc -zv -w 5 $BACKEND_IP 8080   # ✅ Policy B thêm vào
+   kubectl -n production exec db-pod -- nc -zv -w 2 $BACKEND_IP 8080      # ❌ Không có rule nào allow db-pod
    # Policy A KHÔNG bị Policy B ghi đè!
    ```
 
@@ -201,7 +204,7 @@ multipass shell controlplane
    EOF
 
    # Verify frontend2 vào được
-   kubectl -n production exec frontend2 -- nc -zv $BACKEND_IP 8080   # ✅
+   kubectl -n production exec frontend2 -- nc -zv -w 5 $BACKEND_IP 8080   # ✅
 
    # Apply Calico GlobalNetworkPolicy để DENY frontend2 explicitly
    cat <<'EOF' | kubectl apply -f -
@@ -210,7 +213,7 @@ multipass shell controlplane
    metadata:
      name: deny-frontend2-explicit
    spec:
-     selector: app == 'backend'
+     selector: app == 'backend' && projectcalico.org/namespace == 'production'
      order: 100
      ingress:
      - action: Deny
@@ -221,7 +224,7 @@ multipass shell controlplane
    # frontend2 bị chặn bởi Calico GlobalNetworkPolicy
    kubectl -n production exec frontend2 -- nc -zv -w 2 $BACKEND_IP 8080   # ❌ Deny!
    # frontend vẫn OK (không bị ảnh hưởng bởi deny policy)
-   kubectl -n production exec frontend -- nc -zv $BACKEND_IP 8080           # ✅
+   kubectl -n production exec frontend -- nc -zv -w 5 $BACKEND_IP 8080    # ✅
    ```
 
 ---
