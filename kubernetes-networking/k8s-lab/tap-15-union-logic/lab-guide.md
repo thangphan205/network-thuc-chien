@@ -363,6 +363,50 @@ graph TD
 
 ---
 
+## ⚙️ Cơ chế & Thứ tự thực thi Rule ở Thí nghiệm 3
+
+Để hiểu tại sao quy tắc **Deny** của Calico GlobalNetworkPolicy lại có thể ghi đè (override) các quy tắc **Allow** của Kubernetes NetworkPolicy chuẩn, chúng ta cần phân tích sâu vào **Cơ chế đánh giá gói tin của Calico Engine**:
+
+### 1. Phân loại chỉ số thứ tự (`order`) trong Calico:
+*   Mọi chính sách mạng (Policy) trong cụm Calico đều được sắp xếp và đánh giá theo mức độ ưu tiên từ **nhỏ đến lớn** (chỉ số `order` càng thấp càng được ưu tiên cao).
+*   **Kubernetes NetworkPolicy chuẩn:** Không có trường `order` trong spec. Do đó, khi Calico import và dịch các policy chuẩn này sang kiến trúc nội bộ của nó, Calico sẽ tự động gán cho chúng một giá trị `order` mặc định là **`1000`**.
+*   **Calico GlobalNetworkPolicy:** Cho phép khai báo trường `order` tùy ý. Trong bài Lab này, chúng ta định nghĩa `order: 100` cho chính sách `deny-frontend2-explicit`.
+
+### 2. Thứ tự thực thi từng bước (Packet Processing Pipeline):
+
+Khi một gói tin cố gắng đi vào Pod `backend`, Calico Engine sẽ duyệt qua danh sách các policy đang hoạt động theo đúng thứ tự ưu tiên của chỉ số `order`:
+
+```mermaid
+graph TD
+    Packet[Gói tin đi vào Backend] --> Rule100{Bước 1: GNP order: 100<br>deny-frontend2-explicit}
+    
+    Rule100 -->|Match: Nguồn từ frontend2| DenyAction[Hành động: DENY<br>Gói tin bị Drop lập tức ❌]
+    Rule100 -->|Not Match: Nguồn khác frontend2| Rule1000{"Bước 2: K8s Policies (order: 1000)<br>allow-frontend hoặc allow-frontend2"}
+    
+    Rule1000 -->|Match: Nguồn từ frontend| AllowAction[Hành động: ALLOW<br>Gói tin được đi qua ✅]
+    Rule1000 -->|Not Match: Nguồn từ db-pod| DefaultDeny[Bước 3: default-deny<br>Gói tin bị Block ❌]
+
+    style DenyAction fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fff
+    style AllowAction fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#fff
+    style DefaultDeny fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fff
+    style Packet fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff
+```
+
+*   **Bước 1: Khớp Calico GlobalNetworkPolicy (`order: 100`)**
+    *   *Vì sao chạy trước?* Do `100 < 1000`, rule này có độ ưu tiên cao vượt trội.
+    *   *Đánh giá luồng:*
+        *   **Nếu gói tin từ `frontend2`:** Khớp điều kiện (`source: app == 'frontend2'`). Hành động cấu hình là `Deny`. Gói tin bị **vứt bỏ lập tức (Dropped)**, quá trình kiểm tra dừng lại. `frontend2` bị chặn hoàn toàn!
+        *   **Nếu gói tin từ `frontend` hoặc `db-pod`:** Không khớp điều kiện của policy này. Calico bỏ qua và chuyển tiếp gói tin xuống tầng tiếp theo.
+*   **Bước 2: Khớp nhóm K8s NetworkPolicies (`order: 1000`)**
+    *   Do các policy `allow-frontend`, `allow-frontend2` và `default-deny` đều có `order: 1000` (mặc định), Calico sẽ gộp các rule Ingress của chúng lại thông qua **Union Logic (logic OR)**.
+    *   *Đánh giá luồng:*
+        *   **Nếu gói tin từ `frontend`:** Khớp với luật cho phép của `allow-frontend`. Hành động là `Allow` -> Gói tin được truyền qua thành công.
+        *   **Nếu gói tin từ `db-pod`:** Không khớp với bất kỳ rule Allow nào ở mức `order: 1000`.
+*   **Bước 3: Khớp Default Deny (`order: 1000`)**
+    *   Gói tin từ `db-pod` do không được khớp ở bước 2 sẽ đụng phải rule `default-deny` và bị chặn lại.
+
+---
+
 ## 🧹 Dọn dẹp
 
 ```bash
