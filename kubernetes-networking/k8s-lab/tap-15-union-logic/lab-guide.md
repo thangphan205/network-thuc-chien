@@ -55,6 +55,30 @@ graph TD
 - Tạo ra 4 Pod khác nhau (`backend`, `frontend`, `frontend2`, `db-pod`) đại diện cho các vai trò khác nhau trong cùng một namespace `production`.
 - Thiết lập cơ chế **Default Deny** để khóa chặt tất cả Ingress traffic đi vào namespace, nhằm đảm bảo từ thời điểm này, mọi traffic muốn đi vào các Pod phải được cấp quyền chủ động (Allowlist) bởi một NetworkPolicy cụ thể.
 
+**Mô hình trạng thái Thí nghiệm 1 (Default Deny):**
+```mermaid
+graph TD
+    subgraph NS_PROD [Namespace: production]
+        Frontend["❌ Pod: frontend<br>(app=frontend)"]
+        Frontend2["❌ Pod: frontend2<br>(app=frontend2)"]
+        DBPod["❌ Pod: db-pod<br>(app=database)"]
+        
+        Backend["🎯 Pod: backend<br>(app=backend)<br>Port: 8080"]
+        
+        Frontend -.->|"Bị chặn (Default Deny)"| Backend
+        Frontend2 -.->|"Bị chặn (Default Deny)"| Backend
+        DBPod -.->|"Bị chặn (Default Deny)"| Backend
+    end
+
+    classDef deny fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fff;
+    classDef target fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff;
+
+    class Frontend deny;
+    class Frontend2 deny;
+    class DBPod deny;
+    class Backend target;
+```
+
 ### 📝 Chi tiết các bước thực hiện:
 
 **SSH vào `controlplane`:**
@@ -131,6 +155,31 @@ multipass shell controlplane
 - Chứng minh rằng các Kubernetes NetworkPolicy chuẩn hoạt động theo cơ chế **Union (phép hợp)**. Mỗi policy mới được thêm vào chỉ có tác dụng mở rộng thêm cổng (allowlist), hoàn toàn không thể triệt tiêu hay ghi đè lên quyền của các policy đã có trước đó.
 - Giúp người học thấy trực quan hành vi: Cả `frontend` và `frontend2` đều có thể đồng thời truy cập thành công vào `backend` khi cả hai policy tương ứng được áp dụng song song.
 - Đối chiếu thực tế: Cơ chế này giống hệt như các **Security Group** trên AWS.
+
+**Mô hình trạng thái Thí nghiệm 2 (Union Logic):**
+```mermaid
+graph TD
+    subgraph NS_PROD [Namespace: production]
+        Frontend["✅ Pod: frontend<br>(app=frontend)"]
+        Frontend2["✅ Pod: frontend2<br>(app=frontend2)"]
+        DBPod["❌ Pod: db-pod<br>(app=database)"]
+        
+        Backend["🎯 Pod: backend<br>(app=backend)<br>Port: 8080"]
+        
+        Frontend -->|"Được phép (Policy A)<br>Port 8080"| Backend
+        Frontend2 -->|"Được phép (Policy B)<br>Port 8080"| Backend
+        DBPod -.->|"Bị chặn (Không khớp policy)"| Backend
+    end
+
+    classDef allow fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#fff;
+    classDef deny fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fff;
+    classDef target fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff;
+
+    class Frontend allow;
+    class Frontend2 allow;
+    class DBPod deny;
+    class Backend target;
+```
 
 ### 📝 Chi tiết các bước thực hiện:
 
@@ -221,6 +270,31 @@ multipass shell controlplane
 ### 🎯 Mục đích:
 - Chứng minh giới hạn của K8s NetworkPolicy chuẩn: Hoàn toàn không thể viết một rule mang tính chất loại trừ (ví dụ: mở hết nhưng cấm riêng một Pod cụ thể) vì spec của K8s chỉ hỗ trợ `Allow` (implicit deny).
 - Thực hành giải pháp nâng cao: Tận dụng cơ chế mở rộng của Calico (**GlobalNetworkPolicy**) với thuộc tính `action: Deny` kết hợp với chỉ số ưu tiên (`order: 100`) để viết luật chặn tường minh có hiệu lực trước các luật Allow mặc định của K8s (`order: 1000`).
+
+**Mô hình trạng thái Thí nghiệm 3 (Explicit Deny):**
+```mermaid
+graph TD
+    subgraph NS_PROD [Namespace: production]
+        Frontend["✅ Pod: frontend<br>(app=frontend)"]
+        Frontend2["❌ Pod: frontend2<br>(app=frontend2)"]
+        DBPod["❌ Pod: db-pod<br>(app=database)"]
+        
+        Backend["🎯 Pod: backend<br>(app=backend)<br>Port: 8080"]
+        
+        Frontend -->|"Được phép (K8s Policy A)<br>Port 8080"| Backend
+        Frontend2 -.->|"Bị chặn bởi Calico GNP<br>(action: Deny, order: 100)"| Backend
+        DBPod -.->|"Bị chặn (Default Deny)"| Backend
+    end
+
+    classDef allow fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#fff;
+    classDef deny fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fff;
+    classDef target fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff;
+
+    class Frontend allow;
+    class Frontend2 deny;
+    class DBPod deny;
+    class Backend target;
+```
 
 ### 📝 Chi tiết các bước thực hiện:
 
