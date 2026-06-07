@@ -1,45 +1,52 @@
-# Lab Tập 20: Lab 3 — Sự cố truyền nhận file dung lượng lớn qua WireGuard (MTU Black Hole)
+# Lab Tập 20: Lab 3 — Network Policy Nâng Cao với Calico (Thực Chiến Production)
 
-**Hiện tượng hiện tại:**
-Sau khi bật WireGuard để mã hóa lưu lượng giữa các Node trong cụm Kubernetes, đội ngũ vận hành nhận được phản hồi về lỗi truyền nhận file lớn:
-- Các thao tác truyền file dung lượng nhỏ (như upload ảnh < 512KB) qua lại giữa các Pod chéo Node diễn ra bình thường.
-- Tuy nhiên, khi upload file dung lượng lớn (như video > 5MB) qua kết nối chéo Node thì kết nối bị treo (hang) hoàn toàn và báo lỗi timeout.
-- Rất kỳ lạ là việc truyền file dung lượng lớn giữa các Pod chạy trên cùng một Node (same-node) vẫn hoạt động mượt mà không gặp bất cứ lỗi gì.
+**Bối cảnh:**
+Công ty triển khai nền tảng SaaS multi-tenant trên cùng một cluster Kubernetes. Mỗi tenant chạy trong namespace riêng và phải được cô lập hoàn toàn với nhau. Đồng thời, cluster cần kiểm soát chặt chẽ lưu lượng egress ra ngoài Internet để ngăn data exfiltration và giới hạn chỉ các dịch vụ bên ngoài được phép.
 
-Nhiệm vụ của bạn là điều tra, tìm nguyên nhân gốc rễ và khắc phục sự cố này để khôi phục tốc độ truyền file lớn chéo Node bình thường.
+Đây là ba thách thức thực tế bạn sẽ giải quyết trong lab này:
+1. **Multi-tenant isolation**: Các Pod giữa hai tenant phải không thể giao tiếp với nhau, nhưng vẫn cho phép DNS.
+2. **Egress control**: Chỉ cho phép Pod của backend gọi ra một số domain/IP ngoài cụ thể (ví dụ: payment gateway, database hosted ngoài).
+3. **GlobalNetworkPolicy**: Áp rule cluster-wide (bảo vệ node metadata endpoint AWS IMDSv1) mà không cần cấu hình từng namespace.
 
-### Sơ đồ cơ chế phình kích thước gói tin qua lớp mã hóa WireGuard:
+### Sơ đồ kiến trúc mạng mục tiêu:
 
 ```mermaid
 graph TD
-  subgraph Packet_Overhead [Cơ chế phình kích thước gói tin và PMTUD Silent Drop]
-    PodPacket["1. Gói tin từ Pod A (MTU 1500, DF=1)<br/>[ IPv4 (20B) ] [ TCP (20B) ] [ Payload (1460B) ]<br/>Tổng size = 1500 Bytes"]
-    
-    WGPacket["2. Đi qua lớp mã hóa WireGuard<br/>[ Outer IPv4 (20B) ] [ WG Header (60B) ] [ Encrypted Payload & Headers (1480B) ]<br/>Tổng size = 1560 Bytes"]
-    
-    NodeInterface["3. Cổng mạng vật lý Node (MTU 1500)<br/>Kích thước 1560B > MTU 1500 & DF=1<br/>(Không được phân mảnh)"]
-    
-    SilentDrop["4. SILENT DROP !<br/>Gói tin bị chặn đứng hoàn toàn, không phản hồi.<br/>Ứng dụng bị treo (Connection Hang)."]
-
-    PodPacket --> WGPacket
-    WGPacket --> NodeInterface
-    NodeInterface --> SilentDrop
+  subgraph Cluster
+    subgraph ns-tenant-a ["Namespace: tenant-a"]
+      PodA["Pod: frontend-a"]
+      PodB["Pod: backend-a"]
+    end
+    subgraph ns-tenant-b ["Namespace: tenant-b"]
+      PodC["Pod: frontend-b"]
+      PodD["Pod: backend-b"]
+    end
+    DNS["kube-dns (kube-system)\nPort 53 UDP/TCP"]
+    PayGW["NetworkSet: allowed-egress\n(payment-gw CIDR)"]
   end
-  
-  classDef default fill:#151530,stroke:#2a2050,color:#e2e8f0;
-  style SilentDrop fill:#2d080a,stroke:#f87171,color:#ff8a8a;
+
+  PodA -- "ALLOW (same ns)" --> PodB
+  PodA -. "DENY cross-tenant" .- PodC
+  PodB -- "ALLOW DNS" --> DNS
+  PodB -- "ALLOW egress" --> PayGW
+  PodB -. "DENY other egress" .- Internet["Internet"]
+
+  classDef deny fill:#2d080a,stroke:#f87171,color:#ff8a8a;
+  classDef allow fill:#0a2d0a,stroke:#4ade80,color:#86efac;
+  class PodA,PodB,PodC,PodD allow;
+  class Internet deny;
 ```
 
 ---
 
 ## 🛠 Yêu cầu chuẩn bị
-- Cụm K8s với Calico từ Tập 9.
-- Ubuntu 26.04 — WireGuard kernel built-in.
-- `pod-a` trên `worker1`, hoặc sẽ tạo trong lab này.
+- Cụm K8s với Calico từ Tập 9 (đang chạy).
+- `calicoctl` đã cài sẵn (hoặc dùng `kubectl exec` vào calico-node pod).
+- Ubuntu 26.04.
 
 ---
 
-## 🔬 Phần 1: Cấu hình môi trường và Kích hoạt Sự cố (Mô phỏng Production Incident)
+## 🔬 Phần 1: Cấu hình môi trường
 
 **SSH vào `controlplane`:**
 
@@ -47,250 +54,417 @@ graph TD
 multipass shell controlplane
 ```
 
-1. Bật tính năng mã hóa WireGuard trên cluster:
-   ```bash
-   kubectl patch felixconfiguration default \
-     --type merge \
-     --patch '{"spec": {"wireguardEnabled": true}}'
-   ```
+### 1.1 Tạo namespace và workload cho hai tenant
 
-2. Thiết lập MTU cho Felix Configuration:
-   ```bash
-   kubectl patch felixconfiguration default \
-     --type merge \
-     --patch '{"spec": {"wireguardMTU": 1500}}'
-   ```
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-a
+  labels:
+    tenant: a
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-b
+  labels:
+    tenant: b
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend-a
+  namespace: tenant-a
+  labels:
+    app: frontend
+    tenant: a
+spec:
+  containers:
+  - name: c
+    image: nicolaka/netshoot
+    command: ["sleep", "infinity"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backend-a
+  namespace: tenant-a
+  labels:
+    app: backend
+    tenant: a
+spec:
+  containers:
+  - name: c
+    image: nicolaka/netshoot
+    command: ["sleep", "infinity"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend-b
+  namespace: tenant-b
+  labels:
+    app: frontend
+    tenant: b
+spec:
+  containers:
+  - name: c
+    image: nicolaka/netshoot
+    command: ["sleep", "infinity"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backend-b
+  namespace: tenant-b
+  labels:
+    app: backend
+    tenant: b
+spec:
+  containers:
+  - name: c
+    image: nicolaka/netshoot
+    command: ["sleep", "infinity"]
+EOF
+kubectl wait --for=condition=Ready pod -l tenant=a -n tenant-a --timeout=90s
+kubectl wait --for=condition=Ready pod -l tenant=b -n tenant-b --timeout=90s
+```
 
-3. Chờ cho Calico Nodes cập nhật lại cấu hình:
-   ```bash
-   kubectl -n calico-system rollout status daemonset/calico-node
-   ```
+### 1.2 Ghi lại IP của các Pod
 
-4. Xác nhận MTU của interface WireGuard đã được thiết lập:
-   **SSH vào `worker1`:**
-   ```bash
-   multipass shell worker1
-   ```
-   **Kiểm tra interface:**
-   ```bash
-   ip link show wireguard.cali
-   # wireguard.cali: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1500 ...
-   ```
+```bash
+FA_IP=$(kubectl get pod frontend-a -n tenant-a -o jsonpath='{.status.podIP}')
+BA_IP=$(kubectl get pod backend-a   -n tenant-a -o jsonpath='{.status.podIP}')
+FB_IP=$(kubectl get pod frontend-b -n tenant-b -o jsonpath='{.status.podIP}')
+BB_IP=$(kubectl get pod backend-b   -n tenant-b -o jsonpath='{.status.podIP}')
+echo "frontend-a: $FA_IP | backend-a: $BA_IP"
+echo "frontend-b: $FB_IP | backend-b: $BB_IP"
+```
 
-5. Triển khai các Pod kiểm tra (Client trên worker1, Server chéo node trên worker2, Server cùng node trên worker1):
-   ```bash
-   kubectl apply -f - <<'EOF'
-   apiVersion: v1
-   kind: Pod
-   metadata:
-     name: upload-client
-   spec:
-     nodeName: worker1
-     containers:
-     - name: c
-       image: nicolaka/netshoot
-       command: ["sleep", "infinity"]
-   ---
-   apiVersion: v1
-   kind: Pod
-   metadata:
-     name: upload-server
-   spec:
-     nodeName: worker2
-     containers:
-     - name: s
-       image: nicolaka/netshoot
-       command: ["nc", "-lk", "-p", "9999"]
-   ---
-   apiVersion: v1
-   kind: Pod
-   metadata:
-     name: upload-server-local
-   spec:
-     nodeName: worker1
-     containers:
-     - name: s
-       image: nicolaka/netshoot
-       command: ["nc", "-lk", "-p", "9998"]
-   EOF
-   kubectl wait --for=condition=Ready pod/upload-client pod/upload-server pod/upload-server-local --timeout=90s
-   ```
+### 1.3 Xác nhận trạng thái ban đầu — tất cả đang thông nhau (chưa có policy)
 
-6. Ghi lại địa chỉ IP của các Pod:
-   ```bash
-   SERVER_IP=$(kubectl get pod upload-server -o jsonpath='{.status.podIP}')
-   LOCAL_IP=$(kubectl get pod upload-server-local -o jsonpath='{.status.podIP}')
-   echo "Cross-node server IP: $SERVER_IP"
-   echo "Same-node server IP: $LOCAL_IP"
-   ```
+```bash
+# frontend-a gọi được frontend-b (cross-tenant) — phải thấy open
+kubectl exec frontend-a -n tenant-a -- nc -zv $FB_IP 80 2>&1 || true
 
-7. **Giả lập drop gói tin quá khổ ở card vật lý (do môi trường ảo hóa Multipass/Bridges nội bộ thường tự bypass và cho qua gói tin > 1500 bytes):**
-   **SSH vào `worker1`:**
-   ```bash
-   multipass shell worker1
-   ```
-   **Chạy lệnh sau để drop các gói tin UDP Wireguard có kích thước IP packet > 1500 bytes:**
-   ```bash
-   sudo iptables -I OUTPUT -p udp --dport 51820 -m length --length 1501:65535 -j DROP
-   ```
-
-8. **Kích hoạt sự cố và quan sát triệu chứng:**
-   **Quay lại terminal `controlplane` để thực hiện test:**
-   - **Trường hợp A:** Truyền file dung lượng nhỏ (512KB) chéo node -> **OK**:
-     ```bash
-     kubectl exec upload-client -- bash -c "
-       dd if=/dev/urandom bs=512K count=1 2>/dev/null | nc -w 5 $SERVER_IP 9999
-       echo 'Small file connection exit: '$?
-     "
-     # Small file (cross-node): 0  (Thành công!)
-     ```
-   - **Trường hợp B:** Truyền file dung lượng lớn (5MB) chéo node -> **BỊ TREO (HANG)**:
-     ```bash
-     kubectl exec upload-client -- bash -c "
-       timeout 10 bash -c 'dd if=/dev/urandom bs=1M count=5 2>/dev/null | nc $SERVER_IP 9999'
-       echo 'Large file connection exit: '$?
-     "
-     # Connection exit: 124  (Bị timeout chéo node!)
-     ```
-   - **Trường hợp C:** Truyền file dung lượng lớn (5MB) trên cùng node -> **OK**:
-     ```bash
-     kubectl exec upload-client -- bash -c "
-       dd if=/dev/urandom bs=1M count=5 2>/dev/null | nc -w 10 $LOCAL_IP 9998
-       echo 'Large file (same-node) exit: '$?
-     "
-     # Connection exit: 0  (Thành công khi truyền cùng node!)
-     ```
+# backend-a gọi ra ngoài Internet — phải thấy connected
+kubectl exec backend-a -n tenant-a -- curl -s --max-time 5 https://ifconfig.me 2>&1 || true
+```
 
 ---
 
-## 🎯 Phần 2: Thử thách 30 Phút Tự Giải & Tự Tìm Lỗi (Troubleshoot Challenge)
+## 🎯 Phần 2: Thử thách 30 Phút Tự Giải (Troubleshoot Challenge)
 
 > [!IMPORTANT]
 > **Nhiệm vụ của học viên:**
-> Hãy đóng vai là một Chuyên gia mạng K8s đang đối mặt với sự cố kỳ quái này.
-> 
-> Hãy tự mình điều tra nguyên nhân dựa trên các phản xạ kỹ thuật của bản thân:
-> 1. Tại sao file nhỏ đi chéo node được, file lớn lại bị drop/treo chéo node?
-> 2. Tại sao việc truyền file lớn cùng node lại không gặp vấn đề gì? (Gợi ý: Cùng node traffic có đi qua WireGuard tunnel không?)
-> 3. Hãy tìm cách xác định MTU thực tế của kết nối mạng vật lý và lớp đường hầm WireGuard.
-> 4. Thực hiện sửa lỗi và đảm bảo việc truyền file 5MB chéo node đạt tốc độ tối đa không bị timeout.
-> 
-> *Bạn có đúng **30 phút** để tự mình giải bài toán này trước khi xem hướng dẫn chi tiết ở Phần 3.*
+>
+> Hãy đóng vai SRE đang triển khai security policy cho production cluster.
+>
+> Mục tiêu cần đạt được SAU KHI áp policy:
+> 1. **[Tenant Isolation]** `frontend-a` KHÔNG thể kết nối tới bất kỳ Pod nào trong `tenant-b` và ngược lại.
+> 2. **[Intra-tenant]** `frontend-a` VẪN có thể kết nối tới `backend-a` (cùng namespace).
+> 3. **[DNS]** Mọi Pod trong cả hai tenant vẫn resolve được DNS (`nslookup kubernetes.default`).
+> 4. **[Egress Control]** `backend-a` CHỈ được phép kọi ra IP `1.1.1.1` (Cloudflare DNS — giả lập payment gateway). Mọi egress khác bị chặn.
+> 5. **[GlobalNetworkPolicy]** Block toàn bộ cluster truy cập `169.254.169.254` (AWS IMDS endpoint) — không cần sửa từng namespace.
+>
+> **Tài liệu tham khảo:**
+> - K8s NetworkPolicy: https://kubernetes.io/docs/concepts/services-networking/network-policies/
+> - Calico NetworkPolicy: https://docs.tigera.io/calico/latest/reference/resources/networkpolicy
+> - Calico GlobalNetworkPolicy: https://docs.tigera.io/calico/latest/reference/resources/globalnetworkpolicy
+> - Calico NetworkSet: https://docs.tigera.io/calico/latest/reference/resources/networkset
+>
+> *Bạn có **30 phút** trước khi xem hướng dẫn ở Phần 3.*
 
 ---
 
-## 📖 Phần 3: Hướng dẫn Troubleshooting từng bước chuẩn (Chỉ xem sau khi tự làm)
+## 📖 Phần 3: Hướng dẫn từng bước (Chỉ xem sau khi tự làm)
 
-Nếu đã qua 30 phút hoặc bạn đã tự giải xong, hãy đối chiếu các bước xử lý của bạn với quy trình điều tra chuẩn dưới đây:
+### Bước 1: Default-Deny Ingress + cho phép intra-namespace
 
-### Bước 1: Kiểm tra MTU của các Interface
-1. Kiểm tra MTU trên card mạng của Pod `upload-client`:
-   ```bash
-   kubectl exec upload-client -- ip link show eth0
-   # Kết quả: eth0: mtu 1500
-   ```
-2. Kiểm tra MTU của interface WireGuard trên Node (chạy trên `worker1`):
-   ```bash
-   ip link show wireguard.cali
-   # Kết quả: wireguard.cali: mtu 1500
-   ```
-   *Nhận định:* Cả Pod và WireGuard đều đang để MTU mặc định là 1500.
+Áp `NetworkPolicy` default-deny cho từng tenant, sau đó mở intra-namespace:
 
-### Bước 2: Chẩn đoán bằng gói tin Ping kích hoạt DF (Don't Fragment)
-Để kiểm tra xem MTU thực sự chịu tải được bao nhiêu bytes trước khi bị drop, ta gửi gói tin ICMP Ping với cờ `DF` hoạt động (ép không phân mảnh):
-1. Ping thử với payload 1400 bytes (tổng gói tin khoảng 1428 bytes):
-   ```bash
-   kubectl exec upload-client -- ping -c 2 -s 1400 -M do $SERVER_IP
-   # Thành công!
-   ```
-2. Ping thử với payload 1440 bytes (tổng gói tin khoảng 1468 bytes):
-   ```bash
-   kubectl exec upload-client -- ping -c 1 -s 1440 -M do $SERVER_IP
-   # (Gói tin bị HANG / Timeout do bị drop bởi iptables rule giả lập trên worker1)
-   ```
-   *Giải thích phát hiện:* Gói tin có kích thước IP = `1440 + 8 (ICMP) + 20 (IP) = 1468` bytes. Khi đi qua WireGuard, nó được đóng gói thêm 60 bytes thành `1528` bytes, vượt quá MTU vật lý `1500` và bị drop hoàn toàn. Do không nhận được ICMP Fragmentation Needed, lệnh ping bị treo vô hạn.
-   
-   **Nguyên nhân gốc rễ (PMTUD Black Hole):**
-   - MTU mạng vật lý là 1500 bytes.
-   - Lớp mã hóa WireGuard cộng thêm 60 bytes overhead vào mỗi gói tin.
-   - Khi Pod gửi gói tin kích thước lớn 1500 bytes với cờ `DF=1` (Don't Fragment), Calico đưa gói tin này vào WireGuard làm phình gói tin lên 1560 bytes.
-   - Khi đẩy ra card vật lý `eth0` của Node có MTU 1500, vì cờ `DF=1` cấm phân mảnh, router/card mạng âm thầm hủy bỏ gói tin (Silent Drop) mà không phản hồi lại gói tin ICMP báo lỗi cho bên gửi (ở đây là drop giả lập bằng `iptables`). Bên gửi (TCP sender) chờ ACK vô hạn dẫn đến treo kết nối (Black Hole).
+```bash
+kubectl apply -f - <<'EOF'
+# Default deny ALL ingress trong tenant-a
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: tenant-a
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+# Cho phép ingress từ trong chính namespace tenant-a
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-tenant
+  namespace: tenant-a
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector: {}
+---
+# Tương tự cho tenant-b
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: tenant-b
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-tenant
+  namespace: tenant-b
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector: {}
+EOF
+```
+
+**Kiểm tra:**
+```bash
+# Cross-tenant PHẢI bị block (timeout/refused)
+kubectl exec frontend-a -n tenant-a -- nc -zv -w 3 $FB_IP 80 2>&1 || echo "BLOCKED ✅"
+
+# Intra-tenant PHẢI thông (backend-a chạy netcat listener tạm)
+kubectl exec backend-a -n tenant-a -- nc -lk -p 8080 &
+kubectl exec frontend-a -n tenant-a -- nc -zv -w 3 $BA_IP 8080 && echo "INTRA OK ✅" || echo "FAILED ❌"
+kubectl exec backend-a -n tenant-a -- kill %1 2>/dev/null || true
+```
 
 ---
 
-### Bước 3: Khắc phục sự cố
+### Bước 2: Cho phép DNS egress (port 53)
 
-#### 1. Cấu hình lại MTU chính xác cho WireGuard (MTU = 1440)
-Ta phải cấu hình Calico tự động tính toán hoặc ép MTU của interface WireGuard xuống 1440 bytes (1500 - 60 bytes overhead):
+Không có rule egress → Pod vẫn ra được (K8s NetworkPolicy mặc định không chặn egress trừ khi explicit). Tuy nhiên, khi thêm Egress deny ở bước sau, phải mở sẵn DNS:
+
 ```bash
-kubectl patch felixconfiguration default \
-  --type merge \
-  --patch '{"spec": {"wireguardMTU": 1440}}'
+kubectl apply -f - <<'EOF'
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: tenant-a
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+EOF
 ```
 
-*Đợi Calico reload lại cấu hình:*
+**Kiểm tra DNS vẫn hoạt động:**
 ```bash
-kubectl -n calico-system rollout status daemonset/calico-node
-```
-
-#### 2. Xác minh cấu hình MTU mới đã được đồng bộ xuống Node (chạy trên `worker1`):
-```bash
-ip link show wireguard.cali
-# wireguard.cali: mtu 1440 ✅
-```
-*Lưu ý:* MTU ảo của các Pod đang chạy vẫn được giữ nguyên là 1500. Lúc này, khi Pod gửi gói tin TCP lớn, Host Kernel nhận thấy gói tin đi ra interface `wireguard.cali` (MTU 1440) bị quá khổ nên sẽ gửi ICMP Fragmentation Needed nội bộ về Pod, giúp Pod tự động hạ MSS về 1400 (PMTUD hoạt động động tại localhost).
-
-#### 3. Kiểm tra MTU của Pod mới được tạo (Nếu có):
-Đối với các Pod mới được tạo sau khi bật MTU 1440, Calico CNI sẽ tự động gán MTU `1440` ngay từ đầu. Hãy chạy thử tạo Pod test `upload-client-new` để kiểm chứng:
-```bash
-kubectl run upload-client-new -n default --image=nicolaka/netshoot -- sleep infinity
-kubectl wait --for=condition=Ready pod/upload-client-new --timeout=30s
-kubectl exec upload-client-new -- ip link show eth0
-# eth0: mtu 1440 ✅ (Pod mới tự động thừa hưởng MTU 1440)
-kubectl delete pod upload-client-new
+kubectl exec frontend-a -n tenant-a -- nslookup kubernetes.default && echo "DNS OK ✅"
 ```
 
 ---
 
-### Bước 4: Kiểm tra lại kết nối
+### Bước 3: Egress control cho backend-a — dùng Calico NetworkSet
 
-Tiến hành kiểm tra lại việc truyền file dung lượng lớn 5MB chéo Node:
+Calico mở rộng K8s NetworkPolicy bằng `NetworkSet` — cho phép define tập hợp CIDR/IP có thể tái sử dụng trong nhiều policy.
+
+**3.1 Tạo NetworkSet chứa các IP được phép:**
 ```bash
-kubectl exec upload-client -- bash -c "
-  dd if=/dev/urandom bs=1M count=5 2>/dev/null | nc -w 30 $SERVER_IP 9999
-  echo 'Large file cross-node connection exit: '$?
-"
+kubectl apply -f - <<'EOF'
+apiVersion: projectcalico.org/v3
+kind: NetworkSet
+metadata:
+  name: allowed-egress-ips
+  namespace: tenant-a
+  labels:
+    role: allowed-external
+spec:
+  nets:
+  - 1.1.1.1/32
+EOF
 ```
 
-Kết quả mong đợi:
+**3.2 Tạo Calico NetworkPolicy cho phép backend-a egress đến NetworkSet:**
+
+> **Lưu ý:** Dùng `projectcalico.org/v3` NetworkPolicy (không phải `networking.k8s.io/v1`) để dùng được selector `nets` từ NetworkSet.
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: backend-a-egress
+  namespace: tenant-a
+spec:
+  selector: app == 'backend'
+  types:
+  - Egress
+  egress:
+  # Cho phép DNS
+  - action: Allow
+    protocol: UDP
+    destination:
+      ports: [53]
+  - action: Allow
+    protocol: TCP
+    destination:
+      ports: [53]
+  # Cho phép ra các IP trong NetworkSet
+  - action: Allow
+    destination:
+      selector: role == 'allowed-external'
+  # Block tất cả egress còn lại
+  - action: Deny
+EOF
 ```
-Large file cross-node connection exit: 0 ✅ THÀNH CÔNG!
+
+**Kiểm tra:**
+```bash
+# Phải thành công (1.1.1.1 — nằm trong allowed NetworkSet)
+kubectl exec backend-a -n tenant-a -- ping -c 2 -W 3 1.1.1.1 && echo "ALLOWED ✅" || echo "BLOCKED ❌"
+
+# Phải bị block (8.8.8.8 — không trong NetworkSet)
+kubectl exec backend-a -n tenant-a -- ping -c 2 -W 3 8.8.8.8 && echo "LEAK ❌" || echo "BLOCKED ✅"
+```
+
+---
+
+### Bước 4: GlobalNetworkPolicy — Block AWS IMDS toàn cluster
+
+`GlobalNetworkPolicy` (Calico-only) áp cho toàn cluster, không bị giới hạn trong namespace. Dùng để bảo vệ cloud metadata endpoint — vector tấn công phổ biến trong môi trường AWS/GCP/Azure.
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: block-cloud-metadata
+spec:
+  order: 1
+  selector: all()
+  types:
+  - Egress
+  egress:
+  # Block tất cả traffic đến AWS IMDS (và tương tự GCP: 169.254.169.254)
+  - action: Deny
+    destination:
+      nets:
+      - 169.254.169.254/32
+  # Cho phép tất cả egress khác (rule này KHÔNG override policy namespace-level)
+  - action: Allow
+EOF
+```
+
+> **Giải thích ordering:** Calico evaluate policy theo thứ tự `order` (số nhỏ = ưu tiên cao hơn). `GlobalNetworkPolicy` với `order: 1` được evaluate TRƯỚC các `NetworkPolicy` namespace-level. Vì block IMDS là security requirement toàn cluster, đặt order thấp đảm bảo không bị override.
+
+**Kiểm tra block IMDS hoạt động:**
+```bash
+# Từ frontend-a (tenant-a) — PHẢI bị block
+kubectl exec frontend-a -n tenant-a -- curl -s --max-time 3 http://169.254.169.254/ 2>&1 || echo "BLOCKED ✅"
+
+# Từ frontend-b (tenant-b) — cũng PHẢI bị block (global policy)
+kubectl exec frontend-b -n tenant-b -- curl -s --max-time 3 http://169.254.169.254/ 2>&1 || echo "BLOCKED ✅"
+```
+
+---
+
+### Bước 5: Xác minh toàn bộ security matrix
+
+Chạy kiểm tra tổng thể:
+
+```bash
+echo "=== Tenant Isolation ==="
+kubectl exec frontend-a -n tenant-a -- nc -zv -w 3 $FB_IP 80 2>&1 | grep -E "open|refused|timeout" \
+  && echo "LEAK ❌" || echo "Cross-tenant BLOCKED ✅"
+
+echo ""
+echo "=== DNS Resolution ==="
+kubectl exec frontend-a -n tenant-a -- nslookup kubernetes.default 2>&1 | grep -q "Address" \
+  && echo "DNS OK ✅" || echo "DNS BROKEN ❌"
+
+echo ""
+echo "=== Egress Control: backend-a → 1.1.1.1 (allowed) ==="
+kubectl exec backend-a -n tenant-a -- ping -c 2 -W 3 1.1.1.1 2>&1 | grep -q "2 received" \
+  && echo "ALLOWED ✅" || echo "BLOCKED ❌"
+
+echo ""
+echo "=== Egress Control: backend-a → 8.8.8.8 (denied) ==="
+kubectl exec backend-a -n tenant-a -- ping -c 2 -W 3 8.8.8.8 2>&1 | grep -q "2 received" \
+  && echo "LEAK ❌" || echo "BLOCKED ✅"
+
+echo ""
+echo "=== GlobalNetworkPolicy: IMDS block ==="
+kubectl exec frontend-a -n tenant-a -- curl -s --max-time 3 http://169.254.169.254/ \
+  && echo "LEAK ❌" || echo "IMDS BLOCKED ✅"
+```
+
+Kết quả mong đợi: tất cả 5 kiểm tra đều báo `✅`.
+
+---
+
+### Bước 6: Debug Network Policy bằng Calico policy hit counters
+
+Calico cung cấp công cụ xem policy nào đang drop traffic — rất hữu ích khi debug production:
+
+```bash
+# Xem policy statistics từ calico-node trên worker1
+CALICO_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1)
+kubectl exec -n calico-system $CALICO_POD -- calico-node -felix-live 2>/dev/null || true
+
+# Hoặc xem iptables rules do Calico sinh ra:
+# SSH vào worker1
+multipass shell worker1
+
+# Xem chain Calico-specific drop rules
+sudo iptables -L cali-pi-_default-deny-ingres -n -v 2>/dev/null | head -20
+sudo iptables -nL | grep -E "cali|DROP" | head -30
 ```
 
 ---
 
 ## 🧹 Dọn dẹp
 
-1. Xóa rule giả lập drop gói tin trên `worker1` (chạy trên `worker1`):
-   ```bash
-   sudo iptables -D OUTPUT -p udp --dport 51820 -m length --length 1501:65535 -j DROP
-   ```
+```bash
+# Trên controlplane:
+kubectl delete namespace tenant-a tenant-b
 
-2. Xóa các Pod lab và tắt WireGuard trên `controlplane`:
-   ```bash
-   kubectl delete pod upload-client upload-server upload-server-local
-
-   # Trả FelixConfiguration về mặc định để tránh ảnh hưởng các bài lab sau
-   kubectl patch felixconfiguration default \
-     --type merge \
-     --patch '{"spec": {"wireguardEnabled": false, "wireguardMTU": null, "wireguardMssClamp": null}}'
-   ```
+# Xóa GlobalNetworkPolicy
+kubectl delete globalnetworkpolicy block-cloud-metadata
+```
 
 ---
 
 ## ✅ Tổng kết
 
-1. **Dấu hiệu nhận biết sự cố MTU:** Truyền file dung lượng nhỏ hoạt động bình thường, nhưng truyền file lớn bị treo chéo node (hoạt động bình thường cùng node).
-2. **Cơ chế Black Hole:** Lớp mã hóa (WireGuard/IPsec) chèn thêm header làm phình gói tin vượt quá MTU vật lý của Node. Cờ `DF=1` cấm phân mảnh, kết hợp với card mạng vật lý hoặc router drop âm thầm gói tin mà không gửi trả ICMP báo lỗi về Pod, tạo ra một "hố đen định tuyến".
-3. **Cách tìm MTU thực tế:** Dùng công cụ Ping với cờ chặn phân mảnh (`ping -M do -s <size> <target_ip>`).
-4. **Cách khắc phục:** Cấu hình `wireguardMTU: 1440` (MTU vật lý 1500 - 60 bytes overhead). Điều này khiến Host Kernel tự động gửi ICMP Fragmentation Needed nội bộ về Pod để ép TCP giảm MSS về 1400 (đối với Pod cũ), hoặc tự thiết lập MTU 1440 ngay lúc tạo (đối với Pod mới).
+| Kỹ thuật | Công cụ | Khi nào dùng |
+|---|---|---|
+| **Tenant isolation** | K8s `NetworkPolicy` default-deny | Multi-tenant cluster, PCI/SOC2 compliance |
+| **Intra-namespace allow** | `podSelector: {}` + `namespaceSelector` | Microservices cùng team giao tiếp nhau |
+| **DNS whitelist** | Mở port 53 trong egress policy | Luôn cần khi áp egress deny |
+| **NetworkSet** | Calico `NetworkSet` CRD | Reuse tập IP/CIDR trong nhiều policy |
+| **Egress IP whitelist** | Calico `NetworkPolicy` + `NetworkSet` | Control outbound đến payment gateway, DB ngoài |
+| **Cluster-wide rule** | Calico `GlobalNetworkPolicy` | Block cloud metadata, chặn C2 infrastructure |
+
+**Bài học core:**
+- K8s `NetworkPolicy` mặc định **không chặn egress** trừ khi có ít nhất 1 egress policy.
+- Calico `GlobalNetworkPolicy` vượt qua giới hạn namespace — dùng để áp security baseline toàn cluster.
+- `NetworkSet` giải quyết vấn đề quản lý IP tập trung — thay vì hardcode CIDR trong từng policy.
+- Luôn mở port 53 TRƯỚC khi áp egress deny, không thì DNS chết trước khi policy được kiểm tra.
