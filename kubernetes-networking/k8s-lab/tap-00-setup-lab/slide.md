@@ -183,7 +183,7 @@ kubectl apply -f \
 curl -s https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml | \
   sed "s|192.168.0.0/16|10.244.0.0/16|g" | kubectl apply -f -
 
-# Cilium — eBPF, Hubble observability (Tập 25-43)
+# Cilium — eBPF, Hubble observability (Tập 24-43)
 helm repo add cilium https://helm.cilium.io/
 helm install cilium cilium/cilium \
   --namespace kube-system \

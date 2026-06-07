@@ -32,7 +32,7 @@ style: |
 <!-- _class: ep -->
 
 # Tập 16
-## BGP trong Calico: Cluster như một Autonomous System, peer với ToR Switch
+## BGP trong Calico: Node-to-Node Mesh và chuyển từ VXLAN
 
 **Phần 2 — Calico** · `#BGP` `#AS` `#BIRD` `#routing` `#no-encapsulation`
 
@@ -44,6 +44,7 @@ style: |
 - Cấu hình Calico sang BGP mode (không encapsulation)
 - Dùng `calicoctl node status` để xem BGP session
 - Verify: routing table thay đổi, tcpdump không còn VXLAN
+- Troubleshoot 5 kịch bản BGP lỗi thường gặp trên môi trường thực
 
 **Prerequisites:** Cluster Calico từ Tập 9-12 với VXLAN (sẽ chuyển sang BGP)
 
@@ -51,38 +52,51 @@ style: |
 
 ## BGP: Border Gateway Protocol
 
-**Mỗi Node chạy BIRD, quảng bá Pod CIDR của mình:**
+**Mỗi Node chạy BIRD daemon, quảng bá Pod CIDR của mình qua BGP sessions:**
 
 ```
-Datacenter Network:
+Production — eBGP với ToR Switch:          Lab này — Node-to-Node Mesh (iBGP):
 
-ToR Switch (AS 65000)         ← Biết về mọi Pod subnet
-    │
-    ├── Node 1 (AS 64512)     ← Quảng bá: 10.244.1.0/24 ở đây
-    │   BIRD peer với ToR
-    │
-    ├── Node 2 (AS 64512)     ← Quảng bá: 10.244.2.0/24 ở đây
-    │
-    └── Node 3 (AS 64512)     ← Quảng bá: 10.244.3.0/24 ở đây
+ToR Switch (AS 65000)                      controlplane (AS 64512)
+    │                                           │
+    ├── Node 1 (AS 64512)                  ────┼──── worker1 (AS 64512)
+    │   Quảng bá: 10.244.1.0/26 ở đây         │     BGP session trực tiếp
+    ├── Node 2 (AS 64512)                  ────┘──── worker2 (AS 64512)
+    └── Node 3 (AS 64512)                        Full Mesh: n*(n-1)/2 sessions
 ```
 
-**Lợi ích:**
+**Lợi ích chung:**
 - Không có encapsulation overhead (không VXLAN, không IPIP)
-- Server bare-metal ngoài cluster ping trực tiếp Pod IP
-- Integrate với datacenter network hiện có (standard BGP)
+- Routes inject vào kernel với `proto bird` → forward thẳng qua `eth0`
 
 ---
 
-## 3 chế độ của Calico
+## Hai topology BGP trong Calico
+
+| | Node-to-Node Mesh | External BGP (với ToR) |
+| :--- | :--- | :--- |
+| **BGP type** | iBGP (cùng AS 64512) | eBGP (khác AS) |
+| **Peer** | Mọi node peer với nhau | Mỗi node peer với ToR switch |
+| **Scale** | n*(n-1)/2 sessions | n sessions (1 per node) |
+| **Yêu cầu** | L2 flat network giữa nodes | L3 fabric + router hỗ trợ BGP |
+| **Lab này** | ✅ | ❌ (Tập 17+) |
+
+> **Lab này dùng Node-to-Node Mesh trên L2 flat network (Multipass).**
+> Không cần ToR switch thật — BIRD trên mỗi node peer trực tiếp với nhau.
+
+---
+
+## Các chế độ mạng của Calico
 
 | Chế độ | Encapsulation | Yêu cầu | Dùng khi |
 | :--- | :--- | :--- | :--- |
 | **VXLAN** | Full VXLAN | Bất kỳ topology | Cloud, multi-subnet |
-| **IPIP** | IP-in-IP tunnel | Có IP routing | Datacenter, L3 fabric |
-| **BGP (direct)** | Không có | L3 fabric + BGP router | On-prem, cần performance |
+| **IPIP** | IP-in-IP tunnel | L3 routed fabric | Datacenter |
+| **BGP (direct)** | Không có | **L2 flat** (node mesh) hoặc L3 + BGP router | On-prem, performance |
 | **VXLANCrossSubnet** | VXLAN chỉ khi cross-subnet | Mixed | Datacenter hybrid |
 
-**Lab này:** BGP giữa các Nodes (Node-to-Node BGP, không có ToR switch thật)
+> **Điều kiện bắt buộc cho BGP direct:** tất cả nodes cùng L2 subnet.
+> Nếu cross-subnet, packet bị router trung gian drop vì không biết route đến Pod CIDR.
 
 ---
 
@@ -106,11 +120,71 @@ ToR Switch (AS 65000)         ← Biết về mọi Pod subnet
 
 Chúng ta sẽ thực hành:
 
-1. **Switch sang BGP:** Patch IP Pool encapsulation từ VXLAN sang None.
-2. **Xem BGP sessions:** `calicoctl node status` để verify peering.
-3. **Test routing:** Tcpdump confirm không còn UDP 8472 VXLAN traffic.
-4. **BGPConfiguration:** Xem AS number và nodeToNodeMeshEnabled.
+1. **Kiểm tra hệ thống:** Đảm bảo Nodes, Pods và Calico hoạt động bình thường.
+2. **Switch sang BGP:** Patch IP Pool `encapsulation: None`.
+3. **Quan sát routing table:** Routes dùng `eth0` thay vì `vxlan.calico`, inject bởi BIRD.
+4. **Xem BGP sessions:** `calicoctl node status` — verify `Established`.
+5. **Test routing:** Tcpdump confirm không còn UDP 8472, ICMP đi thẳng.
+6. **Troubleshoot:** 5 kịch bản lỗi thực tế — tạo lỗi → điều tra → fix.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
-> **Tập tiếp theo:** Full Mesh BGP scale problem — n*(n-1)/2 sessions và Route Reflector giải quyết.
+---
+
+## 🔧 Troubleshooting BGP — Tóm tắt
+
+| Triệu chứng | Công cụ điều tra | Nguyên nhân phổ biến |
+| :--- | :--- | :--- |
+| BGP state `Active` | `nc -zv <peer> 179` | TCP 179 bị block (iptables) |
+| BGP state `Idle` | `kubectl logs calico-node` | Felix chưa start |
+| `proto bird` routes trống | `watch ip route show proto bird` | Felix chưa apply (đợi 30s) |
+| Pod ping 100% loss, routes OK | `iptables -L FORWARD -n -v` | FORWARD chain DROP |
+| `No process is using this socket` | `kubectl get pod -n kube-system` | calico-node pod restarting |
+| `vxlan.calico` vẫn UP | `ip route show \| grep vxlan` | Transient — OK nếu routes dùng eth0 |
+
+**Quy tắc debug:** Control plane OK (BGP up, routes có) → vấn đề ở dataplane (iptables). Routes trống → vấn đề ở Felix/BIRD.
+
+---
+
+## Bài toán Scale: Full Mesh BGP
+
+**Full mesh = mỗi node peer với mọi node khác:**
+
+```
+n = số nodes    Số sessions = n × (n-1) / 2
+
+3 nodes:    3 sessions    ✅  (lab hiện tại)
+10 nodes:  45 sessions    ✅
+50 nodes: 1225 sessions   ⚠️
+100 nodes: 4950 sessions  ❌  mỗi node duy trì 99 TCP connections
+500 nodes: 124750 sessions ❌❌
+```
+
+**Triệu chứng khi quá tải:** CPU spike trên calico-node, BGP convergence chậm, node mới join mất nhiều thời gian thiết lập sessions.
+
+---
+
+## Route Reflector: Giải pháp iBGP Scaling
+
+**Thay vì peer full mesh, mỗi node chỉ peer với Route Reflector (RR):**
+
+```
+Full Mesh (6 nodes = 15 sessions):    Route Reflector (6 nodes = 6 sessions):
+
+N1 ─── N2                             N1 ──┐
+│ ╲   ╱ │                             N2 ──┤
+│  N3   │          →                  N3 ──┼──► RR (controlplane)
+│  │    │                             N4 ──┤
+N4 ─── N5                             N5 ──┘
+     N6
+```
+
+**Cách RR hoạt động:** RR nhận route từ client → reflect đến tất cả clients khác. NEXT_HOP giữ nguyên IP node gốc → packet forward trực tiếp node-to-node, không qua RR.
+
+**Trade-off:** RR = single point of failure → production cần ≥ 2 RR nodes.
+
+> Cấu hình thực hành RR có trong **Tập 17 (tài liệu tham khảo)**.
+
+---
+
+> **Tập tiếp theo:** WireGuard trong Calico — mã hóa traffic nội bộ giữa các nodes và bẫy MTU 1440 bytes.

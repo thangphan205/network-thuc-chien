@@ -1,6 +1,6 @@
 # Lab Tập 9: Cài đặt cụm Calico CNI mới hoàn toàn bằng Multipass
 
-Bài thực hành này hướng dẫn bạn khởi tạo một cụm Kubernetes sạch từ đầu bằng Multipass, thực hiện bootstrap cụm bằng `kubeadm` và cài đặt **Calico CNI** qua Tigera Operator. Đây sẽ là môi trường lab chuẩn và sạch sẽ để chuẩn bị cho chuỗi các bài học chuyên sâu tiếp theo về Calico (từ Tập 10 đến Tập 24).
+Bài thực hành này hướng dẫn bạn khởi tạo một cụm Kubernetes sạch từ đầu bằng Multipass, thực hiện bootstrap cụm bằng `kubeadm` và cài đặt **Calico CNI** qua Tigera Operator. Đây sẽ là môi trường lab chuẩn và sạch sẽ để chuẩn bị cho chuỗi các bài học chuyên sâu tiếp theo về Calico (từ Tập 10 đến Tập 23).
 
 ---
 
