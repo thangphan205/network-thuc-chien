@@ -214,26 +214,38 @@ sudo wg show wireguard.cali transfer
 
 Verify trạng thái đúng làm reference. Tạo file test ở đây để tái sử dụng xuyên suốt thực nghiệm.
 
-**SSH vào `worker1`:**
+**Trên `controlplane` — kiểm tra nguồn cấu hình:**
+
+**0a. Xem wireguardMTU trong FelixConfiguration (source of truth):**
+```bash
+kubectl get felixconfiguration default -o yaml | grep -E 'wireguard'
+# wireguardEnabled: true
+# wireguardMTU: 1440   ← Nếu không có dòng wireguardMTU → Calico đang auto-detect = 1440
+```
+
+> 💡 Calico Felix đọc `wireguardMTU` từ FelixConfig rồi áp dụng lên interface `wireguard.cali` và tính MSS = wireguardMTU - 40. Nếu field không tồn tại, Felix tự tính từ physical MTU của `eth0`: `1500 - 60 (WireGuard overhead) = 1440`.
+
+**SSH vào `worker1` — kiểm tra kết quả áp dụng:**
 ```bash
 multipass shell worker1
 ```
 
-**0a. Confirm MTU interface = 1440:**
+**0b. Confirm MTU interface = 1440 (Felix đã áp xuống):**
 ```bash
 ip link show wireguard.cali | grep -o 'mtu [0-9]*'
 # mtu 1440  ← Đúng
 ```
 
-**0b. Confirm MSS Clamping = 1400 (= 1440 − 40):**
+**0c. Confirm MSS Clamping = 1400 (= 1440 − 40):**
 ```bash
 sudo iptables -t mangle -L | grep TCPMSS
-# TCPMSS  clamp to 1400  ← 1440 (WG MTU) - 20 (IP header) - 20 (TCP header) = 1400
+# TCPMSS  tcp  --  anywhere  anywhere  tcp flags:SYN,RST/SYN TCPMSS set 1400
+# ← "set 1400" = Calico dùng --set-mss với giá trị tĩnh 1440 - 20(IP) - 20(TCP) = 1400
 ```
 
 **Trên `controlplane`:**
 
-**0c. Tạo file test 5MB và verify transfer lớn hoạt động bình thường:**
+**0d. Tạo file test 5MB và verify transfer lớn hoạt động bình thường:**
 ```bash
 kubectl exec pod-a -- dd if=/dev/zero of=/tmp/largefile bs=1M count=5 2>&1
 # 5+0 records in, 5+0 records out  ← File tạo thành công
@@ -272,7 +284,7 @@ kubectl exec pod-a -- sh -c "nc -w 10 $POD_B_IP 9999 < /tmp/largefile"
    # mtu 1500  ← Interface MTU tăng lên 1500 (theo FelixConfig mới)
 
    sudo iptables -t mangle -L | grep TCPMSS
-   # TCPMSS  clamp to 1460  ← MSS = 1500 - 40 = 1460  ← ĐÂY LÀ VẤN ĐỀ!
+   # TCPMSS  tcp  --  anywhere  anywhere  tcp flags:SYN,RST/SYN TCPMSS set 1460  ← ĐÂY LÀ VẤN ĐỀ!
    ```
 
    > ⚠️ **Tại sao MSS 1460 gây Black Hole?** MSS=1460 → TCP gửi 1460B payload → inner IP packet = 1460+40 = 1500B → WireGuard wrap thêm 60B → outer = **1560B > physical 1500B → DROP**. Iptables rule phía dưới chỉ DROP (không REJECT/gửi ICMP back), nên bên gửi không nhận được "Fragmentation Needed" → retry mãi cùng kích thước → connection hang vô thời hạn.
@@ -333,15 +345,15 @@ kubectl exec pod-a -- sh -c "nc -w 10 $POD_B_IP 9999 < /tmp/largefile"
 9. Xem MSS Clamping được tự động cài (chạy trên `worker1`):
    ```bash
    sudo iptables -t mangle -L | grep TCPMSS
-   # TCPMSS  tcp  --  anywhere  anywhere  ... TCPMSS clamp to 1400
-   # ← Calico tự set MSS Clamping cho WireGuard!
-   # 1400 = 1440 (WireGuard MTU) - 40 bytes (IP header 20 + TCP header 20)
+   # TCPMSS  tcp  --  anywhere  anywhere  tcp flags:SYN,RST/SYN TCPMSS set 1400
+   # ← Calico dùng --set-mss 1400 (tĩnh, không phải --clamp-mss-to-pmtu)
+   # 1400 = 1440 (WireGuard MTU) - 20 (IP header) - 20 (TCP header)
    ```
 
 > 💡 **Giải thích cho học viên:**
 > - **PMTUD Black Hole là gì?** Khi một gói tin TCP được gửi với cờ DF=1 (Don't Fragment) và có kích thước lớn hơn MTU của đường truyền (1440 bytes của WireGuard), thiết bị mạng (hoặc kernel) buộc phải hủy gói tin và gửi lại bản tin ICMP "Fragmentation Needed" (Type 3, Code 4) cho bên gửi để giảm kích thước đóng gói (MSS). Tuy nhiên, nếu bản tin ICMP này bị chặn bởi tường lửa hoặc router dọc đường (chính là lỗ đen - Black Hole), bên gửi sẽ không bao giờ biết lý do tại sao gói tin bị drop và tiếp tục truyền lại với kích thước cũ dẫn đến kết nối bị treo (hang).
 > - **MSS Clamping hoạt động thế nào?** Khi thiết lập kết nối TCP (3-way handshake), gói SYN chứa trường MSS (Maximum Segment Size) để thông báo kích thước payload TCP tối đa có thể nhận. Calico tự động thêm rule vào bảng `mangle` trong `iptables` trên node để ép lại (clamp) giá trị MSS này thành `MTU - 40` (40 bytes là header IPv4 và TCP). 
-> - **Công thức tính MSS:** `MSS = wireguardMTU - 20 (IP header) - 20 (TCP header) = 1440 - 40 = 1400 bytes`. Quy trình này bắt buộc client tự động phân mảnh các phân đoạn TCP nhỏ hơn hoặc bằng 1400 bytes trước khi gửi đi, do đó gói tin sau khi đóng gói WireGuard (thêm 60 bytes nữa) sẽ luôn nhỏ hơn hoặc bằng 1460 bytes, không bao giờ vượt quá MTU vật lý (1500 bytes) và không bao giờ bị drop.
+> - **Công thức tính MSS:** `MSS = wireguardMTU - 20 (IP header) - 20 (TCP header) = 1440 - 40 = 1400 bytes`. Quy trình này bắt buộc client tự động phân mảnh các phân đoạn TCP nhỏ hơn hoặc bằng 1400 bytes trước khi gửi đi, do đó inner IP packet sẽ luôn nhỏ hơn hoặc bằng 1440 bytes (1400 TCP payload + 40 IP/TCP header), sau khi WireGuard wrap thêm 60 bytes → outer packet = 1500 bytes = đúng bằng physical MTU, không bao giờ bị drop.
 
 ---
 
