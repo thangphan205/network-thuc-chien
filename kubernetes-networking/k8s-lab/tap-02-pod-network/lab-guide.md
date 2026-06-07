@@ -7,7 +7,7 @@ Bài lab này sẽ giúp bạn bóc tách kiến trúc mạng bên trong một P
 
 ---
 
-## 🚀 Thí nghiệm 1: Khởi tạo Pods để quan sát
+## 🚀 Thực nghiệm 1: Khởi tạo Pods để quan sát
 Chúng ta sẽ tạo 2 Pods sử dụng image `nicolaka/netshoot` (một image chứa đầy đủ đồ chơi debug mạng) và cố tình gán chúng lên 2 worker khác nhau.
 
 1. SSH vào `controlplane`:
@@ -30,7 +30,7 @@ Chúng ta sẽ tạo 2 Pods sử dụng image `nicolaka/netshoot` (một image c
 
 ---
 
-## 🔬 Thí nghiệm 2: Khám phá "thế giới ngầm" bằng nsenter
+## 🔬 Thực nghiệm 2: Khám phá "thế giới ngầm" bằng nsenter
 Chúng ta sẽ lẻn vào network namespace của `pod-a` từ bên ngoài Node mà không cần dùng lệnh `kubectl exec` hay chui vào shell của container.
 
 1. SSH vào `worker1` (nơi đang chạy `pod-a`):
@@ -63,7 +63,7 @@ Chúng ta sẽ lẻn vào network namespace của `pod-a` từ bên ngoài Node 
 
 ---
 
-## 🔗 Thí nghiệm 3: Dây cáp ảo (veth pair) và Bridge
+## 🔗 Thực nghiệm 3: Dây cáp ảo (veth pair) và Bridge
 
 Vẫn ở trên `worker1`, chúng ta đi tìm đầu còn lại của sợi cáp nối từ Pod ra ngoài host.
 
@@ -87,7 +87,7 @@ Vẫn ở trên `worker1`, chúng ta đi tìm đầu còn lại của sợi cáp
 
 ---
 
-## 💥 Thí nghiệm 4: Sức mạnh của Pause Container (Anchor)
+## 💥 Thực nghiệm 4: Sức mạnh của Pause Container (Anchor)
 
 Điều gì xảy ra nếu ứng dụng của bạn (App container) bị crash? Liệu IP của Pod có bị mất đi và cấp lại không? Hãy cùng giả lập tình huống này.
 

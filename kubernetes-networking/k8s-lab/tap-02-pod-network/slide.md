@@ -64,11 +64,11 @@ Hôm nay chúng ta sẽ tiếp tục bóc tách "thế giới ngầm" của Pod 
 
 ## 🔬 PHẦN 1: Bắt đầu làm Lab ngay!
 
-Chúng ta sẽ thực hiện các Thí nghiệm đột phá trong file `lab-guide.md`:
+Chúng ta sẽ thực hiện các Thực nghiệm đột phá trong file `lab-guide.md`:
 
-1.  **Thí nghiệm 1 & 2:** Tìm PID của pause container và dùng `nsenter -t <PID> -n ip addr` để nhìn trộm card mạng của Pod từ máy Host.
-2.  **Thí nghiệm 3:** Truy tìm sợi cáp mạng ảo `veth` và xem cách nó cắm vào bridge `cni0`.
-3.  **Thí nghiệm 4:** Dùng `crictl stop` để kill chết container ứng dụng, chứng kiến container hồi sinh nhưng IP mạng vẫn giữ nguyên tuyệt đối.
+1.  **Thực nghiệm 1 & 2:** Tìm PID của pause container và dùng `nsenter -t <PID> -n ip addr` để nhìn trộm card mạng của Pod từ máy Host.
+2.  **Thực nghiệm 3:** Truy tìm sợi cáp mạng ảo `veth` và xem cách nó cắm vào bridge `cni0`.
+3.  **Thực nghiệm 4:** Dùng `crictl stop` để kill chết container ứng dụng, chứng kiến container hồi sinh nhưng IP mạng vẫn giữ nguyên tuyệt đối.
 
 👉 **Hãy tạm dừng video, mở terminal và bắt đầu gõ lệnh trong tệp `lab-guide.md` nhé!**
 

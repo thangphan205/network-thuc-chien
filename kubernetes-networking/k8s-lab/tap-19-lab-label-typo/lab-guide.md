@@ -1,6 +1,7 @@
-# Lab Tập 19: Lab 1 — Pod thiếu label, Connection Timeout
+# Lab Tập 19: Lab 1 — Sự cố kết nối (Connection Timeout) không rõ nguyên nhân
 
-Tập này simulate production incident: developer deploy backend mới không có label, frontend timeout không rõ lý do.
+**Hiện tượng hiện tại:**
+Sau khi lập trình viên triển khai phiên bản Backend mới (`backend-v2`), hệ thống Frontend liên tục báo lỗi **Connection Timeout** khi kết nối tới Backend này. Logs của ứng dụng không hiển thị lỗi cụ thể và cả hai Pod đều đang ở trạng thái `Running` bình thường. Nhiệm vụ của bạn là chẩn đoán và khắc phục sự cố này.
 
 ## 🛠 Yêu cầu chuẩn bị
 - Cụm K8s với Calico từ Tập 9.
@@ -8,7 +9,7 @@ Tập này simulate production incident: developer deploy backend mới không c
 
 ---
 
-## 🔬 Thí nghiệm 1: Setup môi trường production giống thật
+## 🔬 Phần 1: Cấu hình môi trường và Kích hoạt Sự cố (Mô phỏng Production Incident)
 
 **SSH vào `controlplane`:**
 
@@ -16,7 +17,7 @@ Tập này simulate production incident: developer deploy backend mới không c
 multipass shell controlplane
 ```
 
-1. Tạo namespace và apply policies (giống production):
+1. Tạo namespace và apply các NetworkPolicy mặc định của dự án (giống môi trường production):
    ```bash
    kubectl create namespace production 2>/dev/null || true
 
@@ -51,15 +52,14 @@ multipass shell controlplane
    EOF
    ```
 
-2. Deploy **backend-v2 không có label** (lỗi của developer):
+2. Triển khai **backend-v2** (cấu hình deploy thực tế của developer):
    ```bash
    kubectl run backend-v2 -n production \
      --image=nicolaka/netshoot \
      -- nc -lk -p 8080
-   # Không có --labels="app=backend" !
    ```
 
-3. Deploy frontend với label đúng:
+3. Triển khai **frontend** với nhãn đúng chuẩn:
    ```bash
    kubectl run frontend -n production \
      --image=nicolaka/netshoot \
@@ -67,82 +67,108 @@ multipass shell controlplane
      -- sleep infinity
    ```
 
-4. Chờ ready:
+4. Chờ cho các Pod ở trạng thái Ready:
    ```bash
    kubectl -n production wait --for=condition=Ready pod/backend-v2 pod/frontend --timeout=60s
    BACKEND_IP=$(kubectl -n production get pod backend-v2 -o jsonpath='{.status.podIP}')
    echo "Backend IP: $BACKEND_IP"
    ```
 
----
-
-## 💥 Thí nghiệm 2: Reproduce symptom và bắt đầu debug
-
-**Trên `controlplane`:**
-
-1. Confirm symptom (timeout):
+5. Xác nhận lỗi (Connection Timeout):
    ```bash
    kubectl -n production exec frontend -- nc -zv -w 5 $BACKEND_IP 8080
-   # (timeout) ← Confirmed symptom
+   # (Kết quả bị treo và báo timeout)
    ```
-
-2. **Debug Bước 1 — Check basics:** Pod có running không?
-   ```bash
-   kubectl -n production get pods -o wide
-   # NAME         READY   STATUS    IP            NODE
-   # backend-v2   1/1     Running   10.244.2.X    worker2  ← Running, đúng node
-   # frontend     1/1     Running   10.244.1.Y    worker1
-   ```
-   *Kết luận: Pod OK, không phải Pod crash.*
-
-3. **Check connectivity tầng L3:** Ping có qua không?
-   ```bash
-   kubectl -n production exec frontend -- ping -c 2 $BACKEND_IP
-   # 2 packets transmitted, 2 received ← Ping OK!
-   ```
-   *Kết luận: Routing OK, vấn đề ở tầng policy (L4).*
 
 ---
 
-## 🔬 Thí nghiệm 3: Tìm root cause — Labels
+## 🎯 Phần 2: Thử thách 30 Phút Tự Giải & Tự Tìm Lỗi (Troubleshoot Challenge)
 
-**Trên `controlplane`:**
+> [!IMPORTANT]
+> **Nhiệm vụ của học viên:**
+> Hãy đóng vai là một DevOps/SRE Engineer đang xử lý sự cố nóng trên Production. Bạn không có sẵn đáp án. 
+> 
+> Hãy tự mình thực hiện các bước điều tra (troubleshooting) theo tư duy và phản xạ tự nhiên của bản thân:
+> 1. Kiểm tra trạng thái hệ thống, logs, routes của Pod.
+> 2. Kiểm tra xem luồng đi của gói tin đang bị chặn ở đâu.
+> 3. Tìm ra nguyên nhân gốc rễ (Root Cause) và thực hiện sửa lỗi (Fix).
+> 4. Xác nhận kết nối từ `frontend` sang `backend-v2` thành công, đồng thời đảm bảo an toàn hệ thống (các Pod lạ/attacker không thể kết nối tới backend-v2).
+> 
+> *Bạn có đúng **30 phút** để tự mình giải quyết sự cố này trước khi chuyển sang Phần 3.*
 
-1. **Debug Bước 3 — Check labels của backend-v2:**
+---
+
+## 📖 Phần 3: Hướng dẫn Troubleshooting từng bước chuẩn (Chỉ xem sau khi tự làm)
+
+Nếu đã qua 30 phút hoặc bạn đã tự giải xong, hãy đối chiếu các bước xử lý của bạn với quy trình điều tra chuẩn dưới đây:
+
+### Bước 1: Kiểm tra cơ bản trạng thái Pod và Kết nối L3
+1. Kiểm tra xem các Pod có đang thực sự chạy (`Running`) và nằm ở node nào không:
    ```bash
-   kubectl -n production get pod backend-v2 --show-labels
-   # NAME         LABELS
-   # backend-v2   run=backend-v2   ← Không có app=backend!
+   kubectl -n production get pods -o wide
+   # Cả hai Pod backend-v2 và frontend phải đang Running
    ```
+2. Kiểm tra kết nối cơ bản ở tầng mạng (L3 IP Routing) bằng lệnh Ping:
+   ```bash
+   kubectl -n production exec frontend -- ping -c 2 $BACKEND_IP
+   # Ping thành công! Kết luận: Tầng IP Routing hoạt động bình thường, gói tin IP đi được tới node đích.
+   ```
+   *Nhận định:* Do ping được nhưng không telnet/nc được port 8080 (TCP), sự cố rất có thể nằm ở các rule bảo mật / Network Policy chặn cổng TCP 8080.
 
-2. **So sánh với policy selector:**
+### Bước 2: Kiểm tra NetworkPolicy và Nhãn (Labels)
+1. Liệt kê các NetworkPolicy đang được áp dụng trong namespace `production`:
+   ```bash
+   kubectl -n production get networkpolicy
+   # Có 2 policy: default-deny và allow-frontend-to-backend
+   ```
+2. Kiểm tra nội dung của `allow-frontend-to-backend` để xem nó yêu cầu nhãn gì:
    ```bash
    kubectl -n production get networkpolicy allow-frontend-to-backend -o yaml | grep -A5 "podSelector:"
    # podSelector:
    #   matchLabels:
-   #     app: backend   ← Policy chờ label này
+   #     app: backend   <-- Policy yêu cầu Pod đích phải có nhãn app=backend
    ```
-
-3. **Kiểm tra calicoctl — Felix có biết về backend-v2 không:**
+3. Kiểm tra nhãn thực tế của Pod `backend-v2`:
    ```bash
-   calicoctl get workloadendpoint -n production
-   # WORKLOAD     NODE      NETWORKS         INTERFACE
-   # backend-v2   worker2   10.244.2.X/32    cali<hash>
-   # ← Felix biết Pod (endpoint tồn tại) nhưng không match policy!
+   kubectl -n production get pod backend-v2 --show-labels
+   # LABELS: run=backend-v2  <-- Lỗi rồi! Hoàn toàn không có nhãn app=backend
    ```
 
-4. **Kết luận root cause:**
+### Bước 3: Kiểm tra góc nhìn của Calico (workloadendpoint)
+Để xem Calico đã áp dụng Policy cho Endpoint chưa, ta kiểm tra thông tin Endpoint:
+```bash
+calicoctl get workloadendpoint -n production
+# Sẽ thấy backend-v2 tồn tại nhưng vì không khớp nhãn, rule của allow-frontend-to-backend không được Felix nạp vào iptables cho card cali tương ứng.
+# Kết quả là policy default-deny được áp dụng lên backend-v2 và drop tất cả traffic đi vào.
+```
+
+### Bước 4: Khắc phục sự cố và Xác minh
+
+1. Thêm nhãn chính xác cho Pod `backend-v2`:
+   ```bash
+   kubectl -n production label pod backend-v2 app=backend
    ```
-   backend-v2 không có label app=backend
-   → allow-frontend-to-backend podSelector không match
-   → Felix không tạo allow rule cho endpoint này
-   → default-deny áp dụng (podSelector: {} match tất cả)
-   → Timeout
+2. Xác minh lại nhãn của Pod:
+   ```bash
+   kubectl -n production get pod backend-v2 --show-labels
+   # Đã xuất hiện nhãn: app=backend,run=backend-v2
+   ```
+3. Test kết nối từ `frontend` sang `backend-v2` (Calico Felix cập nhật cực nhanh dưới 100ms thông qua cơ chế Event-Driven):
+   ```bash
+   kubectl -n production exec frontend -- nc -zv $BACKEND_IP 8080
+   # Connection to 10.244.2.X 8080 port succeeded! ✅
+   ```
+4. Đảm bảo an toàn mạng (các Pod khác vẫn bị chặn bởi default-deny):
+   ```bash
+   kubectl run attacker -n production --image=nicolaka/netshoot -- sleep infinity
+   kubectl -n production wait --for=condition=Ready pod/attacker --timeout=30s
+   kubectl -n production exec attacker -- nc -zv -w 3 $BACKEND_IP 8080
+   # (Kết quả timeout) ✅ An toàn mạng vẫn được đảm bảo!
    ```
 
-## 🔬 Thí nghiệm 4: Fix và verify
+---
 
-### Quy trình đồng bộ nhãn cực nhanh của Calico Felix (Event-Driven):
+### Quy trình đồng bộ nhãn cực nhanh của Calico Felix (Event-Driven)
 ```mermaid
 sequenceDiagram
     autonumber
@@ -160,40 +186,6 @@ sequenceDiagram
     Admin->>Kernel: Frontend kết nối tới Backend -> THÀNH CÔNG ngay lập tức!
 ```
 
-**Trên `controlplane`:**
-
-1. Fix — Thêm label cho backend-v2:
-   ```bash
-   kubectl -n production label pod backend-v2 app=backend
-   ```
-
-2. Verify label đã được thêm:
-   ```bash
-   kubectl -n production get pod backend-v2 --show-labels
-   # LABELS: app=backend,run=backend-v2  ✅
-   ```
-
-3. Test ngay lập tức (Felix cập nhật < 100ms):
-   ```bash
-   kubectl -n production exec frontend -- nc -zv $BACKEND_IP 8080
-   # Connection to 10.244.2.X 8080 port succeeded! ✅
-   ```
-
-4. Verify attacker vẫn bị chặn:
-   ```bash
-   kubectl run attacker -n production --image=nicolaka/netshoot -- sleep infinity
-   kubectl -n production wait --for=condition=Ready pod/attacker --timeout=30s
-   kubectl -n production exec attacker -- nc -zv -w 3 $BACKEND_IP 8080
-   # (timeout) ✅ Policy vẫn bảo vệ đúng
-   ```
-
-5. Xem Felix event trong log (optional):
-   ```bash
-   POD_NAME=$(kubectl -n calico-system get pods -l k8s-app=calico-node --field-selector spec.nodeName=worker2 -o jsonpath='{.items[0].metadata.name}')
-   kubectl -n calico-system logs $POD_NAME -c calico-node 2>/dev/null | grep "backend-v2" | tail -5
-   # "Endpoint updated: backend-v2 now matches policy..."
-   ```
-
 ---
 
 ## 🧹 Dọn dẹp
@@ -207,7 +199,7 @@ kubectl -n production delete networkpolicy default-deny allow-frontend-to-backen
 
 ## ✅ Tổng kết
 
-1. **Root cause:** Thiếu label `app=backend` → policy selector không match → Felix không tạo allow rule.
-2. **Triệu chứng đặc trưng:** Timeout không có error trong `kubectl logs` — network layer drop, app không biết.
-3. **Felix event-driven:** Thêm label → K8s API notify Felix → iptables rule update < 100ms — không restart gì.
-4. **Debug checklist:** `--show-labels` → so sánh với policy `podSelector.matchLabels` → kiểm tra `calicoctl get workloadendpoint`.
+1. **Root cause:** Thiếu nhãn `app=backend` trên backend Pod làm cho NetworkPolicy selector không tìm thấy đối tượng để mở khóa cổng.
+2. **Triệu chứng đặc trưng:** Lỗi im lặng (Connection Timeout) chứ không phải Connection Refused, do gói tin bị chặn và DROP âm thầm bởi iptables thay vì bị từ chối trả về RST.
+3. **Cơ chế Event-Driven:** Calico Felix giám sát các thay đổi nhãn thông qua Watch API của Kubernetes và cập nhật cấu hình iptables cục bộ chỉ trong mili-giây mà không cần reload/restart dịch vụ.
+4. **Quy trình gỡ lỗi chuẩn:** Kiểm tra trạng thái Pod -> Kiểm tra thông kết nối L3 (Ping) -> Xem nhãn Pod (`--show-labels`) -> Đối chiếu với selector của NetworkPolicy -> Kiểm tra Endpoint trên Calico.

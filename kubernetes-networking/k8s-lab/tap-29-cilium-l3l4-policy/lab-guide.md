@@ -9,7 +9,7 @@ Tập này áp dụng cả K8s NetworkPolicy lẫn CiliumNetworkPolicy, verify C
 
 ---
 
-## 🔬 Thí nghiệm 1: Deploy và verify K8s NetworkPolicy qua Cilium
+## 🔬 Thực nghiệm 1: Deploy và verify K8s NetworkPolicy qua Cilium
 
 **SSH vào `controlplane`:**
 
@@ -117,7 +117,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 2: CiliumNetworkPolicy với fromEntities
+## 🔬 Thực nghiệm 2: CiliumNetworkPolicy với fromEntities
 
 **Trên `controlplane`:**
 
@@ -173,7 +173,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 3: CIDR-based ingress policy
+## 🔬 Thực nghiệm 3: CIDR-based ingress policy
 
 **Trên `controlplane`:**
 
@@ -221,7 +221,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Xem Hubble flows khi policy block
+## 🔬 Thực nghiệm 4: Xem Hubble flows khi policy block
 
 **Trên `controlplane`:**
 

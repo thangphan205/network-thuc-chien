@@ -65,12 +65,12 @@ Hôm nay chúng ta sẽ mở toang chiếc "hộp đen" mang tên CNI:
 
 ## 🔬 PHẦN 1: Bắt đầu làm Lab ngay!
 
-Chúng ta sẽ thực hiện các Thí nghiệm đột phá trong file `lab-guide.md`:
+Chúng ta sẽ thực hiện các Thực nghiệm đột phá trong file `lab-guide.md`:
 
-1.  **Thí nghiệm 1:** SSH vào `worker1`. Liệt kê các file binary CNI vô tri nằm trong `/opt/cni/bin/` (ví dụ: `bridge`, `host-local`, `loopback`).
-2.  **Thí nghiệm 2:** Tự tay viết một hợp đồng cấu hình mạng JSON `mynet` có địa chỉ IPAM tĩnh `10.99.0.0/24`.
-3.  **Thí nghiệm 3:** Khởi tạo Network Namespace `cni-test` và dùng `cnitool add` để ra lệnh cho CNI cắm mạng. Chứng minh namespace có card `eth0` và IP thành công!
-4.  **Thí nghiệm 4:** Dùng `cnitool del` để thu hồi mạng sạch sẽ.
+1.  **Thực nghiệm 1:** SSH vào `worker1`. Liệt kê các file binary CNI vô tri nằm trong `/opt/cni/bin/` (ví dụ: `bridge`, `host-local`, `loopback`).
+2.  **Thực nghiệm 2:** Tự tay viết một hợp đồng cấu hình mạng JSON `mynet` có địa chỉ IPAM tĩnh `10.99.0.0/24`.
+3.  **Thực nghiệm 3:** Khởi tạo Network Namespace `cni-test` và dùng `cnitool add` để ra lệnh cho CNI cắm mạng. Chứng minh namespace có card `eth0` và IP thành công!
+4.  **Thực nghiệm 4:** Dùng `cnitool del` để thu hồi mạng sạch sẽ.
 
 👉 **Hãy tạm dừng video, mở terminal và bắt đầu gõ lệnh trong tệp `lab-guide.md` nhé!**
 

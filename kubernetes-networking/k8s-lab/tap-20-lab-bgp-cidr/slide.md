@@ -32,9 +32,9 @@ style: |
 <!-- _class: ep -->
 
 # Tập 20
-## Lab 2: BGP không quảng bá Pod CIDR — Server vật lý không ping được Pod
+## Lab 2: Sự cố kết nối từ Máy chủ ngoài vào cụm Kubernetes BGP
 
-**Phần 2 — Calico Labs** · `#BGP` `#lab` `#routing` `#BGPConfiguration`
+**Phần 2 — Calico Labs** · `#BGP` `#lab` `#routing` `#troubleshooting`
 
 ---
 
@@ -116,10 +116,11 @@ Lab Solution (Định tuyến tĩnh - Static Route):
 
 Chúng ta sẽ thực hành:
 
-1. **Simulate external server:** Dùng Multipass VM ngoài cluster làm monitoring server (Ubuntu 26.04).
-2. **Reproduce:** Verify BGP UP nhưng monitoring server không reach Pod.
-3. **Debug:** Phân tích bảng định tuyến trên monitoring server.
-4. **Fix và verify:** Thêm Static Route trỏ qua ControlPlane IP, verify ping thành công.
+1. **Simulate external server:** Dùng Multipass VM ngoài cụm làm monitoring server.
+2. **Reproduce:** Xác minh BGP UP nhưng monitoring server không reach Pod.
+3. **Thử thách 30 phút tự giải:** Học viên tự tìm nguyên nhân và thiết lập định tuyến cho máy chủ ngoài.
+4. **Hướng dẫn gỡ lỗi chuẩn:** Đối chiếu giải pháp động (BGP Peer) và tĩnh (Static Route).
+5. **Fix và verify:** Cấu hình định tuyến tĩnh và kiểm tra ping thành công.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 

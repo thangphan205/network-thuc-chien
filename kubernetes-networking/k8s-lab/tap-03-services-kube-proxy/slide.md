@@ -64,12 +64,12 @@ Hôm nay chúng ta sẽ giải mã một trong những ảo ảnh lớn nhất c
 
 ## 🔬 PHẦN 1: Bắt đầu làm Lab ngay!
 
-Chúng ta sẽ thực hiện các Thí nghiệm cân não trong file `lab-guide.md`:
+Chúng ta sẽ thực hiện các Thực nghiệm cân não trong file `lab-guide.md`:
 
-1.  **Thí nghiệm 1:** Tạo Service ClusterIP cho Nginx. Chứng minh cú sốc `ping ClusterIP` bị timeout nhưng `curl` lại trả về HTML vèo vèo.
-2.  **Thí nghiệm 2:** Lên `worker1`, gõ grep iptables để lần theo các chuỗi `KUBE-SERVICES` -> `KUBE-SVC-xxx` -> `KUBE-SEP-xxx` để thấy xác suất rẽ nhánh thống kê.
-3.  **Thí nghiệm 3:** Kiểm tra cache của module NAT thông qua lệnh `conntrack`.
-4.  **Thí nghiệm 4:** Chuyển sang NodePort và dùng IP của bất kỳ Node nào để truy cập ứng dụng.
+1.  **Thực nghiệm 1:** Tạo Service ClusterIP cho Nginx. Chứng minh cú sốc `ping ClusterIP` bị timeout nhưng `curl` lại trả về HTML vèo vèo.
+2.  **Thực nghiệm 2:** Lên `worker1`, gõ grep iptables để lần theo các chuỗi `KUBE-SERVICES` -> `KUBE-SVC-xxx` -> `KUBE-SEP-xxx` để thấy xác suất rẽ nhánh thống kê.
+3.  **Thực nghiệm 3:** Kiểm tra cache của module NAT thông qua lệnh `conntrack`.
+4.  **Thực nghiệm 4:** Chuyển sang NodePort và dùng IP của bất kỳ Node nào để truy cập ứng dụng.
 
 👉 **Hãy tạm dừng video, mở terminal và thực hiện lab theo tệp `lab-guide.md` nhé!**
 

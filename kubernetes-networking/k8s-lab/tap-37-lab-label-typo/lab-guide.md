@@ -8,7 +8,7 @@ Tập này thực hành debug scenario giống Tập 19 (Calico) nhưng với Ci
 
 ---
 
-## 🔬 Thí nghiệm 1: Setup môi trường production với policy
+## 🔬 Thực nghiệm 1: Setup môi trường production với policy
 
 **SSH vào `controlplane`:**
 
@@ -84,7 +84,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 2: Debug với Hubble — 30 giây tìm root cause
+## 🔬 Thực nghiệm 2: Debug với Hubble — 30 giây tìm root cause
 
 **Trên `controlplane`:**
 
@@ -132,7 +132,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 3: Xác nhận root cause qua Cilium identity
+## 💥 Thực nghiệm 3: Xác nhận root cause qua Cilium identity
 
 **Trên `controlplane`:**
 
@@ -183,7 +183,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Fix label và verify với Hubble realtime
+## 🔬 Thực nghiệm 4: Fix label và verify với Hubble realtime
 
 **Trên `controlplane`:**
 

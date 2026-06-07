@@ -11,7 +11,7 @@ Tập này phân tích decision matrix, verify Cilium và Istio không conflict,
 
 ---
 
-## 🔬 Thí nghiệm 1: Baseline — Cilium standalone status
+## 🔬 Thực nghiệm 1: Baseline — Cilium standalone status
 
 **SSH vào `controlplane`:**
 
@@ -54,11 +54,11 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 2: Cài Istio (optional — cần RAM)
+## 🔬 Thực nghiệm 2: Cài Istio (optional — cần RAM)
 
 **Trên `controlplane`:**
 
-> Skip thí nghiệm này nếu cluster < 6GB RAM. Xem kết quả expected bên dưới.
+> Skip thực nghiệm này nếu cluster < 6GB RAM. Xem kết quả expected bên dưới.
 
 1. Download và cài Istio:
    ```bash
@@ -91,7 +91,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 3: So sánh overhead — với và không có sidecar
+## 💥 Thực nghiệm 3: So sánh overhead — với và không có sidecar
 
 **Trên `controlplane`:**
 
@@ -148,7 +148,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Decision matrix — hands-on evaluation
+## 🔬 Thực nghiệm 4: Decision matrix — hands-on evaluation
 
 **Trên `controlplane`:**
 

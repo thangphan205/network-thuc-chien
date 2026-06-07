@@ -8,7 +8,7 @@ Tập này enable Hubble metrics, scrape bằng Prometheus, tạo PrometheusRule
 
 ---
 
-## 🔬 Thí nghiệm 1: Enable Hubble Metrics
+## 🔬 Thực nghiệm 1: Enable Hubble Metrics
 
 **SSH vào `controlplane`:**
 
@@ -54,7 +54,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 2: Setup Prometheus scrape
+## 🔬 Thực nghiệm 2: Setup Prometheus scrape
 
 **Trên `controlplane`:**
 
@@ -132,7 +132,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 3: Generate traffic và xem metrics tăng
+## 💥 Thực nghiệm 3: Generate traffic và xem metrics tăng
 
 **Trên `controlplane`:**
 
@@ -208,7 +208,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Create PrometheusRule alerts
+## 🔬 Thực nghiệm 4: Create PrometheusRule alerts
 
 **Trên `controlplane`:**
 

@@ -34,9 +34,9 @@ style: |
 <!-- _class: ep -->
 
 # Tập 21
-## Lab 3: WireGuard MTU Black Hole — File nhỏ OK, file lớn fail
+## Lab 3: Sự cố truyền nhận file dung lượng lớn qua WireGuard (MTU Black Hole)
 
-**Phần 2 — Calico Labs** · `#WireGuard` `#MTU` `#PMTUD` `#lab` `#BlackHole`
+**Phần 2 — Calico Labs** · `#WireGuard` `#MTU` `#PMTUD` `#troubleshooting`
 
 ---
 
@@ -123,11 +123,11 @@ kubectl patch felixconfiguration default \
 
 Chúng ta sẽ thực hành:
 
-1. **Setup bug:** Bật WireGuard với `wireguardMTU: 1500` (sai).
-2. **Reproduce:** File nhỏ OK, file lớn 5MB hang → timeout.
-3. **Prove same-node OK:** Deploy server cùng node → file lớn pass (không qua WireGuard).
-4. **Debug:** `ping -M do -s 1440` xác định MTU thực tế.
-5. **Fix:** Set `wireguardMTU: 1420`, verify file lớn pass.
+1. **Setup incident:** Kích hoạt WireGuard mã hóa và cấu hình MTU mặc định.
+2. **Reproduce:** File nhỏ OK, file lớn chéo node bị treo (hang) -> timeout.
+3. **Thử thách 30 phút tự giải:** Học viên tự tìm nguyên nhân và khắc phục lỗi chéo node.
+4. **Hướng dẫn gỡ lỗi chuẩn:** Đối chiếu các kỹ thuật chẩn đoán (ping DF bit) và xử lý MTU.
+5. **Fix và verify:** Cấu hình MTU tối ưu, MSS Clamping và kiểm tra truyền file thành công.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 

@@ -8,7 +8,7 @@ Tập này deploy HTTP server thực, apply CiliumNetworkPolicy với L7 HTTP ru
 
 ---
 
-## 🔬 Thí nghiệm 1: Deploy HTTP server và baseline test
+## 🔬 Thực nghiệm 1: Deploy HTTP server và baseline test
 
 **SSH vào `controlplane`:**
 
@@ -69,7 +69,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 2: Apply L7 policy và verify HTTP 403
+## 💥 Thực nghiệm 2: Apply L7 policy và verify HTTP 403
 
 **Trên `controlplane`:**
 
@@ -134,7 +134,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 3: Verify Envoy proxy được sử dụng
+## 🔬 Thực nghiệm 3: Verify Envoy proxy được sử dụng
 
 **Trên `controlplane`:**
 
@@ -171,7 +171,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Hubble observe HTTP flows
+## 🔬 Thực nghiệm 4: Hubble observe HTTP flows
 
 **Trên `controlplane`:**
 

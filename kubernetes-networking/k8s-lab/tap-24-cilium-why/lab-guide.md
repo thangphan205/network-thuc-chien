@@ -9,7 +9,7 @@ Tập này cài Cilium thay thế CNI cũ, verify sockops active, và đo thực
 
 ---
 
-## 🔬 Thí nghiệm 1: Cài Cilium qua Helm
+## 🔬 Thực nghiệm 1: Cài Cilium qua Helm
 
 **SSH vào `controlplane`:**
 
@@ -55,7 +55,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 2: Verify sockops active
+## 🔬 Thực nghiệm 2: Verify sockops active
 
 **Trên `controlplane`:**
 
@@ -91,7 +91,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 3: So sánh latency same-node vs cross-node
+## 💥 Thực nghiệm 3: So sánh latency same-node vs cross-node
 
 **Trên `controlplane`:**
 
@@ -136,7 +136,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Đo và so sánh kết quả
+## 🔬 Thực nghiệm 4: Đo và so sánh kết quả
 
 **Trên `controlplane`:**
 

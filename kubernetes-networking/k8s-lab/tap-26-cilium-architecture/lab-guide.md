@@ -8,7 +8,7 @@ Tập này khám phá từng component Cilium, so sánh với Calico, và verify
 
 ---
 
-## 🔬 Thí nghiệm 1: Xem tất cả Cilium components
+## 🔬 Thực nghiệm 1: Xem tất cả Cilium components
 
 **SSH vào `controlplane`:**
 
@@ -56,7 +56,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 2: Inspect Endpoints và Identities
+## 🔬 Thực nghiệm 2: Inspect Endpoints và Identities
 
 **Trên `controlplane`:**
 
@@ -101,7 +101,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 3: Verify Identity persist khi Pod restart
+## 💥 Thực nghiệm 3: Verify Identity persist khi Pod restart
 
 **Trên `controlplane`:**
 
@@ -141,7 +141,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: So sánh Architecture với Calico
+## 🔬 Thực nghiệm 4: So sánh Architecture với Calico
 
 **Trên `controlplane`:**
 

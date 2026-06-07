@@ -23,7 +23,7 @@ Trong bài lab này, chúng ta sẽ bắt đầu bằng việc chuyển đổi F
 
 ---
 
-## 🚀 Thí nghiệm 1: Chuyển đổi từ VXLAN sang host-gw
+## 🚀 Thực nghiệm 1: Chuyển đổi từ VXLAN sang host-gw
 
 **SSH vào `controlplane`:**
 
@@ -47,7 +47,7 @@ Trong bài lab này, chúng ta sẽ bắt đầu bằng việc chuyển đổi F
 
 ---
 
-## 🚀 Thí nghiệm 2: Kiểm tra định tuyến và MTU trên worker1
+## 🚀 Thực nghiệm 2: Kiểm tra định tuyến và MTU trên worker1
 
 **SSH vào `worker1`:**
 
@@ -80,7 +80,7 @@ multipass shell worker1
 
 ---
 
-## 🚀 Thí nghiệm 3: Benchmark throughput với iperf3
+## 🚀 Thực nghiệm 3: Benchmark throughput với iperf3
 
 **Trên `controlplane`:**
 

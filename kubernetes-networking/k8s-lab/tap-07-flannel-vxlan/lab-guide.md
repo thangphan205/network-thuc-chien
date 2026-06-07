@@ -60,7 +60,7 @@ Câu trả lời là **Không**, nhờ vào cơ chế tự động đàm phán *
 
 ---
 
-## 🔬 Thí nghiệm 1: Bắt VXLAN traffic với tcpdump — Xem tận mắt 2 tầng IP
+## 🔬 Thực nghiệm 1: Bắt VXLAN traffic với tcpdump — Xem tận mắt 2 tầng IP
 
 **Mở 3 terminal song song.**
 
@@ -99,7 +99,7 @@ IP 10.244.1.X > 10.244.2.Y: ICMP echo request, id X, seq 1, length 64
 
 ---
 
-## 🔬 Thí nghiệm 2: Chứng minh 50 bytes overhead bằng length field
+## 🔬 Thực nghiệm 2: Chứng minh 50 bytes overhead bằng length field
 
 **Terminal worker1 — Bắt gói lọc theo dòng length:**
 ```bash
@@ -125,7 +125,7 @@ tcpdump sẽ in `length 142` ở outer và `length 92` ở inner. Hiệu số **
 
 ---
 
-## 🔬 Thí nghiệm 3: Đo MTU thực tế bằng DF bit (Don't Fragment)
+## 🔬 Thực nghiệm 3: Đo MTU thực tế bằng DF bit (Don't Fragment)
 
 **Trên `controlplane` — Kiểm tra MTU interface eth0 của pod-a:**
 ```bash
@@ -153,7 +153,7 @@ ping: local error: message too long, mtu=1450
 
 ---
 
-## 🔬 Thí nghiệm 4: Benchmark throughput VXLAN với iperf3
+## 🔬 Thực nghiệm 4: Benchmark throughput VXLAN với iperf3
 
 **Trên `controlplane` — Deploy iperf3 server trên worker2:**
 ```bash

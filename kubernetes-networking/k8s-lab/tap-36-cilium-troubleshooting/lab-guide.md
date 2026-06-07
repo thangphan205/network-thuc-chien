@@ -8,7 +8,7 @@ Tập này thực hành toàn bộ 5-level troubleshooting workflow của Cilium
 
 ---
 
-## 🔬 Thí nghiệm 1: Level 1 — cilium status health check
+## 🔬 Thực nghiệm 1: Level 1 — cilium status health check
 
 **SSH vào `controlplane`:**
 
@@ -56,7 +56,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 2: Level 2 — hubble observe flow debugging
+## 🔬 Thực nghiệm 2: Level 2 — hubble observe flow debugging
 
 **Trên `controlplane`:**
 
@@ -131,7 +131,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 3: Level 3 — Policy debugging với cilium CLI
+## 🔬 Thực nghiệm 3: Level 3 — Policy debugging với cilium CLI
 
 **Trên `controlplane`:**
 
@@ -189,7 +189,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Level 4 & 5 — BPF và Node connectivity
+## 🔬 Thực nghiệm 4: Level 4 & 5 — BPF và Node connectivity
 
 **Trên `controlplane`:**
 

@@ -24,7 +24,7 @@ Tập này bật eBPF dataplane, quan sát BPF programs được load vào tc ho
 
 ---
 
-## 🔬 Thí nghiệm 1: Kiểm tra kernel và BPF filesystem
+## 🔬 Thực nghiệm 1: Kiểm tra kernel và BPF filesystem
 
 **SSH vào `worker1`:**
 
@@ -44,7 +44,7 @@ multipass shell worker1
    # cgroup  tc  xdp    ← BPF filesystem mounted
    ```
 
-3. Kiểm tra bpftool có sẵn (sẽ dùng ở thí nghiệm sau):
+3. Kiểm tra bpftool có sẵn (sẽ dùng ở thực nghiệm sau):
    ```bash
    sudo bpftool version
    # libbpf v1.x.x
@@ -58,7 +58,7 @@ multipass shell worker1
 
 ---
 
-## 🔬 Thí nghiệm 2: Bật eBPF dataplane
+## 🔬 Thực nghiệm 2: Bật eBPF dataplane
 
 **SSH vào `controlplane`:**
 
@@ -104,7 +104,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 3: Xem eBPF programs được load
+## 🔬 Thực nghiệm 3: Xem eBPF programs được load
 
 **SSH vào `worker1`:**
 
@@ -186,7 +186,7 @@ multipass shell worker1
 
 ---
 
-## 🔬 Thí nghiệm 4: So sánh rule count
+## 🔬 Thực nghiệm 4: So sánh rule count
 
 **Trên `worker1`:**
 

@@ -70,7 +70,7 @@ kubelet → /etc/cni/net.d/10-flannel.conflist
 
 ---
 
-## 🔬 Thí nghiệm 1: Quan sát Cluster khi KHÔNG có Flannel
+## 🔬 Thực nghiệm 1: Quan sát Cluster khi KHÔNG có Flannel
 
 Giả sử bạn đang có một cụm trắng (chưa cài đặt CNI).
 
@@ -94,7 +94,7 @@ Giả sử bạn đang có một cụm trắng (chưa cài đặt CNI).
 
 ---
 
-## 🚀 Thí nghiệm 2: Cài đặt Flannel và quan sát sự thay đổi
+## 🚀 Thực nghiệm 2: Cài đặt Flannel và quan sát sự thay đổi
 
 **Trên Terminal đang SSH vào `controlplane`:**
 
@@ -119,7 +119,7 @@ Giả sử bạn đang có một cụm trắng (chưa cài đặt CNI).
 
 ---
 
-## 🔬 Thí nghiệm 3: Đọc subnet allocation từ K8s API
+## 🔬 Thực nghiệm 3: Đọc subnet allocation từ K8s API
 
 flanneld không dùng etcd riêng — nó đọc trực tiếp thông tin từ K8s API server.
 
@@ -154,7 +154,7 @@ flanneld không dùng etcd riêng — nó đọc trực tiếp thông tin từ K
 
 ---
 
-## 🔬 Thí nghiệm 4: Đọc subnet.env — "Hợp đồng" giữa flanneld và CNI plugin
+## 🔬 Thực nghiệm 4: Đọc subnet.env — "Hợp đồng" giữa flanneld và CNI plugin
 
 **SSH vào `worker1`:**
 
@@ -182,7 +182,7 @@ multipass shell worker1
 
 ---
 
-## 🕵️‍♂️ Thí nghiệm 5: Phân tích FDB và ARP — "Bản đồ" 3 bước của VTEP
+## 🕵️‍♂️ Thực nghiệm 5: Phân tích FDB và ARP — "Bản đồ" 3 bước của VTEP
 
 Vẫn ở `worker1`, trace đường đi của packet từ pod-a đến pod-b (trên worker2):
 
@@ -230,7 +230,7 @@ kubectl rollout restart ds kube-flannel-ds -n kube-flannel
 
 ---
 
-## 🌐 Thí nghiệm 6: Kiểm chứng kết nối Cross-Node
+## 🌐 Thực nghiệm 6: Kiểm chứng kết nối Cross-Node
 
 **Trên Terminal đang SSH vào `controlplane`:**
 

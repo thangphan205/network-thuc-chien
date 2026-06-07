@@ -8,7 +8,7 @@
 
 ---
 
-## 🔬 Thí nghiệm 1: Trạng thái "Vô danh" của Cluster
+## 🔬 Thực nghiệm 1: Trạng thái "Vô danh" của Cluster
 
 1. Mở Terminal và truy cập vào node `controlplane`:
    ```bash
@@ -41,7 +41,7 @@ Thoát khỏi shell của `controlplane` bằng lệnh `exit`.
 
 ---
 
-## 🚀 Thí nghiệm 2: Cấp mạng cho Cluster bằng Flannel CNI
+## 🚀 Thực nghiệm 2: Cấp mạng cho Cluster bằng Flannel CNI
 
 Chúng ta sẽ cài đặt Flannel, một CNI rất đơn giản và phổ biến dùng cơ chế VXLAN.
 
@@ -64,7 +64,7 @@ Chúng ta sẽ cài đặt Flannel, một CNI rất đơn giản và phổ biế
 
 ---
 
-## 🕵️‍♂️ Thí nghiệm 3: "Dấu vết" của CNI để lại
+## 🕵️‍♂️ Thực nghiệm 3: "Dấu vết" của CNI để lại
 
 1. Quay lại shell của `controlplane` (nếu bạn vừa thoát ra):
    ```bash

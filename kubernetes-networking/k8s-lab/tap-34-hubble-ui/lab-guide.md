@@ -8,7 +8,7 @@ Tập này mở Hubble UI, generate traffic patterns, apply policy để tạo R
 
 ---
 
-## 🔬 Thí nghiệm 1: Mở Hubble UI
+## 🔬 Thực nghiệm 1: Mở Hubble UI
 
 **SSH vào `controlplane`:**
 
@@ -41,12 +41,12 @@ multipass shell controlplane
    ```
 
 4. Mở browser: `http://localhost:12000`
-   - Chọn namespace `production` từ dropdown (sẽ có sau khi deploy ở thí nghiệm 2)
+   - Chọn namespace `production` từ dropdown (sẽ có sau khi deploy ở thực nghiệm 2)
    - Lúc này Service Map trống — chưa có traffic
 
 ---
 
-## 🔬 Thí nghiệm 2: Deploy 3-tier stack và generate traffic
+## 🔬 Thực nghiệm 2: Deploy 3-tier stack và generate traffic
 
 **Trên `controlplane`:**
 
@@ -126,7 +126,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 3: Tạo RED edge — block frontend → database
+## 💥 Thực nghiệm 3: Tạo RED edge — block frontend → database
 
 **Trên `controlplane`:**
 
@@ -175,7 +175,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Click và trace incident trong UI
+## 🔬 Thực nghiệm 4: Click và trace incident trong UI
 
 **Trong Hubble UI browser:**
 

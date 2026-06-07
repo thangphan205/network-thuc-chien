@@ -34,9 +34,9 @@ style: |
 <!-- _class: ep -->
 
 # Tập 22
-## Lab 4: Cross-namespace AND/OR Bug — Prometheus không scrape được Backend
+## Lab 4: Sự cố phân quyền truy cập chéo Namespace (Logic AND vs OR)
 
-**Phần 2 — Calico Labs** · `#lab` `#cross-namespace` `#prometheus` `#AND` `#OR`
+**Phần 2 — Calico Labs** · `#lab` `#cross-namespace` `#prometheus` `#troubleshooting`
 
 ---
 
@@ -176,11 +176,11 @@ kubectl -n monitoring exec prometheus -- nc -zv <backend-ip> 9090
 
 Chúng ta sẽ thực hành:
 
-1. **Setup:** Deploy policy với cả 2 bugs — namespace không có label, dùng OR thay AND.
-2. **Reproduce:** Prometheus timeout — không vào được backend.
-3. **Debug Bug 1:** Đọc YAML cẩn thận, đếm dấu `"-"`, xác định OR vs AND.
-4. **Debug Bug 2:** `kubectl get namespace --show-labels`, phát hiện thiếu label.
-5. **Fix đúng thứ tự:** Fix Bug 2 trước → chứng minh Bug 1 tạo security hole → fix cả hai.
+1. **Setup incident:** Deploy NetworkPolicy chéo namespace (cấu hình lỗi chéo namespace).
+2. **Reproduce:** Xác minh Prometheus bị chặn kết nối (Connection Timeout) tới Backend.
+3. **Thử thách 30 phút tự giải:** Học viên tự tìm nguyên nhân và khắc phục lỗi logic ẩn.
+4. **Hướng dẫn gỡ lỗi chuẩn:** Đối chiếu các bước troubleshooting chuẩn để tìm ra 2 lỗi ẩn.
+5. **Fix và verify:** Áp dụng logic AND chính xác, dán nhãn namespace và kiểm tra ma trận kết nối bảo mật.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 

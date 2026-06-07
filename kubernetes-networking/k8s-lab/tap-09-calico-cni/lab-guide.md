@@ -25,9 +25,9 @@ Bài thực hành này hướng dẫn bạn khởi tạo một cụm Kubernetes 
 
 ---
 
-## 🔬 Thí nghiệm 1: Khởi tạo cụm Kubernetes & Cài đặt Calico CNI
+## 🔬 Thực nghiệm 1: Khởi tạo cụm Kubernetes & Cài đặt Calico CNI
 
-Thí nghiệm này sẽ hướng dẫn bạn bootstrap cụm K8s qua `kubeadm` và cài đặt Calico CNI để đưa các node từ trạng thái `NotReady` sang `Ready`.
+Thực nghiệm này sẽ hướng dẫn bạn bootstrap cụm K8s qua `kubeadm` và cài đặt Calico CNI để đưa các node từ trạng thái `NotReady` sang `Ready`.
 
 ### Bước 1: Khởi tạo Control Plane
 
@@ -141,7 +141,7 @@ Thí nghiệm này sẽ hướng dẫn bạn bootstrap cụm K8s qua `kubeadm` v
 
 ---
 
-## 💥 Thí nghiệm 2: Verify NetworkPolicy được enforce thực sự
+## 💥 Thực nghiệm 2: Verify NetworkPolicy được enforce thực sự
 
 Để kiểm chứng tính năng vượt trội nhất của Calico so với Flannel (khả năng áp dụng NetworkPolicy thực sự), chúng ta tiến hành kịch bản kiểm thử bảo mật.
 
@@ -212,7 +212,7 @@ kubectl exec frontend -- nc -zv -w 3 $DB_IP 5432
 
 ---
 
-## 🔬 Thí nghiệm 3: Kiểm tra iptables chains do Felix tạo
+## 🔬 Thực nghiệm 3: Kiểm tra iptables chains do Felix tạo
 
 Felix là thành phần chạy trên từng Node của Calico chịu trách nhiệm biên dịch NetworkPolicy thành cấu hình iptables ở cấp độ Linux kernel.
 

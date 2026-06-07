@@ -9,7 +9,7 @@ Tập này reproduce và debug WireGuard MTU bug với Cilium: inject MTU sai (1
 
 ---
 
-## 🔬 Thí nghiệm 1: Enable WireGuard và inject MTU bug
+## 🔬 Thực nghiệm 1: Enable WireGuard và inject MTU bug
 
 **SSH vào `controlplane`:**
 
@@ -60,7 +60,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 2: Reproduce — File lớn fail, file nhỏ OK
+## 💥 Thực nghiệm 2: Reproduce — File lớn fail, file nhỏ OK
 
 **Trên `controlplane`:**
 
@@ -101,7 +101,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 3: Debug với Hubble — Không cần ping test!
+## 🔬 Thực nghiệm 3: Debug với Hubble — Không cần ping test!
 
 **Trên `controlplane`:**
 
@@ -157,7 +157,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Fix và verify với Hubble realtime
+## 🔬 Thực nghiệm 4: Fix và verify với Hubble realtime
 
 **Trên `controlplane`:**
 

@@ -8,7 +8,7 @@ Tập này quan sát BPF programs được Cilium attach tại từng hook point
 
 ---
 
-## 🔬 Thí nghiệm 1: List BPF programs theo hook type
+## 🔬 Thực nghiệm 1: List BPF programs theo hook type
 
 **SSH vào `controlplane`:**
 
@@ -59,7 +59,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 2: Xem TC programs gắn trên veth của Pod
+## 🔬 Thực nghiệm 2: Xem TC programs gắn trên veth của Pod
 
 **Trên `controlplane`:**
 
@@ -112,7 +112,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 3: Verify sockops program active
+## 🔬 Thực nghiệm 3: Verify sockops program active
 
 **Trên `controlplane`:**
 
@@ -144,7 +144,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 4: Quan sát TC program xử lý packet thực tế
+## 💥 Thực nghiệm 4: Quan sát TC program xử lý packet thực tế
 
 **Trên `controlplane`:**
 

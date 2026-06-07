@@ -9,7 +9,7 @@ Tập này deploy 4 pods để có 2 scenarios (same-node và cross-node), đo l
 
 ---
 
-## 🔬 Thí nghiệm 1: Deploy 4 pods cho 2 scenarios
+## 🔬 Thực nghiệm 1: Deploy 4 pods cho 2 scenarios
 
 **SSH vào `controlplane`:**
 
@@ -67,7 +67,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 2: Đo latency — same-node vs cross-node
+## 🔬 Thực nghiệm 2: Đo latency — same-node vs cross-node
 
 **Trên `controlplane`:**
 
@@ -96,7 +96,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 3: Đo bandwidth — same-node vs cross-node
+## 💥 Thực nghiệm 3: Đo bandwidth — same-node vs cross-node
 
 **Trên `controlplane`:**
 
@@ -127,7 +127,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Verify sockops counter tăng
+## 🔬 Thực nghiệm 4: Verify sockops counter tăng
 
 **Trên `controlplane`:**
 

@@ -65,12 +65,12 @@ Hôm nay chúng ta sẽ phơi bày một "sự lãng phí ngầm" trong mạng K
 
 ## 🔬 PHẦN 1: Bắt đầu làm Lab ngay!
 
-Chúng ta sẽ thực hiện các Thí nghiệm đột phá trong file `lab-guide.md`:
+Chúng ta sẽ thực hiện các Thực nghiệm đột phá trong file `lab-guide.md`:
 
-1.  **Thí nghiệm 1:** Chạy `tcpdump` nghe lén UDP port 53 trên `pod-a`. Chạy curl tới `httpbin.org`. Chứng kiến cảnh 1 lần curl gửi ra tận **4 queries DNS** rác!
-2.  **Thí nghiệm 2:** Tối ưu DNS bằng FQDN — thêm dấu chấm cuối tên miền: `curl httpbin.org.` và chứng kiến số lượng query giảm về **1**.
-3.  **Thí nghiệm 3:** Ép cấu hình `ndots:2` bằng cách khai báo `dnsConfig` trong YAML của Pod.
-4.  **Thí nghiệm 4:** Tạo Headless Service (`clusterIP: None`) và chạy `nslookup` để thấy DNS trả về trực tiếp danh sách IP thật của Pod.
+1.  **Thực nghiệm 1:** Chạy `tcpdump` nghe lén UDP port 53 trên `pod-a`. Chạy curl tới `httpbin.org`. Chứng kiến cảnh 1 lần curl gửi ra tận **4 queries DNS** rác!
+2.  **Thực nghiệm 2:** Tối ưu DNS bằng FQDN — thêm dấu chấm cuối tên miền: `curl httpbin.org.` và chứng kiến số lượng query giảm về **1**.
+3.  **Thực nghiệm 3:** Ép cấu hình `ndots:2` bằng cách khai báo `dnsConfig` trong YAML của Pod.
+4.  **Thực nghiệm 4:** Tạo Headless Service (`clusterIP: None`) và chạy `nslookup` để thấy DNS trả về trực tiếp danh sách IP thật của Pod.
 
 👉 **Hãy tạm dừng video, mở terminal và bắt đầu gõ lệnh trong tệp `lab-guide.md` nhé!**
 

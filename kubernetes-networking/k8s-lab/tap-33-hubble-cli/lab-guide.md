@@ -9,7 +9,7 @@ Tập này setup hubble CLI, dùng `hubble observe` để debug "pod không conn
 
 ---
 
-## 🔬 Thí nghiệm 1: Setup hubble CLI và verify connection
+## 🔬 Thực nghiệm 1: Setup hubble CLI và verify connection
 
 **SSH vào `controlplane`:**
 
@@ -49,7 +49,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 2: Deploy production stack và reproduce incident
+## 💥 Thực nghiệm 2: Deploy production stack và reproduce incident
 
 **Trên `controlplane`:**
 
@@ -109,7 +109,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 3: Debug với Hubble trong 30 giây
+## 🔬 Thực nghiệm 3: Debug với Hubble trong 30 giây
 
 **Trên `controlplane`:**
 
@@ -175,7 +175,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Cheat sheet drills — thực hành filter patterns
+## 🔬 Thực nghiệm 4: Cheat sheet drills — thực hành filter patterns
 
 **Trên `controlplane`:**
 

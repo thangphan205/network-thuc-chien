@@ -8,7 +8,7 @@ Tập này deploy pod với egress policy cho phép chỉ một số domain, ver
 
 ---
 
-## 🔬 Thí nghiệm 1: Verify internet access trước khi có policy
+## 🔬 Thực nghiệm 1: Verify internet access trước khi có policy
 
 **SSH vào `controlplane`:**
 
@@ -46,7 +46,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 2: Apply default deny egress + verify blocked
+## 💥 Thực nghiệm 2: Apply default deny egress + verify blocked
 
 **Trên `controlplane`:**
 
@@ -79,7 +79,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 3: Apply toFQDNs policy — allow httpbin.org only
+## 🔬 Thực nghiệm 3: Apply toFQDNs policy — allow httpbin.org only
 
 **Trên `controlplane`:**
 
@@ -150,7 +150,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Demo CDN IP rotation handling
+## 🔬 Thực nghiệm 4: Demo CDN IP rotation handling
 
 **Trên `controlplane`:**
 

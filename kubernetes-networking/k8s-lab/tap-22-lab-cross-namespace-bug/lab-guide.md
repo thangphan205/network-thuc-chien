@@ -1,6 +1,9 @@
-# Lab Tập 22: Lab 4 — Cross-namespace AND/OR Bug
+# Lab Tập 22: Lab 4 — Sự cố phân quyền truy cập chéo Namespace (Logic AND vs OR)
 
-Tập này thực hành gỡ lỗi (troubleshooting) kịch bản "Bẫy kép" (Bug Masking) trong chính sách chéo namespace (cross-namespace policy): lỗi thiếu nhãn namespace vô tình che giấu lỗi nghiêm trọng về logic OR thay vì AND.
+**Hiện tượng hiện tại:**
+Hệ thống giám sát Prometheus chạy trong namespace `monitoring` không thể kết nối tới Pod Backend trong namespace `production` để thu thập dữ liệu metrics trên cổng TCP `9090`. Cấu hình NetworkPolicy chéo namespace đã được thiết lập để chỉ cho phép Prometheus Pod từ namespace `monitoring` truy cập. Logs hệ thống cho thấy Prometheus liên tục báo lỗi **Connection Timeout** khi kết nối tới Backend, đồng thời xuất hiện lo ngại về rủi ro bảo mật (một số Pod không có quyền hạn nhưng có thể kết nối được tới Backend chéo namespace khi thay đổi cấu hình).
+
+Nhiệm vụ của bạn là điều tra, phát hiện các lỗi ẩn trong NetworkPolicy và khắc phục triệt để.
 
 ### Sơ đồ so sánh cú pháp logic: AND vs OR trong Kubernetes NetworkPolicy
 
@@ -35,8 +38,8 @@ graph TD
   end
   
   classDef default fill:#151530,stroke:#2a2050,color:#e2e8f0;
-  class ResultOR fill:#2d080a,stroke:#f87171,color:#ff8a8a;
-  class ResultAND fill:#0a2d0a,stroke:#34d399,color:#a7f3d0;
+  style ResultOR fill:#2d080a,stroke:#f87171,color:#ff8a8a;
+  style ResultAND fill:#0a2d0a,stroke:#34d399,color:#a7f3d0;
 ```
 
 ---
@@ -47,7 +50,7 @@ graph TD
 
 ---
 
-## 🔬 Thí nghiệm 1: Setup môi trường với 2 bugs được plant sẵn
+## 🔬 Phần 1: Cấu hình môi trường và Kích hoạt Sự cố (Mô phỏng Production Incident)
 
 **SSH vào `controlplane`:**
 
@@ -55,34 +58,18 @@ graph TD
 multipass shell controlplane
 ```
 
-1. Tạo namespaces — **cố tình KHÔNG label namespace monitoring** (Bug 2):
+1. Tạo các namespace phục vụ cho bài lab:
    ```bash
    kubectl create namespace monitoring 2>/dev/null || true
    kubectl create namespace production 2>/dev/null || true
-
-   # KHÔNG chạy: kubectl label namespace monitoring name=monitoring
-   # (đây là Bug 2 cần debug)
    ```
 
-2. Verify namespace không có label:
+2. Kiểm tra các nhãn (labels) của namespace `monitoring`:
    ```bash
    kubectl get namespace monitoring --show-labels
-   # NAME        LABELS
-   # monitoring  kubernetes.io/metadata.name=monitoring   ← Không có name=monitoring custom label
    ```
 
-   > [!TIP]
-   > **Pro Tip về Kubernetes Auto-Labeling:**
-   > Kể từ Kubernetes v1.21+, Kubernetes tự động gắn nhãn mặc định `kubernetes.io/metadata.name: <namespace-name>` cho tất cả các namespace. 
-   > Do đó, trong thực tế production hiện đại, ta không cần gắn nhãn custom `name: monitoring` thủ công, mà có thể trỏ thẳng trực tiếp `namespaceSelector` vào nhãn mặc định này để tránh phát sinh lỗi quên gắn nhãn:
-   > ```yaml
-   > namespaceSelector:
-   >   matchLabels:
-   >     kubernetes.io/metadata.name: monitoring
-   > ```
-   > Tuy nhiên, bài lab này cố tình thiết lập theo cách viết nhãn custom cổ điển để minh họa hoàn hảo kịch bản "Bẫy kép" (Bug Masking) thường gặp trên thực tế.
-
-3. Deploy backend với metrics endpoint:
+3. Triển khai Pod Backend trong namespace `production`:
    ```bash
    kubectl apply -n production -f - <<'EOF'
    apiVersion: v1
@@ -99,7 +86,7 @@ multipass shell controlplane
    EOF
    ```
 
-4. Deploy Prometheus (legit):
+4. Triển khai Pod Prometheus chính thống trong namespace `monitoring`:
    ```bash
    kubectl apply -n monitoring -f - <<'EOF'
    apiVersion: v1
@@ -116,12 +103,12 @@ multipass shell controlplane
    EOF
    ```
 
-5. Deploy rogue pod trong monitoring (không có role=prometheus):
+5. Triển khai một Pod lạ (`rogue`) không có nhãn Prometheus trong namespace `monitoring` để thử nghiệm bảo mật:
    ```bash
    kubectl run rogue -n monitoring --image=nicolaka/netshoot -- sleep infinity
    ```
 
-6. Chờ ready và ghi IPs:
+6. Chờ cho các Pod ở trạng thái Ready và ghi lại địa chỉ IP của Backend:
    ```bash
    kubectl -n production wait --for=condition=Ready pod/backend --timeout=60s
    kubectl -n monitoring wait --for=condition=Ready pod/prometheus pod/rogue --timeout=60s
@@ -129,13 +116,7 @@ multipass shell controlplane
    echo "Backend IP: $BACKEND_IP"
    ```
 
----
-
-## 💥 Thí nghiệm 2: Apply policy với 2 bugs và reproduce symptom
-
-**Trên `controlplane`:**
-
-1. Apply default deny:
+7. Thiết lập NetworkPolicy mặc định chặn tất cả lưu lượng đi vào (`default-deny`) trong namespace `production`:
    ```bash
    kubectl apply -n production -f - <<'EOF'
    apiVersion: networking.k8s.io/v1
@@ -149,7 +130,7 @@ multipass shell controlplane
    EOF
    ```
 
-2. Apply policy với cả 2 bugs:
+8. Áp dụng cấu hình NetworkPolicy chéo namespace cho Backend (sử dụng cấu hình do bộ phận vận hành thiết lập):
    ```bash
    kubectl apply -n production -f - <<'EOF'
    apiVersion: networking.k8s.io/v1
@@ -166,8 +147,8 @@ multipass shell controlplane
      - from:
        - namespaceSelector:
            matchLabels:
-             name: monitoring      # Bug 2: namespace chưa có label này!
-       - podSelector:              # Bug 1: Dấu "-" → OR thay vì AND!
+             name: monitoring
+       - podSelector:
            matchLabels:
              role: prometheus
        ports:
@@ -176,95 +157,82 @@ multipass shell controlplane
    EOF
    ```
 
-3. Reproduce — Prometheus vẫn timeout:
-   ```bash
-   kubectl -n monitoring exec prometheus -- nc -zv -w 3 $BACKEND_IP 9090
-   # (timeout) ← Cả 2 bugs ngăn cản
-   ```
+9. **Kích hoạt sự cố và quan sát triệu chứng:**
+   - Thử kết nối từ Pod Prometheus sang Backend (phải thành công nhưng thực tế báo lỗi):
+     ```bash
+     kubectl -n monitoring exec prometheus -- nc -zv -w 3 $BACKEND_IP 9090
+     # Kết quả: Connection Timeout!
+     ```
 
 ---
 
-## 🔬 Thí nghiệm 3: Debug Bug 2 — Namespace thiếu label
+## 🎯 Phần 2: Thử thách 30 Phút Tự Giải & Tự Tìm Lỗi (Troubleshoot Challenge)
 
-**Trên `controlplane`:**
+> [!IMPORTANT]
+> **Nhiệm vụ của học viên:**
+> Sự cố đang ở trạng thái "Bẫy kép" (Bug Masking) — có nhiều hơn 1 lỗi đang che giấu lẫn nhau.
+> 
+> Hãy tự mình điều tra nguyên nhân dựa trên các phản xạ kỹ thuật của bản thân:
+> 1. Tại sao cấu hình NetworkPolicy cho phép Prometheus kết nối mà thực tế kết nối lại bị Timeout?
+> 2. NetworkPolicy `allow-prometheus-metrics` đang áp dụng logic nào (AND hay OR)? Điều này có gây rủi ro bảo mật nào không?
+> 3. Hãy tìm và khắc phục cả hai lỗi ẩn trong cụm.
+> 4. Xác nhận kết nối sau khi sửa: Chỉ cho phép Prometheus ở namespace `monitoring` truy cập Backend; các Pod khác trong namespace `monitoring` (như Pod `rogue`) hoặc Pod Prometheus ở namespace khác không được phép truy cập.
+> 
+> *Bạn có đúng **30 phút** để tự giải quyết thử thách này trước khi tham khảo hướng dẫn ở Phần 3.*
 
-1. **Đọc policy kỹ:**
-   ```bash
-   kubectl -n production get networkpolicy allow-prometheus-metrics -o yaml | grep -A10 "ingress:"
-   # ingress:
-   # - from:
-   #   - namespaceSelector:
-   #       matchLabels:
-   #         name: monitoring    ← Chờ label này
-   #   - podSelector:
-   #       matchLabels:
-   #         role: prometheus
+---
+
+## 📖 Phần 3: Hướng dẫn Troubleshooting từng bước chuẩn (Chỉ xem sau khi tự làm)
+
+Nếu đã qua 30 phút hoặc bạn đã tự giải xong, hãy đối chiếu các bước xử lý của bạn với quy trình điều tra chuẩn dưới đây:
+
+### Bước 1: Phân tích YAML và Lỗi ẩn thứ nhất (Logic AND vs OR)
+1. Hãy nhìn kỹ vào phần `ingress.from` của policy `allow-prometheus-metrics`:
+   ```yaml
+     ingress:
+     - from:
+       - namespaceSelector:
+           matchLabels:
+             name: monitoring
+       - podSelector:
+           matchLabels:
+             role: prometheus
    ```
+   **Phân tích lỗi cú pháp (Bug 1 - OR Logic):**
+   Trong Kubernetes NetworkPolicy, mỗi dấu gạch ngang (`-`) trong danh sách đại diện cho một phần tử độc lập trong mảng. Khi khai báo mảng gồm 2 phần tử như trên, Kubernetes hiểu đây là phép toán **OR (Hoặc)**:
+   - Cho phép mọi Pod từ namespace có nhãn `name: monitoring`.
+   - **HOẶC** cho phép mọi Pod có nhãn `role: prometheus` từ **BẤT KỲ** namespace nào.
+   
+   *Rủi ro bảo mật:* Nếu chính sách này hoạt động, bất kỳ Pod nào có nhãn `role: prometheus` triển khai ở namespace `default` hay `dev` đều có quyền kết nối vào Backend của production!
 
-2. **Kiểm tra namespace labels:**
+---
+
+### Bước 2: Phân tích Lỗi ẩn thứ hai (Thiếu nhãn Namespace) và hiện tượng Bug Masking
+Mặc dù chính sách trên bị lỗ hổng bảo mật cho phép kết nối quá rộng, tại sao Prometheus vẫn bị Connection Timeout?
+1. Kiểm tra nhãn thực tế của namespace `monitoring`:
    ```bash
    kubectl get namespace monitoring --show-labels
-   # NAME        LABELS
-   # monitoring  kubernetes.io/metadata.name=monitoring
-   # ← Không có "name=monitoring"! Đây là Bug 2
+   # LABELS: kubernetes.io/metadata.name=monitoring
    ```
-
-3. **Hiểu hậu quả:**
-   ```
-   namespaceSelector: {name: monitoring} không match namespace nào
-   → Item 1 trong from list = empty set (không match Pod nào)
-   → Chỉ Item 2 còn tác dụng: podSelector: {role: prometheus}
-   → Any pod với role=prometheus trong BẤT KỲ namespace đều được vào!
-   → Nhưng Prometheus vẫn timeout vì...
-   ```
-
-4. **Kiểm tra nhanh — Rogue pod có vào được không?**
-   ```bash
-   kubectl -n monitoring exec rogue -- nc -zv -w 3 $BACKEND_IP 9090
-   # (timeout) ← Bug 2 đang mask Bug 1 (namespace không match → rule vô hiệu)
-   ```
+   **Phát hiện lỗi (Bug 2 - Missing Namespace Label):**
+   Namespace `monitoring` hoàn toàn không có nhãn custom `name: monitoring` như policy yêu cầu.
+   - Do đó, `namespaceSelector` không chọn được namespace nào.
+   - Phần tử thứ nhất trong mảng `from` bị coi là rỗng.
+   - Kết nối từ Prometheus Pod (nằm trong namespace `monitoring`) bị chặn bởi policy `default-deny` vì nó không khớp với phần tử thứ nhất (mismatch namespace label). Nó cũng không khớp với phần tử thứ hai (mặc dù có nhãn `role: prometheus`, nhưng do lỗi cấu trúc OR logic chưa hoạt động bình thường trên Calico khi bị lỗi namespaceSelector chặn trước đó).
+   
+   *Hiện tượng Bug Masking:* Bug 2 (thiếu nhãn namespace) đã vô tình che giấu Bug 1 (lỗ hổng bảo mật OR logic). Nếu học viên chỉ sửa Bug 2 bằng cách thêm nhãn cho namespace mà không sửa Bug 1, hệ thống sẽ mở thông mạng nhưng vô tình tạo ra lỗ hổng bảo mật nghiêm trọng!
 
 ---
 
-## 🔬 Thí nghiệm 4: Debug Bug 1 — OR thay vì AND
+### Bước 3: Khắc phục sự cố đúng cách
 
-**Trên `controlplane`:**
-
-1. **Fix Bug 2 trước** — thêm label namespace:
+Ta phải sửa đồng thời cả 2 lỗi:
+1. **Gắn nhãn chính xác cho namespace `monitoring`:**
    ```bash
    kubectl label namespace monitoring name=monitoring
    ```
-
-2. **Ngay lập tức test — Rogue pod thể hiện Bug 1:**
-   ```bash
-   kubectl -n monitoring exec rogue -- nc -zv $BACKEND_IP 9090
-   # Connection succeeded! ← BUG 1 lộ ra! Rogue (không có role=prometheus) vào được!
-   ```
-   *Đây là lý do phải fix CẢ HAI bugs.*
-
-3. **Phân tích YAML cẩn thận:**
-   ```yaml
-   from:
-   - namespaceSelector:    # Dấu "-" → Item 1 (OR với Item 2)
-       matchLabels:
-         name: monitoring
-   - podSelector:          # Dấu "-" → Item 2 (OR với Item 1)
-       matchLabels:
-         role: prometheus
-   ```
-   ```
-   OR logic:
-   - Bất kỳ Pod nào trong namespace monitoring vào được (match Item 1)
-   - Bất kỳ Pod có role=prometheus trong ANY namespace vào được (match Item 2)
-   ```
-
----
-
-## 🔬 Thí nghiệm 5: Fix cả 2 bugs đúng cách
-
-**Trên `controlplane`:**
-
-1. Apply policy đúng — **AND logic** (không có dấu `-` thừa):
+2. **Cập nhật NetworkPolicy sử dụng logic AND chính xác:**
+   Xóa dấu gạch ngang (`-`) trước `podSelector` để gộp chung điều kiện `namespaceSelector` và `podSelector` vào cùng một phần tử (phép toán **AND**):
    ```bash
    kubectl apply -n production -f - <<'EOF'
    apiVersion: networking.k8s.io/v1
@@ -281,33 +249,38 @@ multipass shell controlplane
      - from:
        - namespaceSelector:
            matchLabels:
-             name: monitoring   # Namespace phải là monitoring
-         podSelector:           # ← KHÔNG có dấu "-" = AND!
+             name: monitoring
+         podSelector:           # <-- ĐÃ XÓA DẤU GẠCH NGANG CỦA MẢNG ĐỂ DÙNG LOGIC AND
            matchLabels:
-             role: prometheus   # VÀ Pod phải là prometheus
+             role: prometheus
        ports:
        - protocol: TCP
          port: 9090
    EOF
    ```
 
-2. Test matrix đầy đủ:
+---
+
+### Bước 4: Kiểm tra và Xác minh (Test Matrix bắt buộc)
+
+Sau khi sửa, ta phải xác nhận lại ma trận kết nối để đảm bảo an toàn tuyệt đối:
+1. **Test 1: Pod Prometheus chính thống kết nối thành công:**
    ```bash
-   # Prometheus (legit) — phải qua ✅
    kubectl -n monitoring exec prometheus -- nc -zv $BACKEND_IP 9090
    # Connection succeeded! ✅
-
-   # Rogue (monitoring namespace, không có role=prometheus) — phải bị chặn ✅
+   ```
+2. **Test 2: Pod rogue (cùng namespace monitoring nhưng không có nhãn Prometheus) bị chặn:**
+   ```bash
    kubectl -n monitoring exec rogue -- nc -zv -w 3 $BACKEND_IP 9090
-   # (timeout) ✅ Đúng!
-
-   # Test pod với role=prometheus nhưng namespace khác — phải bị chặn ✅
-   kubectl run fake-prom --image=nicolaka/netshoot \
-     --labels="role=prometheus" -- sleep infinity
+   # (Kết quả timeout) ✅ Thành công chặn truy cập trái phép!
+   ```
+3. **Test 3: Pod có nhãn Prometheus ở namespace khác bị chặn:**
+   Tạo Pod giả mạo ở namespace default để kiểm tra:
+   ```bash
+   kubectl run fake-prom --image=nicolaka/netshoot --labels="role=prometheus" -- sleep infinity
    kubectl wait --for=condition=Ready pod/fake-prom --timeout=30s
-   FAKE_IP=$(kubectl get pod fake-prom -o jsonpath='{.status.podIP}')
    kubectl exec fake-prom -- nc -zv -w 3 $BACKEND_IP 9090
-   # (timeout) ✅ Đúng! Sai namespace dù có đúng label
+   # (Kết quả timeout) ✅ Thành công chặn truy cập từ namespace khác!
    ```
 
 ---
@@ -325,12 +298,9 @@ kubectl delete pod fake-prom 2>/dev/null || true
 
 ## ✅ Tổng kết
 
-1. **2 bugs mask nhau:** Bug 2 (thiếu namespace label) làm policy không hoạt động → Bug 1 (OR) không lộ ra. Fix Bug 2 trước khi fix Bug 1 sẽ tạo security hole thực sự.
-2. **Phải fix cả hai cùng lúc:** Xóa dấu `-` thừa (AND) + thêm namespace label.
-3. **Test matrix bắt buộc sau mỗi policy:** Test legit pod, rogue pod cùng namespace, pod với label đúng nhưng namespace sai.
-4. **Checklist verification:**
-   ```bash
-   kubectl get namespace <ns> --show-labels      # Verify namespace labels
-   # Đếm dấu "-" trong YAML from block           # AND vs OR
-   # Test rogue pod từ cùng namespace            # Verify không quá rộng
-   ```
+1. **Hiện tượng Bug Masking:** Lỗi này che giấu lỗi kia là rủi ro rất cao trong an toàn mạng. Hãy luôn gỡ lỗi một cách toàn diện thay vì dừng lại ngay khi hệ thống vừa kết nối được.
+2. **Logic AND/OR trong NetworkPolicy:**
+   - Khai báo có dấu `-` riêng biệt cho từng Selector = phép toán **OR**.
+   - Khai báo chung dưới cùng một dấu `-` của mảng `from` = phép toán **AND**.
+3. **Quy tắc kiểm tra an toàn mạng (Security Matrix Test):** Luôn kiểm tra 3 trường hợp: đối tượng đúng (pass), đối tượng sai nhãn trong cùng namespace (block), đối tượng đúng nhãn ở namespace sai (block).
+4. **Pro Tip về Auto-Labeling:** Trong thực tế hiện đại, khuyến khích sử dụng nhãn tự động `kubernetes.io/metadata.name: <namespace-name>` cho `namespaceSelector` để tránh lỗi quên gắn nhãn thủ công (Bug 2).

@@ -6,17 +6,17 @@ Tập này dựng stack observability đầy đủ cho Calico: Felix metrics →
 
 ```mermaid
 graph TD
-  subgraph Kubernetes Nodes (DaemonSet)
+  subgraph k8s_nodes ["Kubernetes Nodes (DaemonSet)"]
     A1["Node 1: calico-node<br/>(Felix & BIRD)"] -- "Exposes metrics<br/>Port 9091" --> S
     A2["Node 2: calico-node<br/>(Felix & BIRD)"] -- "Exposes metrics<br/>Port 9091" --> S
     A3["Node 3: calico-node<br/>(Felix & BIRD)"] -- "Exposes metrics<br/>Port 9091" --> S
   end
 
-  subgraph Service Discovery (calico-system)
+  subgraph service_discovery ["Service Discovery (calico-system)"]
     S["Service: calico-felix-metrics<br/>(Selector: k8s-app=calico-node)"]
   end
 
-  subgraph Prometheus Stack (monitoring)
+  subgraph prometheus_stack ["Prometheus Stack (monitoring)"]
     SM["ServiceMonitor: calico-felix<br/>(Spec.selector: k8s-app=calico-node)"] -.->|Discovers| S
     PO["Prometheus Operator"] -->|Reads ServiceMonitor| SM
     PO -->|Configures Scrape Targets| P["Prometheus Server"]
@@ -26,7 +26,7 @@ graph TD
     P -->|Alert Firing| AM["AlertManager"]
   end
 
-  subgraph Visualization
+  subgraph visualization ["Visualization"]
     G["Grafana Dashboards"] -->|Queries API| P
   end
 
@@ -50,7 +50,7 @@ graph TD
 
 ---
 
-## 🔬 Thí nghiệm 1: Bật Felix metrics và verify
+## 🔬 Thực nghiệm 1: Bật Felix metrics và verify
 
 **SSH vào `controlplane`:**
 
@@ -85,7 +85,7 @@ multipass shell controlplane
 
 ---
 
-## 🚀 Thí nghiệm 2: Cài Helm và deploy kube-prometheus-stack
+## 🚀 Thực nghiệm 2: Cài Helm và deploy kube-prometheus-stack
 
 **Trên `controlplane`:**
 
@@ -122,7 +122,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 3: Cấu hình ServiceMonitor và Service cho Felix
+## 🔬 Thực nghiệm 3: Cấu hình ServiceMonitor và Service cho Felix
 
 **Trên `controlplane`:**
 
@@ -184,7 +184,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Query metrics trong Prometheus
+## 🔬 Thực nghiệm 4: Query metrics trong Prometheus
 
 **Trên `controlplane`:**
 
@@ -217,7 +217,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 5: Tạo Alert rules
+## 🔬 Thực nghiệm 5: Tạo Alert rules
 
 **Trên `controlplane`:**
 
@@ -273,7 +273,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 6: Trigger alert và xem firing
+## 💥 Thực nghiệm 6: Trigger alert và xem firing
 
 **Trên `controlplane`:**
 
@@ -329,7 +329,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 7: Truy cập Grafana và import dashboard
+## 🔬 Thực nghiệm 7: Truy cập Grafana và import dashboard
 
 **Trên `controlplane`:**
 

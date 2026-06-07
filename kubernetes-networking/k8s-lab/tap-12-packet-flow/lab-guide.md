@@ -131,7 +131,7 @@ flowchart TD
 
 ---
 
-## 🔬 Thí nghiệm 1: Setup — Deploy pods cùng node và cài LOG rule
+## 🔬 Thực nghiệm 1: Setup — Deploy pods cùng node và cài LOG rule
 
 **SSH vào `controlplane`:**
 
@@ -180,7 +180,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 2: Insert LOG rules và trace packet
+## 🔬 Thực nghiệm 2: Insert LOG rules và trace packet
 
 **SSH vào `worker1`:**
 
@@ -220,7 +220,7 @@ multipass shell worker1
 
 ---
 
-## 🔬 Thí nghiệm 3: Quan sát conntrack entries
+## 🔬 Thực nghiệm 3: Quan sát conntrack entries
 
 **Trên `worker1`:**
 
@@ -253,7 +253,7 @@ multipass shell worker1
 
 ---
 
-## 🔬 Thí nghiệm 4: Demo DROP và conntrack không có ESTABLISHED
+## 🔬 Thực nghiệm 4: Demo DROP và conntrack không có ESTABLISHED
 
 **Từ Terminal 2 (controlplane):**
 

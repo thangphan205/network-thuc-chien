@@ -8,7 +8,7 @@ Tập này thực hành debug Cilium L7 policy bug: policy chỉ allow GET, thi�
 
 ---
 
-## 🔬 Thí nghiệm 1: Deploy HTTP server và test baseline
+## 🔬 Thực nghiệm 1: Deploy HTTP server và test baseline
 
 **SSH vào `controlplane`:**
 
@@ -80,7 +80,7 @@ multipass shell controlplane
 
 ---
 
-## 💥 Thí nghiệm 2: Apply L7 policy có bug — chỉ allow GET
+## 💥 Thực nghiệm 2: Apply L7 policy có bug — chỉ allow GET
 
 **Trên `controlplane`:**
 
@@ -136,7 +136,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 3: Xác định 403 từ Cilium hay từ App
+## 🔬 Thực nghiệm 3: Xác định 403 từ Cilium hay từ App
 
 **Trên `controlplane`:**
 
@@ -182,7 +182,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 4: Debug với Hubble và fix policy
+## 🔬 Thực nghiệm 4: Debug với Hubble và fix policy
 
 **Trên `controlplane`:**
 

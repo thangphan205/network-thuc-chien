@@ -9,7 +9,7 @@ Bài lab này sẽ giúp bạn dùng "kính lúp" soi vào bên trong `kube-prox
 
 ---
 
-## 🚀 Thí nghiệm 1: Bí ẩn của ClusterIP (Ping vs Curl)
+## 🚀 Thực nghiệm 1: Bí ẩn của ClusterIP (Ping vs Curl)
 
 **Trên Terminal đang SSH vào `controlplane`:**
 
@@ -46,7 +46,7 @@ Bài lab này sẽ giúp bạn dùng "kính lúp" soi vào bên trong `kube-prox
 
 ---
 
-## 🔬 Thí nghiệm 2: Lần theo dấu vết Iptables
+## 🔬 Thực nghiệm 2: Lần theo dấu vết Iptables
 
 Bây giờ chúng ta sẽ chui xuống `worker1` để xem `kube-proxy` đã "phù phép" bảng iptables ra sao.
 
@@ -80,7 +80,7 @@ Bây giờ chúng ta sẽ chui xuống `worker1` để xem `kube-proxy` đã "ph
 
 ---
 
-## 🕵️‍♂️ Thí nghiệm 3: Xem trạng thái bằng Conntrack
+## 🕵️‍♂️ Thực nghiệm 3: Xem trạng thái bằng Conntrack
 
 Khi iptables thực hiện DNAT, nó lưu lại "nhật ký" ở trong module `conntrack` để khi gói tin quay về, nó biết đường dịch ngược lại (từ IP Thật -> IP Ảo).
 
@@ -120,7 +120,7 @@ Khi iptables thực hiện DNAT, nó lưu lại "nhật ký" ở trong module `c
 
 ---
 
-## 🌐 Thí nghiệm 4: NodePort mở cửa ra thế giới
+## 🌐 Thực nghiệm 4: NodePort mở cửa ra thế giới
 
 **Trên Terminal đang SSH vào `controlplane`:**
 

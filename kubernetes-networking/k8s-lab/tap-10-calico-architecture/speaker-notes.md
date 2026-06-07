@@ -66,7 +66,7 @@
 > **[Lời nói của người dẫn]:**
 > *"Lý thuyết như vậy là đã quá rõ ràng rồi! Bây giờ, hãy mở Terminal lên. 
 >
-> Chúng ta sẽ cùng nhau thực hiện 4 thí nghiệm thực chiến cực kỳ thú vị ngay sau đây:
+> Chúng ta sẽ cùng nhau thực hiện 4 thực nghiệm thực chiến cực kỳ thú vị ngay sau đây:
 > 1.  **Xem log của Felix trong thời gian thực** để tự mắt kiểm chứng tốc độ xử lý tính bằng mili-giây.
 > 2.  **Liệt kê và giải phẫu các chain `cali-*`** trong iptables để hiểu cách gói tin bị ACCEPT hay DROP.
 > 3.  **Cài đặt và sử dụng `calicoctl`** phiên bản mới nhất `v3.32.0` để tương tác trực tiếp với các tài nguyên của Calico.
@@ -80,7 +80,7 @@
 
 # 🔬 PHẦN II: HƯỚNG DẪN SPEAKER NOTES TRONG QUÁ TRÌNH LÀM LAB
 
-## 🔬 Thí nghiệm 1: Xem Felix log real-time
+## 🔬 Thực nghiệm 1: Xem Felix log real-time
 
 ### 🖥️ Hành động trên màn hình:
 *   Mở hai cửa sổ Terminal xếp cạnh nhau (Side-by-side).
@@ -88,7 +88,7 @@
 *   Cửa sổ phải: Chuẩn bị lệnh tạo `NetworkPolicy` để sẵn sàng chạy.
 
 ### 🗣️ Lời nói của người dẫn (Speaker Script):
-> *"Bây giờ, chúng ta sẽ bắt đầu với Thí nghiệm 1. Tôi muốn chứng minh cho các bạn thấy tốc độ phản ứng cực kỳ nhanh của Felix - bộ não chính sách mạng của Calico. Nó hoạt động theo cơ chế hướng sự kiện (Event-driven) chứ không hề thăm dò định kỳ (polling) nên độ trễ gần như bằng không.
+> *"Bây giờ, chúng ta sẽ bắt đầu với Thực nghiệm 1. Tôi muốn chứng minh cho các bạn thấy tốc độ phản ứng cực kỳ nhanh của Felix - bộ não chính sách mạng của Calico. Nó hoạt động theo cơ chế hướng sự kiện (Event-driven) chứ không hề thăm dò định kỳ (polling) nên độ trễ gần như bằng không.
 >
 > (Thao tác gõ lệnh lấy Pod)
 > Đầu tiên ở Terminal bên trái, tôi sẽ lấy tên của Pod `calico-node` đang chạy trên `worker1` và chạy lệnh `kubectl logs` để theo dõi nhật ký hoạt động của Felix.
@@ -109,7 +109,7 @@
 
 ---
 
-## 🔬 Thí nghiệm 2: Xem iptables chains Felix tạo
+## 🔬 Thực nghiệm 2: Xem iptables chains Felix tạo
 
 ### 🖥️ Hành động trên màn hình:
 *   Đăng nhập vào `worker1` bằng lệnh `multipass shell worker1`.
@@ -138,7 +138,7 @@
 
 ---
 
-## 🔬 Thí nghiệm 3: Cài và dùng calicoctl
+## 🔬 Thực nghiệm 3: Cài và dùng calicoctl
 
 ### 🖥️ Hành động trên màn hình:
 *   Mở Terminal đăng nhập vào `controlplane`.
@@ -162,7 +162,7 @@
 
 ---
 
-## 🔬 Thí nghiệm 4: Kiểm tra Typha
+## 🔬 Thực nghiệm 4: Kiểm tra Typha
 
 ### 🖥️ Hành động trên màn hình:
 *   Chạy lệnh xem các Pod trong namespace `calico-system` để tìm Pod `calico-typha`.
@@ -170,7 +170,7 @@
 *   Xem cấu hình cài đặt của Tigera Operator để giải thích điều kiện kích hoạt Typha.
 
 ### 🗣️ Lời nói của người dẫn (Speaker Script):
-> *"Thí nghiệm cuối cùng của chúng ta là về Typha - vị cứu tinh của các cụm Kubernetes quy mô lớn.
+> *"Thực nghiệm cuối cùng của chúng ta là về Typha - vị cứu tinh của các cụm Kubernetes quy mô lớn.
 >
 > (Chạy lệnh get pods)
 > Trong namespace `calico-system`, các bạn có thấy Pod nào tên là `calico-typha` không? Trong cụm Lab 3 nodes của chúng ta, tùy thuộc vào cấu hình mặc định của Operator, Pod Typha có thể đang chạy với 1 replica hoặc có thể không được kích hoạt (0 replicas).
@@ -188,7 +188,7 @@
 ## 🎬 Lời kết thúc Lab (Lab Outro)
 
 ### 🗣️ Lời nói của người dẫn (Speaker Script):
-> *"Như vậy là chúng ta đã hoàn thành xuất sắc 4 thí nghiệm thực chiến cực kỳ chuyên sâu của Tập 10. Chúng ta đã giải phẫu thành công bộ máy hoạt động của Calico, hiểu rõ vai trò của Felix, BIRD và Typha trong thực tế.
+> *"Như vậy là chúng ta đã hoàn thành xuất sắc 4 thực nghiệm thực chiến cực kỳ chuyên sâu của Tập 10. Chúng ta đã giải phẫu thành công bộ máy hoạt động của Calico, hiểu rõ vai trò của Felix, BIRD và Typha trong thực tế.
 >
 > Ở tập tiếp theo, chúng ta sẽ bước vào một trận chiến hiệu năng cực kỳ gay cấn: **iptables vs eBPF Dataplane**. Khi nào chúng ta nên nâng cấp cụm Calico lên chạy eBPF, và sự đánh đổi về mặt tài nguyên là gì?
 >

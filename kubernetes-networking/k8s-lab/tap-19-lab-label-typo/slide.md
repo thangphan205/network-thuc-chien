@@ -32,9 +32,9 @@ style: |
 <!-- _class: ep -->
 
 # Tập 19
-## Lab 1: Bẫy "Pod thiếu label" — Connection Timeout không rõ lý do
+## Lab 1: Sự cố kết nối (Connection Timeout) không rõ nguyên nhân
 
-**Phần 2 — Calico Labs** · `#lab` `#label` `#NetworkPolicy` `#debug`
+**Phần 2 — Calico Labs** · `#lab` `#NetworkPolicy` `#troubleshooting`
 
 ---
 
@@ -119,10 +119,11 @@ Connection succeeded! (không cần restart Pod hay Node)
 
 Chúng ta sẽ thực hành:
 
-1. **Setup incident:** Deploy backend-v2 **không có label**, frontend có đủ labels.
+1. **Setup incident:** Deploy backend-v2 (cấu hình deploy thực tế của developer), frontend có đủ labels.
 2. **Reproduce symptom:** Frontend timeout khi gọi backend-v2.
-3. **Debug workflow:** Check Pod, check labels, check policy selectors, check Felix.
-4. **Fix và verify:** Thêm label → kết nối ngay lập tức (< 100ms).
+3. **Thử thách 30 phút tự giải:** Học viên tự điều tra và tìm cách khắc phục lỗi.
+4. **Hướng dẫn gỡ lỗi chuẩn:** Đối chiếu các bước troubleshooting chuẩn sau 30 phút.
+5. **Fix và verify:** Khắc phục sự cố và kiểm tra kết nối thành công.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 

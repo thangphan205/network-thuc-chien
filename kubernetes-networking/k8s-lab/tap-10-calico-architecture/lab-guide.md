@@ -39,7 +39,7 @@ sequenceDiagram
 
 ---
 
-## 🔬 Thí nghiệm 1: Xem Felix log real-time
+## 🔬 Thực nghiệm 1: Xem Felix log real-time
 
 **SSH vào `controlplane`:**
 
@@ -89,7 +89,7 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thí nghiệm 2: Xem iptables chains Felix tạo
+## 🔬 Thực nghiệm 2: Xem iptables chains Felix tạo
 
 **SSH vào `worker1`:**
 
@@ -124,7 +124,7 @@ multipass shell worker1
 
 ---
 
-## 🔬 Thí nghiệm 3: Cài và dùng calicoctl
+## 🔬 Thực nghiệm 3: Cài và dùng calicoctl
 
 **Trên `controlplane`:**
 
@@ -162,7 +162,7 @@ multipass shell worker1
 
 ---
 
-## 🔬 Thí nghiệm 4: Kiểm tra Typha
+## 🔬 Thực nghiệm 4: Kiểm tra Typha
 
 **Trên `controlplane`:**
 

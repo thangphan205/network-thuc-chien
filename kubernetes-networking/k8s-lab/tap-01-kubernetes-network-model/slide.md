@@ -62,11 +62,11 @@ Chúng ta không bắt đầu bằng lý thuyết khô khan. Hôm nay, chúng ta
 
 ## 🔬 PHẦN 1: Bắt đầu làm Lab ngay!
 
-Chúng ta sẽ thực hiện 3 Thí nghiệm chuyên sâu trong file `lab-guide.md`:
+Chúng ta sẽ thực hiện 3 Thực nghiệm chuyên sâu trong file `lab-guide.md`:
 
-1.  **Thí nghiệm 1:** Chứng kiến cảnh cụm K8s tê liệt khi chưa cài CNI (Node `NotReady`, Pod bị kẹt ở `Pending` mãi mãi).
-2.  **Thí nghiệm 2:** Cài đặt Flannel CNI và xem các Node tự động "hồi sinh" chuyển sang `Ready`.
-3.  **Thí nghiệm 3:** Lần mò "dấu vết" mạng mà CNI thiết lập trên hệ điều hành (`flannel.1` card, `cni0` bridge và bảng routing).
+1.  **Thực nghiệm 1:** Chứng kiến cảnh cụm K8s tê liệt khi chưa cài CNI (Node `NotReady`, Pod bị kẹt ở `Pending` mãi mãi).
+2.  **Thực nghiệm 2:** Cài đặt Flannel CNI và xem các Node tự động "hồi sinh" chuyển sang `Ready`.
+3.  **Thực nghiệm 3:** Lần mò "dấu vết" mạng mà CNI thiết lập trên hệ điều hành (`flannel.1` card, `cni0` bridge và bảng routing).
 
 👉 **Hãy tạm dừng video, mở terminal và gõ lệnh theo hướng dẫn trong tệp `lab-guide.md` nhé!**
 
