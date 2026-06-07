@@ -143,15 +143,32 @@ Ta có 2 giải pháp chính để khắc phục vấn đề này:
 Trong môi trường thực tế doanh nghiệp, ta sẽ thiết lập để máy chủ ngoài chạy BGP Peer trực tiếp với cụm Calico:
 
 1. **Cấu hình trên Kubernetes (BGPPeer resource):**
-   ```yaml
-   apiVersion: projectcalico.org/v3
-   kind: BGPPeer
-   metadata:
-     name: peer-monitoring
-   spec:
-     peerIP: 192.168.252.66         # IP của Monitoring Server
-     asNumber: 64512              # AS Number của cụm
-   ```
+
+   * **Bước A: Lưu và áp dụng (apply) cấu hình BGPPeer:**
+     SSH vào node `controlplane` và chạy lệnh sau để khai báo BGP Peer mới (máy chủ `monitoring`):
+     ```bash
+     calicoctl apply -f - <<EOF
+     apiVersion: projectcalico.org/v3
+     kind: BGPPeer
+     metadata:
+       name: peer-monitoring
+     spec:
+       peerIP: 192.168.252.66         # IP của Monitoring Server
+       asNumber: 64512              # AS Number của cụm
+     EOF
+     ```
+
+   * **Bước B: Kiểm tra và xem cấu hình BGPPeer đã nạp:**
+     Xem danh sách BGPPeer đã cấu hình:
+     ```bash
+     calicoctl get bgppeer
+     ```
+     Xem chi tiết cấu hình của BGPPeer vừa tạo dưới dạng YAML:
+     ```bash
+     calicoctl get bgppeer peer-monitoring -o yaml
+     ```
+     *Kết quả mong đợi:* Hiển thị thông tin BGPPeer `peer-monitoring` trỏ tới IP `192.168.252.66` với AS `64512`.
+
 2. **Cấu hình chi tiết trên Monitoring Server (Sử dụng BIRD 2 làm BGP Daemon):**
    
    * **Bước A: Cài đặt BIRD 2**
@@ -205,14 +222,21 @@ Trong môi trường thực tế doanh nghiệp, ta sẽ thiết lập để má
      }
      ```
 
-   * **Bước C: Khởi chạy dịch vụ và kiểm tra trạng thái**
+   * **Bước C: Khởi chạy dịch vụ và kiểm tra trạng thái trên Monitoring Server**
      Khởi động lại BIRD và kiểm tra session BGP:
      ```bash
      sudo systemctl restart bird
      sudo birdc show protocols
      ```
-     *Kết quả mong đợi:* Trạng thái các session `k8s_controlplane` và `k8s_worker1` phải hiển thị là `Established` (hoặc `up`). 
-     
+     *Kết quả mong đợi:* Trạng thái các session `k8s_controlplane`, `k8s_worker1` và `k8s_worker2` phải hiển thị là `Established` (hoặc `up`).
+
+   * **Bước D: Kiểm tra trạng thái kết nối BGP từ phía Kubernetes Nodes**
+     Quay trở lại terminal trên node `controlplane`, chạy lệnh sau để kiểm tra trạng thái BGP peer từ phía K8s:
+     ```bash
+     calicoctl node status
+     ```
+     *Kết quả mong đợi:* Trong phần BGP Peers sẽ xuất hiện neighbor `192.168.252.66` với trạng thái `Established`.
+
      Lúc này, nếu kiểm tra bảng định tuyến trên `monitoring`:
      ```bash
      ip route show
