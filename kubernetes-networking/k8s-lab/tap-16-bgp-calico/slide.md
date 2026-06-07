@@ -31,10 +31,12 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 16
+# Tập 16 - Calico - BGP
 ## BGP trong Calico: Node-to-Node Mesh và chuyển từ VXLAN
 
 **Phần 2 — Calico** · `#BGP` `#AS` `#BIRD` `#routing` `#no-encapsulation`
+
+![height:200px](https://www.tigera.io/app/uploads/2026/01/Calico-logo-2026-white-text.svg)
 
 ---
 
