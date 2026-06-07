@@ -86,10 +86,10 @@ Khóa học **bỏ qua khái niệm cơ bản**, đi thẳng vào kiến trúc m
 | **17** | Union Logic: NetworkPolicy hoạt động như Security Group, không phải ACL | [`tap-15-union-logic/`](./kubernetes-networking/k8s-lab/tap-15-union-logic) |
 | **18** | BGP trong Calico: Node-to-Node Mesh và chuyển từ VXLAN | [`tap-16-bgp-calico/`](./kubernetes-networking/k8s-lab/tap-16-bgp-calico) |
 | **19** | WireGuard trong Calico: Mã hóa traffic nội bộ & bẫy MTU 1440 bytes | [`tap-17-wireguard/`](./kubernetes-networking/k8s-lab/tap-17-wireguard) |
-| **20** | Lab 1: "Pod thiếu label" — Connection Timeout không rõ lý do | [`tap-18-lab-label-typo/`](./kubernetes-networking/k8s-lab/tap-18-lab-label-typo) |
-| **21** | Lab 2: BGP không quảng bá Pod CIDR — Server vật lý không ping được Pod | [`tap-19-lab-bgp-cidr/`](./kubernetes-networking/k8s-lab/tap-19-lab-bgp-cidr) |
-| **22** | Lab 3: WireGuard MTU & PMTUD Black Hole — File nhỏ ok, file lớn fail | [`tap-20-lab-wireguard-mtu/`](./kubernetes-networking/k8s-lab/tap-20-lab-wireguard-mtu) |
-| **23** | Lab 4: Cross-namespace AND/OR Bug — Prometheus không scrape được Backend | [`tap-21-lab-cross-namespace-bug/`](./kubernetes-networking/k8s-lab/tap-21-lab-cross-namespace-bug) |
+| **20** | Lab 1: "Pod thiếu label" — Connection Timeout không rõ lý do | [`tap-18-lab-1/`](./kubernetes-networking/k8s-lab/tap-18-lab-1) |
+| **21** | Lab 2: BGP không quảng bá Pod CIDR — Server vật lý không ping được Pod | [`tap-19-lab-2/`](./kubernetes-networking/k8s-lab/tap-19-lab-2) |
+| **22** | Lab 3: WireGuard MTU & PMTUD Black Hole — File nhỏ ok, file lớn fail | [`tap-20-lab-3/`](./kubernetes-networking/k8s-lab/tap-20-lab-3) |
+| **23** | Lab 4: Cross-namespace AND/OR Bug — Prometheus không scrape được Backend | [`tap-21-lab-4/`](./kubernetes-networking/k8s-lab/tap-21-lab-4) |
 | **24** | Tổng kết & Workflow Troubleshooting Calico chuẩn | [`tap-22-calico-troubleshooting/`](./kubernetes-networking/k8s-lab/tap-22-calico-troubleshooting) |
 | **25** | Calico Observability: Prometheus + Grafana + AlertManager | [`tap-23-calico-observability/`](./kubernetes-networking/k8s-lab/tap-23-calico-observability) |
 
