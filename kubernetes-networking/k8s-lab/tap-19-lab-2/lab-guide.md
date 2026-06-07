@@ -143,6 +143,17 @@ Ta có 2 giải pháp chính để khắc phục vấn đề này:
 Trong môi trường thực tế doanh nghiệp, ta sẽ thiết lập để máy chủ ngoài chạy BGP Peer trực tiếp với cụm Calico:
 
 1. **Cấu hình trên Kubernetes (BGPPeer resource):**
+   
+   > 💡 **Mẹo - Cách kiểm tra AS Number hiện tại của cụm Calico:**
+   > Trước khi cấu hình BGP Peer, bạn có thể kiểm tra AS Number (Autonomous System Number) hiện tại của cụm bằng cách chạy lệnh sau trên `controlplane`:
+   > ```bash
+   > # Kiểm tra cấu hình BGP toàn cụm (nếu trống, Calico mặc định sử dụng 64512)
+   > calicoctl get bgpconfiguration default -o yaml | grep asNumber
+   > 
+   > # Hoặc kiểm tra AS Number được cấu hình riêng trên từng Node (nếu có)
+   > calicoctl get node -o wide
+   > ```
+
 
    * **Bước A: Lưu và áp dụng (apply) cấu hình BGPPeer:**
      SSH vào node `controlplane` và chạy lệnh sau để khai báo BGP Peer mới (máy chủ `monitoring`):
