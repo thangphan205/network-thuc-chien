@@ -14,7 +14,7 @@ Sau khi bật WireGuard, team nhận báo cáo: *"Request nhỏ vẫn OK, nhưng
 1. Bật WireGuard encryption cho toàn bộ Pod traffic trong cụm thông qua `FelixConfiguration`, xác nhận interface `wireguard.cali` xuất hiện trên các node.
 2. Dùng `tcpdump` để chứng minh traffic đã được mã hóa: chỉ thấy UDP port 51820 với payload không đọc được, không còn ICMP plain-text.
 3. Tái hiện lỗi **PMTUD Black Hole** bằng cách cấu hình `wireguardMTU` sai (quá cao), quan sát hiện tượng file nhỏ OK nhưng file lớn hang.
-4. Chẩn đoán nguyên nhân bằng `ping -M do -s <size>`, sau đó fix bằng cách set MTU đúng (`1420`) và xác nhận MSS Clamping được Calico tự động cài vào `iptables mangle`.
+4. Chẩn đoán nguyên nhân bằng `ping -M do -s <size>`, sau đó fix bằng cách set MTU đúng (`1440`) và xác nhận MSS Clamping được Calico tự động cài vào `iptables mangle`.
 
 ### Sơ đồ so sánh: Trước và sau khi bật WireGuard
 
@@ -43,10 +43,10 @@ graph LR
 graph LR
     subgraph Worker1
         PodA["Pod A\n10.244.235.X"]
-        wg1["wireguard.cali\nMTU 1420"]
+        wg1["wireguard.cali\nMTU 1440"]
     end
     subgraph Worker2
-        wg2["wireguard.cali\nMTU 1420"]
+        wg2["wireguard.cali\nMTU 1440"]
         PodB["Pod B\n10.244.189.Y"]
     end
 
@@ -133,8 +133,8 @@ multipass shell controlplane
    **Kiểm tra interface:**
    ```bash
    ip link show wireguard.cali
-   # wireguard.cali: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1420 qdisc ...
-   # MTU = 1420 ← WireGuard overhead accounting
+   # wireguard.cali: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1440 qdisc ...
+   # MTU = 1440 ← WireGuard overhead accounting
    ```
 
 4. Xem WireGuard public key và peers trên `worker1`:
@@ -149,7 +149,7 @@ multipass shell controlplane
 > 💡 **Giải thích cho học viên:**
 > - **Cấu hình Felix (Calico Agent):** Khi set `wireguardEnabled: true`, Calico DaemonSet (chạy felix) nhận diện cấu hình từ data store của K8s. Felix tự động tạo interface ảo `wireguard.cali` trên từng node, tự sinh cặp khóa public/private key cho WireGuard và chia sẻ public key này với các node khác trong cụm thông qua BGP/Calico IPAM.
 > - **Interface `wireguard.cali`:** Là một Point-to-Point tunnel. Toàn bộ traffic giữa Pod ở các node khác nhau đi qua routing table sẽ được đẩy vào interface ảo này thay vì đẩy trực tiếp ra `eth0`.
-> - **Tại sao MTU mặc định là 1420?** Vì WireGuard đóng gói gói tin gốc bằng header mới (gồm IP, UDP, và mã hóa) tốn 48 bytes overhead. Nếu MTU vật lý là 1500, MTU hiệu dụng tối đa sẽ là 1452. Calico đặt mặc định là 1420 (để chừa thêm 32 bytes an toàn cho các môi trường overlay khác).
+> - **Tại sao MTU mặc định là 1440?** Vì WireGuard đóng gói gói tin gốc bằng header mới (gồm IP, UDP, và mã hóa) tốn 60 bytes overhead. Nếu MTU vật lý là 1500, MTU hiệu dụng tối đa sẽ là 1440. Calico tự động tính toán và đặt mặc định là 1440.
 > - **`sudo wg show`:** Công cụ quản trị WireGuard cho biết cổng lắng nghe mặc định (UDP 51820) và thông tin các Peer (các node khác trong cluster).
 
 ---
@@ -211,7 +211,7 @@ sudo wg show wireguard.cali transfer
    kubectl patch felixconfiguration default \
      --type merge \
      --patch '{"spec": {"wireguardMTU": 1500}}'
-   # Sai! Physical MTU là 1500, WireGuard overhead 80 bytes → thực tế chỉ còn 1420
+   # Sai! Physical MTU là 1500, WireGuard overhead 60 bytes → thực tế chỉ còn 1440
    ```
 
 2. Chờ config áp dụng:
@@ -236,10 +236,10 @@ sudo wg show wireguard.cali transfer
    # (Hang! không hoàn thành) ← PMTUD Black Hole!
    ```
 
-5. Diagnose với ping DF bit:
+5. Diagnose with ping DF bit:
    ```bash
    kubectl exec pod-a -- ping -s 1440 -M do $POD_B_IP
-   # ping: local error: message too long, mtu=1420
+   # ping: local error: message too long, mtu=1440
    # ← Kernel báo MTU mismatch
    ```
 
@@ -247,7 +247,7 @@ sudo wg show wireguard.cali transfer
    ```bash
    kubectl patch felixconfiguration default \
      --type merge \
-     --patch '{"spec": {"wireguardMTU": 1420}}'
+     --patch '{"spec": {"wireguardMTU": 1440}}'
 
    kubectl -n calico-system rollout restart daemonset/calico-node
    kubectl -n calico-system rollout status daemonset/calico-node
@@ -262,15 +262,15 @@ sudo wg show wireguard.cali transfer
 8. Xem MSS Clamping được tự động cài (chạy trên `worker1`):
    ```bash
    sudo iptables -t mangle -L | grep TCPMSS
-   # TCPMSS  tcp  --  anywhere  anywhere  ... TCPMSS clamp to 1380
+   # TCPMSS  tcp  --  anywhere  anywhere  ... TCPMSS clamp to 1400
    # ← Calico tự set MSS Clamping cho WireGuard!
-   # 1380 = 1420 (WireGuard MTU) - 40 bytes (IP header 20 + TCP header 20)
+   # 1400 = 1440 (WireGuard MTU) - 40 bytes (IP header 20 + TCP header 20)
    ```
 
 > 💡 **Giải thích cho học viên:**
-> - **PMTUD Black Hole là gì?** Khi một gói tin TCP được gửi với cờ DF=1 (Don't Fragment) và có kích thước lớn hơn MTU của đường truyền (1420 bytes của WireGuard), thiết bị mạng (hoặc kernel) buộc phải hủy gói tin và gửi lại bản tin ICMP "Fragmentation Needed" (Type 3, Code 4) cho bên gửi để giảm kích thước đóng gói (MSS). Tuy nhiên, nếu bản tin ICMP này bị chặn bởi tường lửa hoặc router dọc đường (chính là lỗ đen - Black Hole), bên gửi sẽ không bao giờ biết lý do tại sao gói tin bị drop và tiếp tục truyền lại với kích thước cũ dẫn đến kết nối bị treo (hang).
+> - **PMTUD Black Hole là gì?** Khi một gói tin TCP được gửi với cờ DF=1 (Don't Fragment) và có kích thước lớn hơn MTU của đường truyền (1440 bytes của WireGuard), thiết bị mạng (hoặc kernel) buộc phải hủy gói tin và gửi lại bản tin ICMP "Fragmentation Needed" (Type 3, Code 4) cho bên gửi để giảm kích thước đóng gói (MSS). Tuy nhiên, nếu bản tin ICMP này bị chặn bởi tường lửa hoặc router dọc đường (chính là lỗ đen - Black Hole), bên gửi sẽ không bao giờ biết lý do tại sao gói tin bị drop và tiếp tục truyền lại với kích thước cũ dẫn đến kết nối bị treo (hang).
 > - **MSS Clamping hoạt động thế nào?** Khi thiết lập kết nối TCP (3-way handshake), gói SYN chứa trường MSS (Maximum Segment Size) để thông báo kích thước payload TCP tối đa có thể nhận. Calico tự động thêm rule vào bảng `mangle` trong `iptables` trên node để ép lại (clamp) giá trị MSS này thành `MTU - 40` (40 bytes là header IPv4 và TCP). 
-> - **Công thức tính MSS:** `MSS = wireguardMTU - 20 (IP header) - 20 (TCP header) = 1420 - 40 = 1380 bytes`. Quy trình này bắt buộc client tự động phân mảnh các phân đoạn TCP nhỏ hơn hoặc bằng 1380 bytes trước khi gửi đi, do đó gói tin sau khi đóng gói WireGuard (thêm 48 bytes nữa) sẽ luôn nhỏ hơn hoặc bằng 1428 bytes, không bao giờ vượt quá MTU vật lý (1500 bytes) và không bao giờ bị drop.
+> - **Công thức tính MSS:** `MSS = wireguardMTU - 20 (IP header) - 20 (TCP header) = 1440 - 40 = 1400 bytes`. Quy trình này bắt buộc client tự động phân mảnh các phân đoạn TCP nhỏ hơn hoặc bằng 1400 bytes trước khi gửi đi, do đó gói tin sau khi đóng gói WireGuard (thêm 60 bytes nữa) sẽ luôn nhỏ hơn hoặc bằng 1460 bytes, không bao giờ vượt quá MTU vật lý (1500 bytes) và không bao giờ bị drop.
 
 ---
 
@@ -288,7 +288,7 @@ kubectl patch felixconfiguration default \
 ## ✅ Tổng kết
 
 1. **WireGuard kernel-native:** Ubuntu 26.04 kernel 6.x/7.x+ có sẵn — không cần cài thêm gì.
-2. **Interface `wireguard.cali`:** Xuất hiện trên mỗi Node sau khi bật, MTU 1420, UDP port 51820.
+2. **Interface `wireguard.cali`:** Xuất hiện trên mỗi Node sau khi bật, MTU 1440, UDP port 51820.
 3. **Traffic encrypted:** tcpdump thấy UDP 51820 với payload gibberish — không đọc được nội dung.
 4. **PMTUD Black Hole:** MTU sai → file nhỏ OK, file lớn hang — diagnose bằng `ping -M do -s 1440`.
-5. **Fix = 2 bước:** Set `wireguardMTU: 1420` + MSS Clamping tự động được Calico cài vào iptables mangle table (clamp = MTU - 40 bytes).
+5. **Fix = 2 bước:** Set `wireguardMTU: 1440` + MSS Clamping tự động được Calico cài vào iptables mangle table (clamp = MTU - 40 bytes).

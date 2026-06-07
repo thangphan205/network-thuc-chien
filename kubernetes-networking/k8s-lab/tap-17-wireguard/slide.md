@@ -82,17 +82,17 @@ tcpdump -i eth0 → thấy toàn bộ Pod traffic
 ```
 Physical MTU: 1500 bytes
 
-WireGuard overhead:
+WireGuard overhead (IPv4):
 ├── IP header:              20 bytes
 ├── UDP header:              8 bytes
-├── WireGuard static header: 4 bytes
-└── WireGuard auth tag:     16 bytes
+├── WireGuard headers:      12 bytes (type, index, counter)
+└── Auth tag (Poly1305):    16 bytes
                           ─────────
-Total:                     48 bytes
+Total:                     60 bytes
 
-Effective MTU: 1500 - 48 = 1452 bytes
+Effective MTU: 1500 - 60 = 1440 bytes
 
-Calico WireGuard default MTU: 1420 bytes (buffer thêm)
+Calico WireGuard default MTU: 1440 bytes
 Port: UDP 51820
 ```
 
@@ -103,20 +103,20 @@ Port: UDP 51820
 ## PMTUD Black Hole — Bẫy MTU ẩn
 
 ```
-TCP segment size > 1420 bytes + DF bit = 1 (Don't Fragment)
+TCP segment size > 1440 bytes + DF bit = 1 (Don't Fragment)
 → Router muốn fragment nhưng không được (DF=1)
 → Router DROP packet SILENTLY (không gửi ICMP fragmentation needed)
 → TCP sender không biết → không reduce MSS → hang mãi
 
 Triệu chứng:
-  Small files: OK (fit trong 1420 bytes)
+  Small files: OK (fit trong 1440 bytes)
   Large files: FAIL (hang, không báo lỗi rõ)
 ```
 
 **Fix:**
 ```
-1. Set wireguardMTU: 1420 (đúng overhead)
-2. MSS Clamping: ép TCP negotiate MSS ≤ 1380
+1. Set wireguardMTU: 1440 (đúng overhead)
+2. MSS Clamping: ép TCP negotiate MSS ≤ 1400
 ```
 
 ---
@@ -156,7 +156,7 @@ Chúng ta sẽ thực hành:
 | :--- | :--- | :--- |
 | `wireguard.cali` không xuất hiện | `lsmod \| grep wireguard` | Kernel chưa load WireGuard module; chạy `modprobe wireguard` |
 | Bật WireGuard nhưng traffic không mã hóa | `sudo wg show wireguard.cali` | `wireguardEnabled` chưa được set thành `true` trong FelixConfig |
-| Gửi file lớn bị treo (PMTUD Black Hole) | `ping -s 1440 -M do <IP>` | MTU đặt quá cao (1500) hoặc thiếu MSS Clamping; sửa `wireguardMTU: 1420` |
+| Gửi file lớn bị treo (PMTUD Black Hole) | `ping -s 1440 -M do <IP>` | MTU đặt quá cao (1500) hoặc thiếu MSS Clamping; sửa `wireguardMTU: 1440` |
 | Lỗi CNI khi pod khởi động | `kubectl describe pod` | Felix chưa cấu hình xong MTU; khởi động lại calico-node DaemonSet |
 
 **Quy tắc debug:** Kiểm tra tầng Kernel (modprobe) → Kiểm tra config Calico (FelixConfig) → Kiểm tra Data Plane (iptables mangle & tcpdump UDP 51820).
