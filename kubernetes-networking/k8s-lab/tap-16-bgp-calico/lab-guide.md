@@ -217,20 +217,20 @@ kill $TCPDUMP_PID
    ```
 
 3. Xem BGP peer từ worker1:
+   Mở terminal mới trên máy host (hoặc thoát khỏi shell controlplane) và SSH vào `worker1` để kiểm tra:
    ```bash
-   # calicoctl node status bắt buộc chạy local trên node để đọc Unix Socket BIRD
-   multipass exec worker1 -- sudo calicoctl node status
+   multipass shell worker1
+   sudo calicoctl node status
+   exit
    ```
    > 💡 **Giải thích cho học viên:**
    > - Lệnh `calicoctl node status` bắt buộc phải chạy trực tiếp (local) trên máy host của node cần kiểm tra vì nó cần đọc UNIX socket `/var/run/calico/bird.ctl` được mount từ container `calico-node`.
-   > - Nếu lệnh trên báo lỗi `command not found` (do `worker1` chưa cài `calicoctl`), hãy SSH vào `worker1` và cài đặt nhanh bằng các lệnh sau:
+   > - Nếu lệnh trên báo lỗi `command not found` (do `worker1` chưa cài `calicoctl`), hãy chạy các lệnh sau trên `worker1` để cài đặt nhanh:
    >   ```bash
-   >   multipass shell worker1
    >   curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 -o calicoctl
    >   chmod +x calicoctl
    >   sudo mv calicoctl /usr/local/bin/
    >   sudo calicoctl node status  # Xác nhận chạy thành công
-   >   exit
    >   ```
 
 4. Kiểm tra Node nào đang được cấp dải Subnet /26 nào (IPAM Block Affinity):
@@ -270,13 +270,18 @@ Mỗi kịch bản dưới đây: **tạo lỗi có chủ đích → quan sát t
 ```bash
 multipass shell worker2
 
-# Block BGP port incoming
-sudo iptables -I INPUT -p tcp --dport 179 -j DROP
+# Chặn cả incoming và outgoing BGP (TCP 179) ở bảng raw để bypass Calico failsafe
+sudo iptables -t raw -I PREROUTING -p tcp --dport 179 -j DROP
+sudo iptables -t raw -I OUTPUT -p tcp --dport 179 -j DROP
 
 # Verify rule đã có
-sudo iptables -L INPUT -n --line-numbers | grep 179
-# 1   DROP  tcp  --  0.0.0.0/0  0.0.0.0/0  tcp dpt:179
+sudo iptables -t raw -L -n --line-numbers
 ```
+> 💡 **Giải thích cho học viên (Quan trọng về cơ chế bảo vệ của Calico):**
+> - Nếu chúng ta chỉ dùng lệnh `-I INPUT -p tcp --dport 179 -j DROP` thông thường trên bảng `filter`:
+>   1. **Calico Failsafe Rules:** Calico Felix tự động chèn quy tắc cho phép các cổng an toàn (failsafe host ports như SSH 22, BGP 179) vào đầu chain `cali-INPUT`. Do đó, rule `DROP` thông thường nằm dưới lệnh jump `-j cali-INPUT` sẽ bị bypass (không bao giờ khớp gói tin).
+>   2. **BGP Bidirectional:** Ngay cả khi chặn incoming dport 179 trên `worker2`, `worker2` vẫn có thể chủ động tạo kết nối outgoing tới cổng 179 của `worker1`. Gói tin phản hồi từ `worker1` có destination port ngẫu nhiên nên không bị block, làm BGP session vẫn thiết lập thành công.
+> - **Giải pháp:** Sử dụng bảng **`raw`** (chain `PREROUTING` và `OUTPUT`) để chặn đứng gói tin BGP ở tầng sơ khởi nhất, trước khi Connection Tracking (conntrack) và các quy tắc tự động của Calico Felix được xử lý. Điều này đảm bảo BGP session rớt ngay lập tức.
 
 **Bước 2 — Quan sát triệu chứng từ `worker1`:**
 
@@ -295,6 +300,16 @@ PEER ADDRESS  | PEER TYPE     | STATE  | SINCE | INFO
 ```
 
 `Active` = BIRD đang gửi SYN đến TCP 179 nhưng không nhận SYN-ACK. Khác với `Established` (kết nối thành công) và `Idle` (chưa bắt đầu kết nối).
+
+> ⚠️ **Lưu ý quan trọng về BGP Hold Timer:**
+> - Nếu bạn chạy lệnh `calicoctl node status` ngay lập tức sau khi chặn port, bạn sẽ thấy trạng thái vẫn ghi là `Established` mặc dù `nc` kiểm tra kết nối báo `timed out`.
+> - **Lý do:** BGP sử dụng cơ chế **Hold Timer** để duy trì trạng thái khi mạng chập chờn. Trong Calico (BIRD), giá trị Hold Time mặc định là **240 giây** (4 phút). BIRD trên `worker1` sẽ phải đợi hết 4 phút liên tục không nhận được gói tin Keepalive từ `worker2` thì nó mới tuyên bố BGP session chết và chuyển sang `Active`.
+> - **Cách ép BGP rớt ngay lập tức để kiểm chứng:** Khởi động lại (restart) daemon `calico-node` trên `worker1` để hủy các socket TCP cũ đã kết nối trước đó. Khi khởi động lại, do cổng 179 đã bị block, nó sẽ lập tức báo `Active`:
+>   ```bash
+>   # Chạy trên controlplane
+>   kubectl rollout restart daemonset/calico-node -n calico-system
+>   kubectl rollout status daemonset/calico-node -n calico-system
+>   ```
 
 **Bước 3 — Điều tra:**
 
@@ -319,21 +334,30 @@ kubectl exec -n calico-system \
 # (DROP rule không gửi TCP RST → BIRD chờ timeout, không phải "Connection refused"
 #  "Connection refused" chỉ xảy ra khi dùng -j REJECT)
 
-# Kiểm tra iptables trên worker2 có block không
-multipass exec worker2 -- sudo iptables -L INPUT -n | grep 179
-# DROP  tcp  ... dpt:179  ← đây là vấn đề
+# SSH vào worker2 để kiểm tra xem iptables có block không
+multipass shell worker2
+sudo iptables -t raw -L PREROUTING -n -v
+# pkts bytes target  prot  ... dpt:179  ← đây là vấn đề (nhìn số packet nhảy)
+exit
 ```
+> 💡 **Giải thích cho học viên:**
+> - Chúng ta kiểm tra theo 3 lớp:
+>   1. **Lớp mạng cơ bản:** Dùng `nc` kiểm tra xem có mở port 179 không.
+>   2. **Lớp ứng dụng BGP:** Xem log của `calico-node` và dùng công cụ CLI nội bộ của BIRD (`birdcl`) để xem lỗi kết nối chi tiết.
+>   3. **Lớp bảo mật hệ thống:** Kiểm tra cấu hình tường lửa `iptables` trong bảng `raw` trên node đích để tìm ra rule chặn dòng lưu lượng.
 
 **Bước 4 — Fix trên `worker2`:**
 
 ```bash
 multipass shell worker2
 
-sudo iptables -D INPUT -p tcp --dport 179 -j DROP
+# Gỡ bỏ rule chặn ở bảng raw
+sudo iptables -t raw -D PREROUTING -p tcp --dport 179 -j DROP
+sudo iptables -t raw -D OUTPUT -p tcp --dport 179 -j DROP
 
 # Verify đã xóa rule
-sudo iptables -L INPUT -n | grep 179
-# (không có output)
+sudo iptables -t raw -L -n
+# (không còn rule DROP port 179)
 ```
 
 **Bước 5 — Verify từ `worker1`:**
@@ -648,26 +672,30 @@ ip route show proto bird
 
 **Nguyên nhân mô phỏng:** Patch IP Pool về VXLAN (tạo lại vxlan.calico interface), sau đó patch về None — trong khoảng thời gian Felix chưa cleanup, interface vẫn còn `UP`.
 
-**Bước 1 — Tạo lỗi trên `controlplane`:**
+**Bước 1 — Tạo lỗi:**
 
-```bash
-multipass shell controlplane
+1. **Trên `controlplane`, bật lại VXLAN để interface `vxlan.calico` xuất hiện:**
+   ```bash
+   multipass shell controlplane
+   calicoctl patch ippool default-ipv4-ippool \
+     --patch '{"spec": {"vxlanMode": "CrossSubnet", "ipipMode": "Never"}}'
+   exit
+   ```
 
-# Bật lại VXLAN để interface vxlan.calico xuất hiện
-calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec": {"vxlanMode": "CrossSubnet", "ipipMode": "Never"}}'
+2. Đợi Felix tạo interface khoảng 20 giây, sau đó **SSH vào `worker1` để xác nhận `vxlan.calico` đã xuất hiện:**
+   ```bash
+   multipass shell worker1
+   ip link show vxlan.calico
+   # vxlan.calico: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 ...
+   exit
+   ```
 
-# Đợi Felix tạo interface
-sleep 20
-
-# Xác nhận vxlan.calico đã xuất hiện trên worker1
-multipass exec worker1 -- ip link show vxlan.calico
-# vxlan.calico: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 ...
-
-# Giờ patch về None ngay lập tức
-calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec": {"ipipMode": "Never", "vxlanMode": "Never"}}'
-```
+3. **Quay lại `controlplane` để patch về None ngay lập tức:**
+   ```bash
+   multipass shell controlplane
+   calicoctl patch ippool default-ipv4-ippool \
+     --patch '{"spec": {"ipipMode": "Never", "vxlanMode": "Never"}}'
+   ```
 
 **Bước 2 — Quan sát triệu chứng trên `worker1`:**
 
