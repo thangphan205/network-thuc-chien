@@ -8,21 +8,32 @@ Cụm Kubernetes đã được cấu hình hoạt động ở chế độ BGP (N
 #### 1. Giải pháp Production: BGP Peering thực tế
 ```mermaid
 graph TD
-  Node1[Kubernetes Node 1] <-->|BGP Session / TCP Port 179| ExtRouter[External Router / Server chạy BGP Daemon]
-  Node1 ---|Quảng bá IP Pool tự động| IPPool[Pod IP Pool: 10.244.0.0/16]
-  ExtRouter -->|Tự động học Route qua BGP| RouteDynamic["10.244.0.0/16 via Node 1 IP"]
-  
+  subgraph K8s Cluster
+    IPPool["Pod IP Pool\n10.244.0.0/16"]
+    Node1["K8s Node 1\n192.168.252.60"]
+    Pod["Pod\n10.244.x.x"]
+  end
+  ExtRouter["External Server\nchạy BIRD BGP Daemon"]
+
+  Node1 <-->|"BGP Session TCP/179"| ExtRouter
+  Node1 -->|"Quảng bá Pod CIDR"| ExtRouter
+  IPPool -.->|"cấp phát"| Pod
+  ExtRouter -->|"Route tự động học\n10.244.0.0/16 via Node1"| Pod
+
   classDef default fill:#151530,stroke:#2a2050,color:#e2e8f0;
   style ExtRouter fill:#2d1b69,stroke:#a78bfa,color:#fff;
 ```
 
 #### 2. Giải pháp Thực hành trong Lab: Static Route
 ```mermaid
-graph TD
-  Node2[K8s Node: 192.168.252.60]
-  ExtVM[Monitoring VM độc lập]
-  ExtVM == Static Route thủ công: sudo ip route add 10.244.0.0/16 via 192.168.252.60 ==> Node2
-  
+graph LR
+  ExtVM["Monitoring VM\n192.168.252.66"]
+  Node2["K8s Node\n192.168.252.60"]
+  Pod["Pod\n10.244.x.x"]
+
+  ExtVM -->|"Static route\n10.244.0.0/16 via Node2"| Node2
+  Node2 -->|"Forward trực tiếp\nkhông VXLAN"| Pod
+
   classDef default fill:#151530,stroke:#2a2050,color:#e2e8f0;
   style ExtVM fill:#2d1b69,stroke:#a78bfa,color:#fff;
 ```
