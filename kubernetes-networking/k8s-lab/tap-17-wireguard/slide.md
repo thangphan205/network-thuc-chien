@@ -33,10 +33,15 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 17
+# Tập 17 - Calico - WireGuard
 ## WireGuard trong Calico: Mã hóa traffic nội bộ & bẫy MTU 1440 bytes
 
 **Phần 2 — Calico** · `#WireGuard` `#encryption` `#MTU` `#PMTUD` `#security`
+
+<div style="display: flex; gap: 50px; justify-content: center; align-items: center; margin-top: 30px;">
+  <img src="https://www.tigera.io/app/uploads/2026/01/Calico-logo-2026-white-text.svg" height="150" />
+  <img src="https://www.wireguard.com/img/icons/og-logo.png?a=obiDa7ee" height="150" />
+</div>
 
 ---
 
