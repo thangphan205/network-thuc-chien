@@ -1,4 +1,4 @@
-# Lab Tập 20: Lab 2 — Sự cố kết nối từ Máy chủ ngoài vào cụm Kubernetes BGP
+# Lab Tập 19: Lab 2 — Sự cố kết nối từ Máy chủ ngoài vào cụm Kubernetes BGP
 
 **Hiện tượng hiện tại:**
 Cụm Kubernetes đã được cấu hình hoạt động ở chế độ BGP (No Encapsulation), trạng thái các BGP session giữa các Node K8s đều báo `Established` thành công. Tuy nhiên, một máy chủ giám sát độc lập nằm ngoài cụm (`monitoring-server`) không thể kết nối hoặc ping tới IP của Pod chạy trong cụm. Bạn được yêu cầu điều tra và khắc phục sự cố này để đảm bảo máy chủ ngoài có thể kết nối trực tiếp tới Pod IP.

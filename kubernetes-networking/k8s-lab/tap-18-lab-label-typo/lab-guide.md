@@ -1,4 +1,4 @@
-# Lab Tập 19: Lab 1 — Sự cố kết nối (Connection Timeout) không rõ nguyên nhân
+# Lab Tập 18: Lab 1 — Sự cố kết nối (Connection Timeout) không rõ nguyên nhân
 
 **Hiện tượng hiện tại:**
 Sau khi lập trình viên triển khai phiên bản Backend mới (`backend-v2`), hệ thống Frontend liên tục báo lỗi **Connection Timeout** khi kết nối tới Backend này. Logs của ứng dụng không hiển thị lỗi cụ thể và cả hai Pod đều đang ở trạng thái `Running` bình thường. Nhiệm vụ của bạn là chẩn đoán và khắc phục sự cố này.

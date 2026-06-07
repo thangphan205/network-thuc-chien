@@ -31,7 +31,7 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 20
+# Tập 19
 ## Lab 2: Sự cố kết nối từ Máy chủ ngoài vào cụm Kubernetes BGP
 
 **Phần 2 — Calico Labs** · `#BGP` `#lab` `#routing` `#troubleshooting`
@@ -124,4 +124,4 @@ Chúng ta sẽ thực hành:
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
-> **Tập tiếp theo:** Lab 3 — WireGuard MTU Black Hole, file nhỏ OK file lớn fail.
+> **Tập tiếp theo:** Tập 20 — Lab 3: WireGuard MTU Black Hole

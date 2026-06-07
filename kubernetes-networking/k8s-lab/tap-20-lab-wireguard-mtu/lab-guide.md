@@ -1,4 +1,4 @@
-# Lab Tập 21: Lab 3 — Sự cố truyền nhận file dung lượng lớn qua WireGuard (MTU Black Hole)
+# Lab Tập 20: Lab 3 — Sự cố truyền nhận file dung lượng lớn qua WireGuard (MTU Black Hole)
 
 **Hiện tượng hiện tại:**
 Sau khi bật WireGuard để mã hóa lưu lượng giữa các Node trong cụm Kubernetes, đội ngũ vận hành nhận được phản hồi về lỗi truyền nhận file lớn:
@@ -67,8 +67,14 @@ multipass shell controlplane
    ```
 
 4. Xác nhận MTU của interface WireGuard đã được thiết lập:
+   **SSH vào `worker1`:**
    ```bash
-   multipass exec worker1 -- ip link show wireguard.cali
+   multipass shell worker1
+   ```
+   **Kiểm tra interface:**
+   ```bash
+   ip link show wireguard.cali
+   # wireguard.cali: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1500 ...
    ```
 
 5. Triển khai các Pod kiểm tra (Client trên worker1, Server chéo node trên worker2, Server cùng node trên worker1):
@@ -118,7 +124,18 @@ multipass shell controlplane
    echo "Same-node server IP: $LOCAL_IP"
    ```
 
-7. **Kích hoạt sự cố và quan sát triệu chứng:**
+7. **Giả lập drop gói tin quá khổ ở card vật lý (do môi trường ảo hóa Multipass/Bridges nội bộ thường tự bypass và cho qua gói tin > 1500 bytes):**
+   **SSH vào `worker1`:**
+   ```bash
+   multipass shell worker1
+   ```
+   **Chạy lệnh sau để drop các gói tin UDP Wireguard có kích thước IP packet > 1500 bytes:**
+   ```bash
+   sudo iptables -I OUTPUT -p udp --dport 51820 -m length --length 1501:65535 -j DROP
+   ```
+
+8. **Kích hoạt sự cố và quan sát triệu chứng:**
+   **Quay lại terminal `controlplane` để thực hiện test:**
    - **Trường hợp A:** Truyền file dung lượng nhỏ (512KB) chéo node -> **OK**:
      ```bash
      kubectl exec upload-client -- bash -c "
@@ -172,9 +189,9 @@ Nếu đã qua 30 phút hoặc bạn đã tự giải xong, hãy đối chiếu 
    kubectl exec upload-client -- ip link show eth0
    # Kết quả: eth0: mtu 1500
    ```
-2. Kiểm tra MTU của interface WireGuard trên Node:
+2. Kiểm tra MTU của interface WireGuard trên Node (chạy trên `worker1`):
    ```bash
-   multipass exec worker1 -- ip link show wireguard.cali
+   ip link show wireguard.cali
    # Kết quả: wireguard.cali: mtu 1500
    ```
    *Nhận định:* Cả Pod và WireGuard đều đang để MTU mặc định là 1500.
@@ -189,26 +206,26 @@ Nếu đã qua 30 phút hoặc bạn đã tự giải xong, hãy đối chiếu 
 2. Ping thử với payload 1440 bytes (tổng gói tin khoảng 1468 bytes):
    ```bash
    kubectl exec upload-client -- ping -c 1 -s 1440 -M do $SERVER_IP
-   # Lỗi: ping: local error: message too long, mtu=1420
+   # (Gói tin bị HANG / Timeout do bị drop bởi iptables rule giả lập trên worker1)
    ```
-   *Giải thích phát hiện:* Hệ điều hành trả về cảnh báo kích thước quá dài và báo hiệu MTU tối đa có thể chịu tải qua lớp mã hóa WireGuard chỉ là **1420 bytes**.
+   *Giải thích phát hiện:* Gói tin có kích thước IP = `1440 + 8 (ICMP) + 20 (IP) = 1468` bytes. Khi đi qua WireGuard, nó được đóng gói thêm 60 bytes thành `1528` bytes, vượt quá MTU vật lý `1500` và bị drop hoàn toàn. Do không nhận được ICMP Fragmentation Needed, lệnh ping bị treo vô hạn.
    
    **Nguyên nhân gốc rễ (PMTUD Black Hole):**
    - MTU mạng vật lý là 1500 bytes.
-   - Lớp mã hóa WireGuard cộng thêm 80 bytes tiêu đề (overhead) vào mỗi gói tin.
-   - Khi Pod gửi gói tin kích thước lớn 1500 bytes với cờ `DF=1` (Don't Fragment), Calico đưa gói tin này vào WireGuard làm phình gói tin lên 1580 bytes.
-   - Khi đẩy ra card vật lý `eth0` của Node có MTU 1500, vì cờ `DF=1` cấm phân mảnh, router/card mạng âm thầm hủy bỏ gói tin (Silent Drop) mà không phản hồi lại gói tin ICMP báo lỗi cho bên gửi. Bên gửi (TCP sender) chờ ACK vô hạn dẫn đến treo kết nối (Black Hole).
+   - Lớp mã hóa WireGuard cộng thêm 60 bytes overhead vào mỗi gói tin.
+   - Khi Pod gửi gói tin kích thước lớn 1500 bytes với cờ `DF=1` (Don't Fragment), Calico đưa gói tin này vào WireGuard làm phình gói tin lên 1560 bytes.
+   - Khi đẩy ra card vật lý `eth0` của Node có MTU 1500, vì cờ `DF=1` cấm phân mảnh, router/card mạng âm thầm hủy bỏ gói tin (Silent Drop) mà không phản hồi lại gói tin ICMP báo lỗi cho bên gửi (ở đây là drop giả lập bằng `iptables`). Bên gửi (TCP sender) chờ ACK vô hạn dẫn đến treo kết nối (Black Hole).
 
 ---
 
 ### Bước 3: Khắc phục sự cố
 
-#### 1. Cấu hình lại MTU chính xác cho WireGuard (MTU = 1420)
-Ta phải cấu hình Calico tự động tính toán hoặc ép MTU của interface WireGuard xuống 1420 bytes (1500 - 80 bytes overhead):
+#### 1. Cấu hình lại MTU chính xác cho WireGuard (MTU = 1440)
+Ta phải cấu hình Calico tự động tính toán hoặc ép MTU của interface WireGuard xuống 1440 bytes (1500 - 60 bytes overhead):
 ```bash
 kubectl patch felixconfiguration default \
   --type merge \
-  --patch '{"spec": {"wireguardMTU": 1420}}'
+  --patch '{"spec": {"wireguardMTU": 1440}}'
 ```
 
 *Đợi Calico reload lại cấu hình:*
@@ -216,28 +233,21 @@ kubectl patch felixconfiguration default \
 kubectl -n calico-system rollout status daemonset/calico-node
 ```
 
-#### 2. Xác minh cấu hình MTU mới đã được đồng bộ xuống Pod và Node
+#### 2. Xác minh cấu hình MTU mới đã được đồng bộ xuống Node (chạy trên `worker1`):
 ```bash
-# Trên Node worker1:
-multipass exec worker1 -- ip link show wireguard.cali
-# wireguard.cali: mtu 1420 ✅
-
-# Bên trong Pod upload-client:
-kubectl exec upload-client -- ip link show eth0
-# eth0: mtu 1420 ✅ (Calico tự động cập nhật MTU cho Pod!)
+ip link show wireguard.cali
+# wireguard.cali: mtu 1440 ✅
 ```
+*Lưu ý:* MTU ảo của các Pod đang chạy vẫn được giữ nguyên là 1500. Lúc này, khi Pod gửi gói tin TCP lớn, Host Kernel nhận thấy gói tin đi ra interface `wireguard.cali` (MTU 1440) bị quá khổ nên sẽ gửi ICMP Fragmentation Needed nội bộ về Pod, giúp Pod tự động hạ MSS về 1400 (PMTUD hoạt động động tại localhost).
 
-#### 3. Cấu hình MSS Clamping để bảo vệ bổ sung
-Trong một số môi trường, để chắc chắn gói tin TCP luôn thỏa thuận kích thước MSS nhỏ hơn (tránh vượt ngưỡng MTU), ta kích hoạt MSS Clamping trên Calico:
+#### 3. Kiểm tra MTU của Pod mới được tạo (Nếu có):
+Đối với các Pod mới được tạo sau khi bật MTU 1440, Calico CNI sẽ tự động gán MTU `1440` ngay từ đầu. Hãy chạy thử tạo Pod test `upload-client-new` để kiểm chứng:
 ```bash
-kubectl patch felixconfiguration default \
-  --type merge \
-  --patch '{"spec": {"wireguardMssClamp": 1380}}'
-```
-*Xác nhận rule iptables đã tự động cài đặt trên Node:*
-```bash
-multipass exec worker1 -- sudo iptables -t mangle -L | grep TCPMSS
-# TCPMSS  tcp  -- ... TCPMSS clamp to 1380 ✅
+kubectl run upload-client-new -n default --image=nicolaka/netshoot -- sleep infinity
+kubectl wait --for=condition=Ready pod/upload-client-new --timeout=30s
+kubectl exec upload-client-new -- ip link show eth0
+# eth0: mtu 1440 ✅ (Pod mới tự động thừa hưởng MTU 1440)
+kubectl delete pod upload-client-new
 ```
 
 ---
@@ -261,20 +271,26 @@ Large file cross-node connection exit: 0 ✅ THÀNH CÔNG!
 
 ## 🧹 Dọn dẹp
 
-```bash
-kubectl delete pod upload-client upload-server upload-server-local
+1. Xóa rule giả lập drop gói tin trên `worker1` (chạy trên `worker1`):
+   ```bash
+   sudo iptables -D OUTPUT -p udp --dport 51820 -m length --length 1501:65535 -j DROP
+   ```
 
-# Trả FelixConfiguration về mặc định để tránh ảnh hưởng các bài lab sau
-kubectl patch felixconfiguration default \
-  --type merge \
-  --patch '{"spec": {"wireguardEnabled": false, "wireguardMTU": null, "wireguardMssClamp": null}}'
-```
+2. Xóa các Pod lab và tắt WireGuard trên `controlplane`:
+   ```bash
+   kubectl delete pod upload-client upload-server upload-server-local
+
+   # Trả FelixConfiguration về mặc định để tránh ảnh hưởng các bài lab sau
+   kubectl patch felixconfiguration default \
+     --type merge \
+     --patch '{"spec": {"wireguardEnabled": false, "wireguardMTU": null, "wireguardMssClamp": null}}'
+   ```
 
 ---
 
 ## ✅ Tổng kết
 
 1. **Dấu hiệu nhận biết sự cố MTU:** Truyền file dung lượng nhỏ hoạt động bình thường, nhưng truyền file lớn bị treo chéo node (hoạt động bình thường cùng node).
-2. **Cơ chế Black Hole:** Lớp mã hóa (WireGuard/IPsec) chèn thêm header làm phình gói tin vượt quá MTU vật lý của Node. Cờ `DF=1` cấm phân mảnh, kết hợp với các router trung gian drop âm thầm gói tin mà không gửi trả ICMP báo lỗi, tạo ra một "hố đen định tuyến".
+2. **Cơ chế Black Hole:** Lớp mã hóa (WireGuard/IPsec) chèn thêm header làm phình gói tin vượt quá MTU vật lý của Node. Cờ `DF=1` cấm phân mảnh, kết hợp với card mạng vật lý hoặc router drop âm thầm gói tin mà không gửi trả ICMP báo lỗi về Pod, tạo ra một "hố đen định tuyến".
 3. **Cách tìm MTU thực tế:** Dùng công cụ Ping với cờ chặn phân mảnh (`ping -M do -s <size> <target_ip>`).
-4. **Cách khắc phục:** Cấu hình MTU của tunnel phù hợp (MTU vật lý trừ đi overhead của công nghệ đóng gói, ví dụ WireGuard là 80 bytes, VXLAN là 50 bytes) kết hợp với **MSS Clamping** để ép gói tin TCP tự thương lượng kích thước an toàn.
+4. **Cách khắc phục:** Cấu hình `wireguardMTU: 1440` (MTU vật lý 1500 - 60 bytes overhead). Điều này khiến Host Kernel tự động gửi ICMP Fragmentation Needed nội bộ về Pod để ép TCP giảm MSS về 1400 (đối với Pod cũ), hoặc tự thiết lập MTU 1440 ngay lúc tạo (đối với Pod mới).

@@ -13,7 +13,7 @@
 
 | Thư mục | Chủ đề | Mô tả |
 | :--- | :--- | :--- |
-| [`kubernetes-networking/`](#-kubernetes-networking) | ☸️ Kubernetes Networking | Series 45 tập: Flannel → Calico → Cilium, từ Linux kernel đến production |
+| [`kubernetes-networking/`](#-kubernetes-networking) | ☸️ Kubernetes Networking | Series 42 tập: Flannel → Calico → Cilium, từ Linux kernel đến production |
 | [`container-networking/`](#-container-networking) | 🐳 Container Networking | Linux Networking nền tảng: netns, bridge, iptables, nftables, Docker |
 | [`network-automation/`](#-network-automation) | 🤖 Network Automation | Python, Ansible, FastAPI, Containerlab |
 | [`cumulus-linux/`](#-cumulus-linux) | 🐧 Cumulus Linux | BGP/OSPF/VXLAN với FRRouting và Cumulus |
@@ -25,7 +25,7 @@
 
 ## ☸️ Kubernetes Networking
 
-> **Series chuyên sâu 45 tập** — Kubernetes Networking & NetworkPolicy từ Linux kernel đến production.
+> **Series chuyên sâu 42 tập** — Kubernetes Networking & NetworkPolicy từ Linux kernel đến production.
 
 📁 [`kubernetes-networking/`](./kubernetes-networking)
 
@@ -46,8 +46,8 @@ Khóa học **bỏ qua khái niệm cơ bản**, đi thẳng vào kiến trúc m
 ```bash
 ./setup-lab.sh            # dựng cluster, không cài CNI
 ./setup-lab.sh flannel    # + Flannel (Tập 6-10)
-./setup-lab.sh calico     # + Calico (Tập 11-26)
-./setup-lab.sh cilium     # + Cilium (Tập 27-43)
+./setup-lab.sh calico     # + Calico (Tập 11-23)
+./setup-lab.sh cilium     # + Cilium (Tập 24-40)
 ```
 
 ### Lộ trình học tập
@@ -77,51 +77,50 @@ Khóa học **bỏ qua khái niệm cơ bản**, đi thẳng vào kiến trúc m
 
 | Tập | Chủ đề | Lab |
 | :---: | :--- | :--- |
-| **11** | Lateral Movement & Blast Radius: Bài toán bảo mật Flannel bỏ qua | [`tap-11.md`](./kubernetes-networking/k8s-lab/tap-11.md) |
-| **12** | Kiến trúc Calico: Felix, BIRD, Datastore — Ai làm gì? | [`tap-12.md`](./kubernetes-networking/k8s-lab/tap-12.md) |
-| **13** | iptables vs eBPF Dataplane: O(n) vs O(1) | [`tap-13.md`](./kubernetes-networking/k8s-lab/tap-13.md) |
-| **14** | veth pair & conntrack: Hành trình của 1 packet qua Calico | [`tap-14.md`](./kubernetes-networking/k8s-lab/tap-14.md) |
-| **15** | NetworkPolicy cơ bản: Default Deny và Ingress Policy | [`tap-15.md`](./kubernetes-networking/k8s-lab/tap-15.md) |
-| **16** | Cross-namespace Policy: AND vs OR — Dấu gạch "-" quan trọng thế nào! | [`tap-16.md`](./kubernetes-networking/k8s-lab/tap-16.md) |
-| **17** | Union Logic: NetworkPolicy hoạt động như Security Group, không phải ACL | [`tap-17.md`](./kubernetes-networking/k8s-lab/tap-17.md) |
-| **18** | BGP trong Calico: Cluster như một AS, peer với ToR Switch | [`tap-18.md`](./kubernetes-networking/k8s-lab/tap-18.md) |
-| **19** | Full Mesh vs Route Reflector: Bài toán n*(n-1)/2 khi cluster lớn | [`tap-19.md`](./kubernetes-networking/k8s-lab/tap-19.md) |
-| **20** | WireGuard trong Calico: Mã hóa traffic nội bộ & bẫy MTU 1440 bytes | [`tap-20.md`](./kubernetes-networking/k8s-lab/tap-20.md) |
-| **21** | Troubleshooting Calico: calicoctl → ip route → iptables-save | [`tap-21.md`](./kubernetes-networking/k8s-lab/tap-21.md) |
-| **22** | Lab 1: "Pod thiếu label" — Connection Timeout không rõ lý do | [`tap-22.md`](./kubernetes-networking/k8s-lab/tap-22.md) |
-| **23** | Lab 2: BGP không quảng bá Pod CIDR — Server vật lý không ping được Pod | [`tap-23.md`](./kubernetes-networking/k8s-lab/tap-23.md) |
-| **24** | Lab 3: WireGuard MTU & PMTUD Black Hole — File nhỏ ok, file lớn fail | [`tap-24.md`](./kubernetes-networking/k8s-lab/tap-24.md) |
-| **25** | Lab 4: Cross-namespace AND/OR Bug — Prometheus không scrape được Backend | [`tap-25.md`](./kubernetes-networking/k8s-lab/tap-25.md) |
-| **26** | Calico Observability: Prometheus + Grafana + AlertManager | [`tap-26.md`](./kubernetes-networking/k8s-lab/tap-26.md) |
+| **11** | Lateral Movement & Blast Radius: Bài toán bảo mật Flannel bỏ qua | [`tap-09-calico-cni/`](./kubernetes-networking/k8s-lab/tap-09-calico-cni) |
+| **12** | Kiến trúc Calico: Felix, BIRD, Datastore — Ai làm gì? | [`tap-10-calico-architecture/`](./kubernetes-networking/k8s-lab/tap-10-calico-architecture) |
+| **13** | iptables vs eBPF Dataplane: O(n) vs O(1) | [`tap-11-ebpf-dataplane/`](./kubernetes-networking/k8s-lab/tap-11-ebpf-dataplane) |
+| **14** | veth pair & conntrack: Hành trình của 1 packet qua Calico | [`tap-12-packet-flow/`](./kubernetes-networking/k8s-lab/tap-12-packet-flow) |
+| **15** | NetworkPolicy cơ bản: Default Deny và Ingress Policy | [`tap-13-networkpolicy-basics/`](./kubernetes-networking/k8s-lab/tap-13-networkpolicy-basics) |
+| **16** | Cross-namespace Policy: AND vs OR — Dấu gạch "-" quan trọng thế nào! | [`tap-14-cross-namespace-policy/`](./kubernetes-networking/k8s-lab/tap-14-cross-namespace-policy) |
+| **17** | Union Logic: NetworkPolicy hoạt động như Security Group, không phải ACL | [`tap-15-union-logic/`](./kubernetes-networking/k8s-lab/tap-15-union-logic) |
+| **18** | BGP trong Calico: Node-to-Node Mesh và chuyển từ VXLAN | [`tap-16-bgp-calico/`](./kubernetes-networking/k8s-lab/tap-16-bgp-calico) |
+| **19** | WireGuard trong Calico: Mã hóa traffic nội bộ & bẫy MTU 1440 bytes | [`tap-17-wireguard/`](./kubernetes-networking/k8s-lab/tap-17-wireguard) |
+| **20** | Lab 1: "Pod thiếu label" — Connection Timeout không rõ lý do | [`tap-18-lab-label-typo/`](./kubernetes-networking/k8s-lab/tap-18-lab-label-typo) |
+| **21** | Lab 2: BGP không quảng bá Pod CIDR — Server vật lý không ping được Pod | [`tap-19-lab-bgp-cidr/`](./kubernetes-networking/k8s-lab/tap-19-lab-bgp-cidr) |
+| **22** | Lab 3: WireGuard MTU & PMTUD Black Hole — File nhỏ ok, file lớn fail | [`tap-20-lab-wireguard-mtu/`](./kubernetes-networking/k8s-lab/tap-20-lab-wireguard-mtu) |
+| **23** | Lab 4: Cross-namespace AND/OR Bug — Prometheus không scrape được Backend | [`tap-21-lab-cross-namespace-bug/`](./kubernetes-networking/k8s-lab/tap-21-lab-cross-namespace-bug) |
+| **24** | Tổng kết & Workflow Troubleshooting Calico chuẩn | [`tap-22-calico-troubleshooting/`](./kubernetes-networking/k8s-lab/tap-22-calico-troubleshooting) |
+| **25** | Calico Observability: Prometheus + Grafana + AlertManager | [`tap-23-calico-observability/`](./kubernetes-networking/k8s-lab/tap-23-calico-observability) |
 
-**🟣 Phần 3 — Cilium (Tập 27–43)**
-
-| Tập | Chủ đề | Lab |
-| :---: | :--- | :--- |
-| **27** | Tại sao Cilium? Pain points của Calico & sockops bypass | [`tap-27.md`](./kubernetes-networking/k8s-lab/tap-27.md) |
-| **28** | BPF Maps: Hash, LRU, Array, Per-CPU — Vũ khí hiệu năng của Cilium | [`tap-28.md`](./kubernetes-networking/k8s-lab/tap-28.md) |
-| **29** | Kiến trúc Cilium: Operator, Agent, GoBGP, Hubble — So sánh với Calico | [`tap-29.md`](./kubernetes-networking/k8s-lab/tap-29.md) |
-| **30** | 3 Hook Points của eBPF: XDP, TC và sockops | [`tap-30.md`](./kubernetes-networking/k8s-lab/tap-30.md) |
-| **31** | Cùng Node vs Khác Node: Tại sao sockops bypass hoàn toàn XDP/TC? | [`tap-31.md`](./kubernetes-networking/k8s-lab/tap-31.md) |
-| **32** | L3/L4 Policy trong Cilium: So sánh với Kubernetes NetworkPolicy | [`tap-32.md`](./kubernetes-networking/k8s-lab/tap-32.md) |
-| **33** | L7 Policy: Chặn HTTP POST theo path với Envoy Proxy | [`tap-33.md`](./kubernetes-networking/k8s-lab/tap-33.md) |
-| **34** | DNS Policy với toFQDNs: Filter theo domain thay vì IP | [`tap-34.md`](./kubernetes-networking/k8s-lab/tap-34.md) |
-| **35** | Cilium + Istio: Khi nào kết hợp, khi nào dùng Cilium thuần? | [`tap-35.md`](./kubernetes-networking/k8s-lab/tap-35.md) |
-| **36** | Hubble CLI: `hubble observe` — Debug real-time không cần SSH | [`tap-36.md`](./kubernetes-networking/k8s-lab/tap-36.md) |
-| **37** | Hubble UI: Service Map tự động & DROPPED màu đỏ | [`tap-37.md`](./kubernetes-networking/k8s-lab/tap-37.md) |
-| **38** | Hubble Metrics: hubble_drop_total, http_requests — Đúng tool, đúng tình huống | [`tap-38.md`](./kubernetes-networking/k8s-lab/tap-38.md) |
-| **39** | Troubleshooting Cilium: cilium status → hubble observe → cilium CLI | [`tap-39.md`](./kubernetes-networking/k8s-lab/tap-39.md) |
-| **40** | Lab 1: Pod label sai — Hubble show "Policy denied" ngay lập tức | [`tap-40.md`](./kubernetes-networking/k8s-lab/tap-40.md) |
-| **41** | Lab 2: L7 Policy thiếu HTTP method — HTTP 403 & quy trình confirm dev | [`tap-41.md`](./kubernetes-networking/k8s-lab/tap-41.md) |
-| **42** | Lab 3: DNS Egress Policy & toFQDNs trap — External API fail bí ẩn | [`tap-42.md`](./kubernetes-networking/k8s-lab/tap-42.md) |
-| **43** | Lab 4: WireGuard MTU với Cilium — Hubble show "MTU exceeded" ngay! | [`tap-43.md`](./kubernetes-networking/k8s-lab/tap-43.md) |
-
-**🏆 Phần 4 — Kết (Tập 44–45)**
+**🟣 Phần 3 — Cilium (Tập 24–43)**
 
 | Tập | Chủ đề | Lab |
 | :---: | :--- | :--- |
-| **44** | So sánh 3 CNI: Flannel vs Calico vs Cilium — Bảng đánh giá toàn diện | [`tap-44.md`](./kubernetes-networking/k8s-lab/tap-44.md) |
-| **45** | Decision Framework: Khi nào dùng Flannel, Calico, Cilium trong Production? | [`tap-45.md`](./kubernetes-networking/k8s-lab/tap-45.md) |
+| **26** | Tại sao Cilium? Pain points của Calico & sockops bypass | [`tap-24-cilium-why/`](./kubernetes-networking/k8s-lab/tap-24-cilium-why) |
+| **27** | BPF Maps: Hash, LRU, Array, Per-CPU — Vũ khí hiệu năng của Cilium | [`tap-25-bpf-maps/`](./kubernetes-networking/k8s-lab/tap-25-bpf-maps) |
+| **28** | Kiến trúc Cilium: Operator, Agent, GoBGP, Hubble — So sánh với Calico | [`tap-26-cilium-architecture/`](./kubernetes-networking/k8s-lab/tap-26-cilium-architecture) |
+| **29** | 3 Hook Points của eBPF: XDP, TC và sockops | [`tap-27-ebpf-hooks/`](./kubernetes-networking/k8s-lab/tap-27-ebpf-hooks) |
+| **30** | Cùng Node vs Khác Node: Tại sao sockops bypass hoàn toàn XDP/TC? | [`tap-28-same-node-vs-cross-node/`](./kubernetes-networking/k8s-lab/tap-28-same-node-vs-cross-node) |
+| **31** | L3/L4 Policy trong Cilium: So sánh với Kubernetes NetworkPolicy | [`tap-29-cilium-l3l4-policy/`](./kubernetes-networking/k8s-lab/tap-29-cilium-l3l4-policy) |
+| **32** | L7 Policy: Chặn HTTP POST theo path với Envoy Proxy | [`tap-30-cilium-l7-policy/`](./kubernetes-networking/k8s-lab/tap-30-cilium-l7-policy) |
+| **33** | DNS Policy với toFQDNs: Filter theo domain thay vì IP | [`tap-31-fqdn-dns-policy/`](./kubernetes-networking/k8s-lab/tap-31-fqdn-dns-policy) |
+| **34** | Cilium + Istio: Khi nào kết hợp, khi nào dùng Cilium thuần? | [`tap-32-cilium-vs-istio/`](./kubernetes-networking/k8s-lab/tap-32-cilium-vs-istio) |
+| **35** | Hubble CLI: `hubble observe` — Debug real-time không cần SSH | [`tap-33-hubble-cli/`](./kubernetes-networking/k8s-lab/tap-33-hubble-cli) |
+| **36** | Hubble UI: Service Map tự động & DROPPED màu đỏ | [`tap-34-hubble-ui/`](./kubernetes-networking/k8s-lab/tap-34-hubble-ui) |
+| **37** | Hubble Metrics: hubble_drop_total, http_requests — Đúng tool, đúng tình huống | [`tap-35-hubble-metrics/`](./kubernetes-networking/k8s-lab/tap-35-hubble-metrics) |
+| **38** | Troubleshooting Cilium: status → observe → CLI | [`tap-36-cilium-troubleshooting/`](./kubernetes-networking/k8s-lab/tap-36-cilium-troubleshooting) |
+| **39** | Lab 1: Pod label sai — Hubble show "Policy denied" ngay lập tức | [`tap-37-lab-label-typo/`](./kubernetes-networking/k8s-lab/tap-37-lab-label-typo) |
+| **40** | Lab 2: L7 Policy thiếu HTTP method — HTTP 403 & quy trình confirm dev | [`tap-38-lab-l7-missing-method/`](./kubernetes-networking/k8s-lab/tap-38-lab-l7-missing-method) |
+| **41** | Lab 3: DNS Egress Policy & toFQDNs trap — External API fail bí ẩn | [`tap-39-lab-fqdn-trap/`](./kubernetes-networking/k8s-lab/tap-39-lab-fqdn-trap) |
+| **42** | Lab 4: WireGuard MTU với Cilium — Hubble show "MTU exceeded" ngay! | [`tap-40-lab-wireguard-mtu/`](./kubernetes-networking/k8s-lab/tap-40-lab-wireguard-mtu) |
+
+**🏆 Phần 4 — Kết (Tập 41–45)**
+
+| Tập | Chủ đề | Lab |
+| :---: | :--- | :--- |
+| **43** | So sánh 3 CNI: Flannel vs Calico vs Cilium — Bảng đánh giá toàn diện | [`tap-41-cni-comparison/`](./kubernetes-networking/k8s-lab/tap-41-cni-comparison) |
+| **44** | Decision Framework: Khi nào dùng Flannel, Calico, Cilium trong Production? | [`tap-42-decision-framework/`](./kubernetes-networking/k8s-lab/tap-42-decision-framework) |
 
 ---
 

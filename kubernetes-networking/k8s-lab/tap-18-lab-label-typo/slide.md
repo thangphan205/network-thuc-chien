@@ -31,7 +31,7 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 19
+# Tập 18
 ## Lab 1: Sự cố kết nối (Connection Timeout) không rõ nguyên nhân
 
 **Phần 2 — Calico Labs** · `#lab` `#NetworkPolicy` `#troubleshooting`
@@ -41,7 +41,7 @@ style: |
 ## Mục tiêu tập này
 
 - Debug production incident: frontend không gọi được backend mới
-- Áp dụng workflow 5 bước từ Tập 18 vào thực tế
+- Thực hành tự debug lỗi Connection Timeout
 - Hiểu Felix event-driven: thêm label → rule cập nhật < 100ms
 - Học checklist debug "connection timeout" trong Calico cluster
 
@@ -127,4 +127,4 @@ Chúng ta sẽ thực hành:
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
-> **Tập tiếp theo:** Lab 2 — BGP không quảng bá Pod CIDR, server vật lý không ping được Pod.
+> **Tập tiếp theo:** Tập 19 — Lab 2: BGP không quảng bá Pod CIDR

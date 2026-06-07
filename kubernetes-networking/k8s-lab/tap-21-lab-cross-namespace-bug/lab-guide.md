@@ -1,4 +1,4 @@
-# Lab Tập 22: Lab 4 — Sự cố phân quyền truy cập chéo Namespace (Logic AND vs OR)
+# Lab Tập 21: Lab 4 — Sự cố phân quyền truy cập chéo Namespace (Logic AND vs OR)
 
 **Hiện tượng hiện tại:**
 Hệ thống giám sát Prometheus chạy trong namespace `monitoring` không thể kết nối tới Pod Backend trong namespace `production` để thu thập dữ liệu metrics trên cổng TCP `9090`. Cấu hình NetworkPolicy chéo namespace đã được thiết lập để chỉ cho phép Prometheus Pod từ namespace `monitoring` truy cập. Logs hệ thống cho thấy Prometheus liên tục báo lỗi **Connection Timeout** khi kết nối tới Backend, đồng thời xuất hiện lo ngại về rủi ro bảo mật (một số Pod không có quyền hạn nhưng có thể kết nối được tới Backend chéo namespace khi thay đổi cấu hình).

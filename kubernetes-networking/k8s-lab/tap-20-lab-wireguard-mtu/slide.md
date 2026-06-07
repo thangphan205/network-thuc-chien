@@ -33,7 +33,7 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 21
+# Tập 20
 ## Lab 3: Sự cố truyền nhận file dung lượng lớn qua WireGuard (MTU Black Hole)
 
 **Phần 2 — Calico Labs** · `#WireGuard` `#MTU` `#PMTUD` `#troubleshooting`
@@ -75,12 +75,12 @@ Dấu hiệu đặc trưng:
 ## PMTUD Black Hole — Cơ chế
 
 ```
-MTU interface Pod = 1500 (sai, WireGuard cần 1420)
+MTU interface Pod = 1500 (sai, WireGuard cần 1440)
 TCP packet lớn: 1450 bytes + DF bit = 1
 
 Path:
-  Pod A → [WireGuard] → 1450 + 80 bytes WG header = 1530
-  Physical MTU = 1500 → 1530 > 1500 → muốn fragment
+  Pod A → [WireGuard] → 1450 + 60 bytes WG header = 1510
+  Physical MTU = 1500 → 1510 > 1500 → muốn fragment
   DF = 1 → KHÔNG ĐƯỢC fragment
   Router SILENTLY DROP (không gửi ICMP fragmentation needed)
 
@@ -88,8 +88,8 @@ Kết quả:
   Sender không biết → tiếp tục gửi packet lớn
   → Connection hang mãi, không có error message
   
-File nhỏ (< 1420 bytes): fit trong 1 packet → OK
-File lớn (> 1420 bytes): bị drop → hang
+File nhỏ (< 1440 bytes): fit trong 1 packet → OK
+File lớn (> 1440 bytes): bị drop → hang
 ```
 
 ---
@@ -102,17 +102,17 @@ File lớn (> 1420 bytes): bị drop → hang
 # Cross-node: qua WireGuard tunnel → fail
 
 # 2. Test với DF bit
-ping -s 1400 -M do <cross-node-pod-ip>
-# Nếu MTU sai → "message too long, mtu=1420"
-# Kernel biết MTU thực = 1420 dù interface nói 1500
+ping -s 1440 -M do <cross-node-pod-ip>
+# Nếu MTU sai → "message too long, mtu=1440"
+# Kernel biết MTU thực = 1440 dù interface nói 1500
 
 # 3. Fix MTU
 kubectl patch felixconfiguration default \
   --type merge \
-  --patch '{"spec":{"wireguardMTU":1420}}'
+  --patch '{"spec":{"wireguardMTU":1440}}'
 
 # 4. MSS Clamping thêm bảo vệ
-# Calico tự cài iptables mangle rule khi set wireguardMssClamp
+# TCP stack tự negotiate MSS (hoặc set wireguardMssClamp nếu cần)
 ```
 
 ---
@@ -131,4 +131,4 @@ Chúng ta sẽ thực hành:
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
-> **Tập tiếp theo:** Lab 4 — Cross-namespace AND/OR bug, Prometheus không scrape được.
+> **Tập tiếp theo:** Tập 21 — Lab 4: Cross-namespace policy bug

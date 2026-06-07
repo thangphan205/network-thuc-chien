@@ -33,7 +33,7 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 22
+# Tập 21
 ## Lab 4: Sự cố phân quyền truy cập chéo Namespace (Logic AND vs OR)
 
 **Phần 2 — Calico Labs** · `#lab` `#cross-namespace` `#prometheus` `#troubleshooting`
@@ -184,4 +184,4 @@ Chúng ta sẽ thực hành:
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
-> **Tập tiếp theo:** Calico Observability — Prometheus + Grafana metrics stack.
+> **Tập tiếp theo:** Tập 22 — Tổng kết & Workflow Debug chuẩn trong Calico
