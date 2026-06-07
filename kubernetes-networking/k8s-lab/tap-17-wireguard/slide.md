@@ -116,7 +116,8 @@ Triệu chứng:
 **Fix:**
 ```
 1. Set wireguardMTU: 1440 (đúng overhead)
-2. MSS Clamping: ép TCP negotiate MSS ≤ 1400
+2. CNI tự đồng bộ MTU = 1440 xuống Pod interface
+3. TCP stack trong Pod tự negotiate MSS ≤ 1400
 ```
 
 ---
@@ -156,7 +157,7 @@ Chúng ta sẽ thực hành:
 | :--- | :--- | :--- |
 | `wireguard.cali` không xuất hiện | `lsmod \| grep wireguard` | Kernel chưa load WireGuard module; chạy `modprobe wireguard` |
 | Bật WireGuard nhưng traffic không mã hóa | `sudo wg show wireguard.cali` | `wireguardEnabled` chưa được set thành `true` trong FelixConfig |
-| Gửi file lớn bị treo (PMTUD Black Hole) | `ping -s 1440 -M do <IP>` | MTU đặt quá cao (1500) hoặc thiếu MSS Clamping; sửa `wireguardMTU: 1440` |
+| Gửi file lớn bị treo (PMTUD Black Hole) | `ping -s 1440 -M do <IP>` | MTU đặt quá cao (1500) khiến MSS tăng lên 1460; sửa `wireguardMTU: 1440` |
 | Lỗi CNI khi pod khởi động | `kubectl describe pod` | Felix chưa cấu hình xong MTU; khởi động lại calico-node DaemonSet |
 
 **Quy tắc debug:** Kiểm tra tầng Kernel (modprobe) → Kiểm tra config Calico (FelixConfig) → Kiểm tra Data Plane (iptables mangle & tcpdump UDP 51820).
