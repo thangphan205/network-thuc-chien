@@ -22,14 +22,14 @@ Sau khi bật WireGuard, team nhận báo cáo: *"Request nhỏ vẫn OK, nhưng
 ```mermaid
 graph LR
     subgraph Worker1
-        PodA["Pod A\n10.244.1.X"]
+        PodA["Pod A\n10.244.235.X"]
     end
     subgraph Worker2
-        PodB["Pod B\n10.244.2.Y"]
+        PodB["Pod B\n10.244.189.Y"]
     end
 
-    PodA -->|"ICMP plain-text\nsrc: 10.244.1.X\ndst: 10.244.2.Y"| eth0_w1["eth0\n192.168.64.11"]
-    eth0_w1 -->|"Không mã hóa\ntcpdump đọc được"| eth0_w2["eth0\n192.168.64.12"]
+    PodA -->|"ICMP plain-text\nsrc: 10.244.235.X\ndst: 10.244.189.Y"| eth0_w1["eth0\n192.168.252.61"]
+    eth0_w1 -->|"Không mã hóa\ntcpdump đọc được"| eth0_w2["eth0\n192.168.252.62"]
     eth0_w2 --> PodB
 
     classDef pod fill:#1e3a8a,stroke:#3b82f6,color:#fff;
@@ -42,12 +42,12 @@ graph LR
 ```mermaid
 graph LR
     subgraph Worker1
-        PodA["Pod A\n10.244.1.X"]
+        PodA["Pod A\n10.244.235.X"]
         wg1["wireguard.cali\nMTU 1420"]
     end
     subgraph Worker2
         wg2["wireguard.cali\nMTU 1420"]
-        PodB["Pod B\n10.244.2.Y"]
+        PodB["Pod B\n10.244.189.Y"]
     end
 
     PodA -->|"ICMP plain-text"| wg1
@@ -61,9 +61,13 @@ graph LR
 ```
 
 ## 🛠 Yêu cầu chuẩn bị
-- Cụm K8s với Calico từ Tập 9.
-- Ubuntu 26.04 — WireGuard được build sẵn trong kernel 6.x/7.x+.
-- `pod-a` trên `worker1`, `pod-b` trên `worker2`.
+- Cụm K8s chạy Calico (đã cấu hình BGP ở Tập 16).
+- Thông tin các node trong lab:
+  - `controlplane`: IP `192.168.252.60` (Pod CIDR: `10.244.49.64/26`)
+  - `worker1`: IP `192.168.252.61` (Pod CIDR: `10.244.235.128/26`)
+  - `worker2`: IP `192.168.252.62` (Pod CIDR: `10.244.189.64/26`)
+- OS: Ubuntu 26.04 (Kernel 7.0.0-22-generic arm64) đã tích hợp sẵn WireGuard trong kernel.
+- `pod-a` chạy trên `worker1` (IP thuộc dải `10.244.235.128/26`), `pod-b` chạy trên `worker2` (IP thuộc dải `10.244.189.64/26`).
 
 ---
 
@@ -90,8 +94,14 @@ multipass shell worker1
 3. Kiểm tra kernel version đủ điều kiện:
    ```bash
    uname -r
-   # 6.x.x/7.x.x-generic   ← Đủ điều kiện (cần 5.6+)
+   # 7.0.0-22-generic-arm64   ← Đủ điều kiện (cần 5.6+)
    ```
+
+> 💡 **Giải thích cho học viên:**
+> - **Tại sao kiểm tra module WireGuard?** WireGuard trong Linux chạy trực tiếp ở cấp độ nhân (Kernel space) cho tốc độ tối đa và độ trễ tối thiểu. Thay vì chạy ở Userspace (như IPSec trong một số CNI cũ hoặc OpenVPN), WireGuard đóng gói gói tin ngay trong Kernel.
+> - `sudo modprobe wireguard`: Câu lệnh yêu cầu Linux Kernel nạp module WireGuard vào bộ nhớ.
+> - `lsmod`: Liệt kê các kernel module hiện đang hoạt động để xác nhận WireGuard đã sẵn sàng.
+> - `uname -r`: WireGuard được tích hợp chính thức vào Linux Kernel từ bản 5.6. Do hệ thống của chúng ta dùng Ubuntu 26.04 với Kernel 7.0+, module này đã có sẵn và không cần cài đặt thêm gói ngoài.
 
 ---
 
@@ -115,21 +125,32 @@ multipass shell controlplane
    kubectl -n calico-system rollout status daemonset/calico-node
    ```
 
-3. Verify interface `wireguard.cali` xuất hiện trên worker1:
+3. Verify interface `wireguard.cali` xuất hiện trên `worker1`:
+   **SSH vào `worker1`:**
    ```bash
-   multipass exec worker1 -- ip link show wireguard.cali
+   multipass shell worker1
+   ```
+   **Kiểm tra interface:**
+   ```bash
+   ip link show wireguard.cali
    # wireguard.cali: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1420 qdisc ...
    # MTU = 1420 ← WireGuard overhead accounting
    ```
 
-4. Xem WireGuard public key và peers:
+4. Xem WireGuard public key và peers trên `worker1`:
    ```bash
-   multipass exec worker1 -- sudo wg show wireguard.cali
+   sudo wg show wireguard.cali
    # interface: wireguard.cali
    #   public key: xxxxx=
    #   listening port: 51820
-   #   peers: 2    ← Peer với 2 nodes khác
+   #   peers: 2    ← Peer với 2 nodes khác (controlplane và worker2)
    ```
+
+> 💡 **Giải thích cho học viên:**
+> - **Cấu hình Felix (Calico Agent):** Khi set `wireguardEnabled: true`, Calico DaemonSet (chạy felix) nhận diện cấu hình từ data store của K8s. Felix tự động tạo interface ảo `wireguard.cali` trên từng node, tự sinh cặp khóa public/private key cho WireGuard và chia sẻ public key này với các node khác trong cụm thông qua BGP/Calico IPAM.
+> - **Interface `wireguard.cali`:** Là một Point-to-Point tunnel. Toàn bộ traffic giữa Pod ở các node khác nhau đi qua routing table sẽ được đẩy vào interface ảo này thay vì đẩy trực tiếp ra `eth0`.
+> - **Tại sao MTU mặc định là 1420?** Vì WireGuard đóng gói gói tin gốc bằng header mới (gồm IP, UDP, và mã hóa) tốn 48 bytes overhead. Nếu MTU vật lý là 1500, MTU hiệu dụng tối đa sẽ là 1452. Calico đặt mặc định là 1420 (để chừa thêm 32 bytes an toàn cho các môi trường overlay khác).
+> - **`sudo wg show`:** Công cụ quản trị WireGuard cho biết cổng lắng nghe mặc định (UDP 51820) và thông tin các Peer (các node khác trong cluster).
 
 ---
 
@@ -163,12 +184,21 @@ kill $TCPDUMP_PID
 
 **So sánh:** Nếu tắt WireGuard, tcpdump thấy ICMP rõ nội dung. Với WireGuard bật, chỉ thấy UDP noise.
 
-Xem transfer stats:
+Xem transfer stats (chạy trên `worker1`):
 ```bash
-multipass exec worker1 -- sudo wg show wireguard.cali transfer
+sudo wg show wireguard.cali transfer
 # peer: xxx=
 #   transfer: X KiB received, Y KiB sent  ← Traffic đã qua WireGuard
 ```
+
+> 💡 **Giải thích cho học viên:**
+> - **Nguyên lý đóng gói (Encapsulation):** Trước khi bật WireGuard, gói tin đi từ Pod A sang Pod B là một gói tin ICMP plain-text thuần túy. Khi ta sniff trên card vật lý `eth0` bằng tcpdump, ta có thể dễ dàng đọc được nội dung của gói tin.
+> - **Khi bật WireGuard:**
+>   1. Gói tin ICMP từ `pod-a` đi tới kernel routing table.
+>   2. Kernel điều hướng nó đi vào interface ảo `wireguard.cali`.
+>   3. Tại đây, WireGuard lấy gói tin gốc làm payload, mã hóa nó bằng thuật toán ChaCha20-Poly1305, thêm WireGuard Header, rồi đóng vào một gói tin UDP với Source/Destination IP là IP vật lý của các node và Destination Port là 51820.
+>   4. Vì thế, sniff trên `eth0` ta chỉ nhìn thấy các gói tin UDP 51820 và dữ liệu hoàn toàn là "gibberish" (nhiễu vô nghĩa), bảo vệ an toàn cho dữ liệu truyền tải giữa các Pod.
+>   5. `sudo wg show wireguard.cali transfer` xác nhận dữ liệu đã được truyền/nhận thực tế qua interface mã hóa này.
 
 ---
 
@@ -229,13 +259,18 @@ multipass exec worker1 -- sudo wg show wireguard.cali transfer
    # (Hoàn thành trong vài giây) ✅
    ```
 
-8. Xem MSS Clamping được tự động cài:
+8. Xem MSS Clamping được tự động cài (chạy trên `worker1`):
    ```bash
-   multipass exec worker1 -- sudo iptables -t mangle -L | grep TCPMSS
+   sudo iptables -t mangle -L | grep TCPMSS
    # TCPMSS  tcp  --  anywhere  anywhere  ... TCPMSS clamp to 1380
    # ← Calico tự set MSS Clamping cho WireGuard!
    # 1380 = 1420 (WireGuard MTU) - 40 bytes (IP header 20 + TCP header 20)
    ```
+
+> 💡 **Giải thích cho học viên:**
+> - **PMTUD Black Hole là gì?** Khi một gói tin TCP được gửi với cờ DF=1 (Don't Fragment) và có kích thước lớn hơn MTU của đường truyền (1420 bytes của WireGuard), thiết bị mạng (hoặc kernel) buộc phải hủy gói tin và gửi lại bản tin ICMP "Fragmentation Needed" (Type 3, Code 4) cho bên gửi để giảm kích thước đóng gói (MSS). Tuy nhiên, nếu bản tin ICMP này bị chặn bởi tường lửa hoặc router dọc đường (chính là lỗ đen - Black Hole), bên gửi sẽ không bao giờ biết lý do tại sao gói tin bị drop và tiếp tục truyền lại với kích thước cũ dẫn đến kết nối bị treo (hang).
+> - **MSS Clamping hoạt động thế nào?** Khi thiết lập kết nối TCP (3-way handshake), gói SYN chứa trường MSS (Maximum Segment Size) để thông báo kích thước payload TCP tối đa có thể nhận. Calico tự động thêm rule vào bảng `mangle` trong `iptables` trên node để ép lại (clamp) giá trị MSS này thành `MTU - 40` (40 bytes là header IPv4 và TCP). 
+> - **Công thức tính MSS:** `MSS = wireguardMTU - 20 (IP header) - 20 (TCP header) = 1420 - 40 = 1380 bytes`. Quy trình này bắt buộc client tự động phân mảnh các phân đoạn TCP nhỏ hơn hoặc bằng 1380 bytes trước khi gửi đi, do đó gói tin sau khi đóng gói WireGuard (thêm 48 bytes nữa) sẽ luôn nhỏ hơn hoặc bằng 1428 bytes, không bao giờ vượt quá MTU vật lý (1500 bytes) và không bao giờ bị drop.
 
 ---
 
