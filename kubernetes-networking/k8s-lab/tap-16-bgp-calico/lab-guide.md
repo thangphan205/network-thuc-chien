@@ -221,6 +221,37 @@ kill $TCPDUMP_PID
    # calicoctl node status bắt buộc chạy local trên node để đọc Unix Socket BIRD
    multipass exec worker1 -- sudo calicoctl node status
    ```
+   > 💡 **Giải thích cho học viên:**
+   > - Lệnh `calicoctl node status` bắt buộc phải chạy trực tiếp (local) trên máy host của node cần kiểm tra vì nó cần đọc UNIX socket `/var/run/calico/bird.ctl` được mount từ container `calico-node`.
+   > - Nếu lệnh trên báo lỗi `command not found` (do `worker1` chưa cài `calicoctl`), hãy SSH vào `worker1` và cài đặt nhanh bằng các lệnh sau:
+   >   ```bash
+   >   multipass shell worker1
+   >   curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 -o calicoctl
+   >   chmod +x calicoctl
+   >   sudo mv calicoctl /usr/local/bin/
+   >   sudo calicoctl node status  # Xác nhận chạy thành công
+   >   exit
+   >   ```
+
+4. Kiểm tra Node nào đang được cấp dải Subnet /26 nào (IPAM Block Affinity):
+   ```bash
+   kubectl get blockaffinities
+   ```
+   **Kết quả mong đợi:**
+   ```text
+   NAME                                 NODE           STATE
+   default-ipv4-ippool-10-244-0-0-26    controlplane   confirmed
+   default-ipv4-ippool-10-244-1-0-26    worker1        confirmed
+   default-ipv4-ippool-10-244-2-0-26    worker2        confirmed
+   ```
+   > 💡 **Giải thích cho học viên:**
+   > - Calico chia IP Pool lớn (mặc định là `10.244.0.0/16`) thành các khối nhỏ (Block) có độ dài `/26` (tương đương 64 IP cho mỗi block) và cấp phát riêng (Affinity) cho từng Node để gán cho các Pod chạy trên Node đó.
+   > - Lệnh `kubectl get blockaffinities` giúp xác định nhanh chóng mối quan hệ sở hữu giữa các dải IP Block `/26` và các Node trong cụm.
+
+   Bạn cũng có thể xem thống kê chi tiết số IP đang sử dụng và còn trống trong mỗi Block bằng lệnh:
+   ```bash
+   calicoctl ipam show --show-blocks
+   ```
 
 ---
 
