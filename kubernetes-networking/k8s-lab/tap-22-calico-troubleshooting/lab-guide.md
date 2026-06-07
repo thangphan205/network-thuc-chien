@@ -28,8 +28,8 @@ flowchart TD
     B4 -->|Nhãn lệch / Logic sai| FIX4["Sửa lại nhãn Pod (--overwrite)\nhoặc cập nhật cú pháp NetworkPolicy"]
     B4 -->|Logic & Nhãn đúng| B5
 
-    B5["Bước 5: Kiểm tra Data Plane & Logs thực tế\n- Kiểm tra iptables rules trên Node đích\n- tcpdump bắt gói tin kiểm tra MTU/loss\n- Xem logs của Felix Agent"]
-    B5 -->|Lỗi Data Plane / MTU| FIX5["Cấu hình lại MTU phù hợp (ví dụ: 1440)\nxóa các rules iptables dư thừa,\nhoặc sửa Felix Configuration"]
+    B5["Bước 5: Kiểm tra Data Plane & Logs thực tế\n- Kiểm tra iptables rules trên Node đích\n- tcpdump bắt gói tin kiểm tra drop/loss\n- Xem logs của Felix Agent"]
+    B5 -->|Lỗi Data Plane / egress bị chặn| FIX5["Kiểm tra GlobalNetworkPolicy, NetworkSet,\nxóa rules iptables dư thừa,\nhoặc sửa FelixConfiguration (MTU, WireGuard)"]
 
     classDef step fill:#1e3a8a,stroke:#3b82f6,color:#fff;
     classDef fix fill:#7f1d1d,stroke:#ef4444,color:#fff;
@@ -47,7 +47,7 @@ flowchart TD
 | :--- | :--- | :--- | :--- | :--- |
 | **Lab 1 (Tập 18): Label Typo** | Connection Timeout chéo/cùng node khi deploy Backend phiên bản mới. | Pod Backend thiếu nhãn `app=backend` khiến policy `allow-frontend-to-backend` không match, Pod bị chặn bởi `default-deny`. | `kubectl get pod --show-labels`<br>`calicoctl get workloadendpoint` | Thêm nhãn chính xác cho Pod (`kubectl label pod backend app=backend`). |
 | **Lab 2 (Tập 19): BGP Route Loss** | BGP session báo UP giữa các node nhưng máy chủ giám sát ngoài cụm không ping được Pod. | Máy chủ ngoài chưa cấu hình BGP Peer với cụm K8s nên không tự động nhận dải Pod CIDR. | `ip route show`<br>`calicoctl node status` | Thêm Static Route trên máy chủ ngoài trỏ về Node trung chuyển hoặc thiết lập BGP Peer động qua BIRD/FRR. |
-| **Lab 3 (Tập 20): WireGuard MTU** | Truyền file nhỏ chéo node OK, file lớn (>5MB) bị treo (hang) chéo node; truyền cùng node hoàn toàn bình thường. | Lớp mã hóa WireGuard cộng thêm 60B overhead. Gói tin 1500B với cờ DF=1 vượt quá MTU 1500 của mạng vật lý bị drop âm thầm (PMTUD Black Hole). | `ping -s 1440 -M do <IP>`<br>`ip link show wireguard.cali` | Cấu hình `wireguardMTU: 1440` trong FelixConfiguration và áp dụng TCP MSS Clamping nếu cần. |
+| **Lab 3 (Tập 20): Network Policy Nâng Cao** | Tenant A reach được Tenant B (cross-namespace). Backend gọi ra Internet thoải mái. Mọi Pod đều reach được AWS IMDS `169.254.169.254`. | Chưa có NetworkPolicy nào — cluster mặc định allow-all. Thiếu egress control, thiếu cluster-wide baseline security. | `kubectl get networkpolicy -A`<br>`calicoctl get globalnetworkpolicy`<br>`kubectl exec -- nc -zv <IP> <port>` | Default-deny ingress theo namespace + DNS whitelist (port 53) + `NetworkSet` CIDR egress + `GlobalNetworkPolicy order:1` block IMDS toàn cluster. |
 | **Lab 4 (Tập 21): Cross-Namespace** | Prometheus ở namespace `monitoring` không scrape được Backend ở `production`. | Lỗi cú pháp dấu gạch ngang tạo logic OR thay vì AND, đồng thời bị che giấu bởi namespace thiếu nhãn (Bug Masking). | `kubectl get ns --show-labels`<br>Phân tích cú pháp YAML `- namespaceSelector` | Sử dụng cú pháp AND (gộp chung dưới 1 dấu gạch ngang), gắn nhãn namespace hoặc dùng K8s auto-labeling. |
 
 ---
@@ -69,6 +69,17 @@ flowchart TD
   ```bash
   kubectl get networkpolicy -A
   calicoctl get networkpolicy -A -o yaml
+  ```
+* **Kiểm tra Calico-specific policies (GlobalNetworkPolicy, NetworkSet):**
+  ```bash
+  # Policy áp toàn cluster (không bị namespace giới hạn)
+  calicoctl get globalnetworkpolicy -o yaml
+
+  # Tập hợp CIDR/IP dùng trong egress policy
+  calicoctl get networkset -A -o yaml
+
+  # Xác nhận policy nào đang select Pod cụ thể
+  calicoctl get workloadendpoint <pod-name> -n <namespace> -o yaml
   ```
 
 ### 2. Kiểm tra tầng Data Plane (Linux Kernel & Network Card)
