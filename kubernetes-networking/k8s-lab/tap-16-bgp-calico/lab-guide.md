@@ -25,8 +25,8 @@ graph LR
         PodB["Pod B<br>(10.244.2.Y)"]
     end
     
-    PodA -->|"Gói tin gốc<br>(Source: 10.244.1.X, Dest: 10.244.2.Y)"| eth0_w1["Card mạng: eth0<br>(192.168.64.11)"]
-    eth0_w1 -->|"Gửi trực tiếp không encap<br>(Không dùng UDP 8472 VXLAN)"| eth0_w2["Card mạng: eth0<br>(192.168.64.12)"]
+    PodA -->|"Gói tin gốc<br>(Source: 10.244.1.X, Dest: 10.244.2.Y)"| eth0_w1["Card mạng: eth0<br>(192.168.252.61)"]
+    eth0_w1 -->|"Gửi trực tiếp không encap<br>(Không dùng UDP 8472 VXLAN)"| eth0_w2["Card mạng: eth0<br>(192.168.252.62)"]
     eth0_w2 --> PodB
     
     classDef pod fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff;
@@ -59,7 +59,7 @@ multipass shell controlplane
      ```
    - Kiểm tra trạng thái của các Pod hệ thống, đặc biệt là các container `calico-node`:
      ```bash
-     kubectl get pods -n kube-system -o wide
+     kubectl get pods -n calico-system -o wide
      ```
    - Kiểm tra danh sách nodes được nhận diện bởi `calicoctl`:
      ```bash
@@ -114,9 +114,9 @@ multipass shell worker1
 1. Xem routing table mới — không còn tunnel:
    ```bash
    ip route show | grep 10.244
-   # 10.244.0.0/26 via 192.168.64.10 dev eth0        ← Direct route tới controlplane
+   # 10.244.0.0/26 via 192.168.252.60 dev eth0        ← Direct route tới controlplane
    # 10.244.1.2 dev calic34a6efc193 scope link       ← Route tới Pod A chạy cục bộ (Calico không dùng cni0)
-   # 10.244.2.0/26 via 192.168.64.12 dev eth0        ← Direct route tới worker2
+   # 10.244.2.0/26 via 192.168.252.62 dev eth0        ← Direct route tới worker2
    ```
    *Nhận xét:* Routes dùng `eth0` trực tiếp, không phải `vxlan.calico` hay bất kỳ tunnel interface nào.
 
@@ -129,8 +129,8 @@ multipass shell worker1
 3. Xem routes do BIRD inject:
    ```bash
    ip route show proto bird
-   # 10.244.0.0/26 via 192.168.64.10 dev eth0
-   # 10.244.2.0/26 via 192.168.64.12 dev eth0
+   # 10.244.0.0/26 via 192.168.252.60 dev eth0
+   # 10.244.2.0/26 via 192.168.252.62 dev eth0
    ```
    *Lưu ý:* `proto bird` — BIRD là BGP daemon chạy bên trong container `calico-node`. BIRD học Pod subnet routes qua BGP sessions giữa các nodes và inject vào kernel routing table với protocol label `bird`.
 
@@ -212,8 +212,8 @@ kill $TCPDUMP_PID
    # Calico process is running.
    # IPv4 BGP status
    # PEER ADDRESS  | PEER TYPE      | STATE | SINCE | INFO
-   # 192.168.64.11 | node specific  | up    | ...   | Established
-   # 192.168.64.12 | node specific  | up    | ...   | Established
+   # 192.168.252.61 | node specific  | up    | ...   | Established
+   # 192.168.252.62 | node specific  | up    | ...   | Established
    ```
 
 3. Xem BGP peer từ worker1:
@@ -259,8 +259,8 @@ Kết quả mong đợi:
 ```
 IPv4 BGP status
 PEER ADDRESS  | PEER TYPE     | STATE  | SINCE | INFO
-192.168.64.10 | node specific | up     | ...   | Established
-192.168.64.12 | node specific | Active | ...   | BGP state is Active
+192.168.252.60 | node specific | up     | ...   | Established
+192.168.252.62 | node specific | Active | ...   | BGP state is Active
 ```
 
 `Active` = BIRD đang gửi SYN đến TCP 179 nhưng không nhận SYN-ACK. Khác với `Established` (kết nối thành công) và `Idle` (chưa bắt đầu kết nối).
@@ -269,21 +269,21 @@ PEER ADDRESS  | PEER TYPE     | STATE  | SINCE | INFO
 
 ```bash
 # Test TCP 179 từ worker1 → worker2 (phải thất bại)
-nc -zv 192.168.64.12 179 -w 3
-# nc: connect to 192.168.64.12 port 179 (tcp) timed out: Operation now in progress
+nc -zv 192.168.252.62 179 -w 3
+# nc: connect to 192.168.252.62 port 179 (tcp) timed out: Operation now in progress
 
 # Xem BIRD log trong calico-node container trên worker1
-kubectl logs -n kube-system \
-  $(kubectl get pod -n kube-system -l k8s-app=calico-node \
+kubectl logs -n calico-system \
+  $(kubectl get pod -n calico-system -l k8s-app=calico-node \
     --field-selector spec.nodeName=worker1 -o name) \
-  -c calico-node --tail=50 | grep -iE "connect|active|192.168.64.12"
-# Thấy: BGP session to 192.168.64.12 state Active
+  -c calico-node --tail=50 | grep -iE "connect|active|192.168.252.62"
+# Thấy: BGP session to 192.168.252.62 state Active
 
 # Xem BIRD protocol table trực tiếp từ bên trong container
-kubectl exec -n kube-system \
-  $(kubectl get pod -n kube-system -l k8s-app=calico-node \
+kubectl exec -n calico-system \
+  $(kubectl get pod -n calico-system -l k8s-app=calico-node \
     --field-selector spec.nodeName=worker1 -o name) \
-  -c calico-node -- birdcl show protocols all | grep -A5 "192.168.64.12"
+  -c calico-node -- birdcl show protocols all | grep -A5 "192.168.252.62"
 # State: Active, Last error: Connection timed out
 # (DROP rule không gửi TCP RST → BIRD chờ timeout, không phải "Connection refused"
 #  "Connection refused" chỉ xảy ra khi dùng -j REJECT)
@@ -317,8 +317,8 @@ sudo calicoctl node status
 Kết quả mong đợi:
 ```
 PEER ADDRESS  | PEER TYPE     | STATE | SINCE | INFO
-192.168.64.10 | node specific | up    | ...   | Established
-192.168.64.12 | node specific | up    | ...   | Established
+192.168.252.60 | node specific | up    | ...   | Established
+192.168.252.62 | node specific | up    | ...   | Established
 ```
 
 ---
@@ -381,8 +381,8 @@ calicoctl get ippool default-ipv4-ippool -o yaml | grep -E "ipipMode|vxlanMode"
 
 # Theo dõi Felix đang làm gì — chỉ định pod cụ thể trên worker1
 # (kubectl logs -f với -l label selector và nhiều pod sẽ fail hoặc chọn ngẫu nhiên)
-kubectl logs -n kube-system \
-  $(kubectl get pod -n kube-system -l k8s-app=calico-node \
+kubectl logs -n calico-system \
+  $(kubectl get pod -n calico-system -l k8s-app=calico-node \
     --field-selector spec.nodeName=worker1 -o name) \
   -c calico-node --tail=30 | grep -iE "encap|ippool|route|vxlan"
 # Sẽ thấy Felix đang recalculate routes
@@ -390,8 +390,8 @@ kubectl logs -n kube-system \
 # Watch routing table trên worker1 đến khi routes xuất hiện
 watch -n2 'ip route show proto bird'
 # Ctrl+C khi thấy:
-# 10.244.0.0/26 via 192.168.64.10 dev eth0
-# 10.244.2.0/26 via 192.168.64.12 dev eth0
+# 10.244.0.0/26 via 192.168.252.60 dev eth0
+# 10.244.2.0/26 via 192.168.252.62 dev eth0
 ```
 
 *Thông thường routes xuất hiện sau 15–30s. Trên Multipass với tải cao có thể lên đến 60s.*
@@ -400,11 +400,11 @@ watch -n2 'ip route show proto bird'
 
 ```bash
 # Kiểm tra calico-node pod có healthy không
-kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
+kubectl get pods -n calico-system -l k8s-app=calico-node -o wide
 
 # Force Felix reload bằng restart DaemonSet
-kubectl rollout restart daemonset/calico-node -n kube-system
-kubectl rollout status daemonset/calico-node -n kube-system
+kubectl rollout restart daemonset/calico-node -n calico-system
+kubectl rollout status daemonset/calico-node -n calico-system
 ```
 
 **Bước 5 — Verify:**
@@ -412,8 +412,8 @@ kubectl rollout status daemonset/calico-node -n kube-system
 ```bash
 # Trên worker1:
 ip route show proto bird
-# 10.244.0.0/26 via 192.168.64.10 dev eth0
-# 10.244.2.0/26 via 192.168.64.12 dev eth0
+# 10.244.0.0/26 via 192.168.252.60 dev eth0
+# 10.244.2.0/26 via 192.168.252.62 dev eth0
 
 # Verify pod connectivity
 POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
@@ -469,7 +469,7 @@ PING 10.244.2.X (10.244.2.X): 56 data bytes
 
 # Kiểm tra: Routes có không? BGP có up không?
 ip route show | grep 10.244
-# 10.244.2.0/26 via 192.168.64.12 dev eth0  ← Routes OK
+# 10.244.2.0/26 via 192.168.252.62 dev eth0  ← Routes OK
 
 sudo calicoctl node status | grep -E "STATE|Established|Active"
 # Established ← BGP OK
@@ -543,12 +543,12 @@ multipass shell worker1
 multipass shell controlplane
 
 # Tìm tên pod calico-node trên worker1
-CALICO_POD_W1=$(kubectl get pod -n kube-system -l k8s-app=calico-node \
+CALICO_POD_W1=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=worker1 -o name)
 echo $CALICO_POD_W1
 
 # Xóa pod — chuyển ngay sang Terminal 1 sau lệnh này
-kubectl delete $CALICO_POD_W1 -n kube-system --wait=false
+kubectl delete $CALICO_POD_W1 -n calico-system --wait=false
 ```
 
 **Bước 2 — Quan sát triệu chứng (Terminal 1 — `worker1`, ngay sau bước trên):**
@@ -572,12 +572,12 @@ Calico process is not running.
 
 ```bash
 # Từ controlplane: kiểm tra trạng thái pod
-kubectl get pod -n kube-system -l k8s-app=calico-node -o wide
+kubectl get pod -n calico-system -l k8s-app=calico-node -o wide
 # worker1 pod đang: ContainerCreating / Init:x/y / Running (vừa restart)
 
 # Xem log pod mới trên worker1
-kubectl logs -n kube-system \
-  $(kubectl get pod -n kube-system -l k8s-app=calico-node \
+kubectl logs -n calico-system \
+  $(kubectl get pod -n calico-system -l k8s-app=calico-node \
     --field-selector spec.nodeName=worker1 -o name) \
   -c calico-node --tail=30
 # Thấy Felix đang khởi động: "Starting Felix" / "Waiting for datastore"
@@ -591,9 +591,8 @@ ls -la /var/run/calico/
 
 ```bash
 # Trên controlplane:
-kubectl rollout status daemonset/calico-node -n kube-system --timeout=120s
-# Waiting for daemon set "calico-node" rollout to finish...
-# daemon set "calico-node" successfully rolled out
+kubectl rollout status daemonset/calico-node -n calico-system --timeout=120s
+# Không có lỗi cấu hình nào ở đây cả, cách giải quyết là dùng lệnh `kubectl rollout status` để chờ cho đến khi toàn bộ DaemonSet `calico-node` khởi chạy hoàn tất và ở trạng thái khỏe mạnh (`Running` và `Ready`).
 ```
 
 **Bước 5 — Verify:**
@@ -603,13 +602,13 @@ kubectl rollout status daemonset/calico-node -n kube-system --timeout=120s
 sudo calicoctl node status
 # Calico process is running.
 # PEER ADDRESS  | STATE | INFO
-# 192.168.64.10 | up    | Established
-# 192.168.64.12 | up    | Established
+# 192.168.252.60 | up    | Established
+# 192.168.252.62 | up    | Established
 
 # Routing table đã phục hồi
 ip route show proto bird
-# 10.244.0.0/26 via 192.168.64.10 dev eth0
-# 10.244.2.0/26 via 192.168.64.12 dev eth0
+# 10.244.0.0/26 via 192.168.252.60 dev eth0
+# 10.244.2.0/26 via 192.168.252.62 dev eth0
 ```
 
 ---
@@ -672,8 +671,8 @@ ip route show | grep vxlan
 
 # Kiểm tra routes đang dùng gì
 ip route show | grep 10.244
-# 10.244.0.0/26 via 192.168.64.10 dev eth0  ← eth0 ✓
-# 10.244.2.0/26 via 192.168.64.12 dev eth0  ← eth0 ✓
+# 10.244.0.0/26 via 192.168.252.60 dev eth0  ← eth0 ✓
+# 10.244.2.0/26 via 192.168.252.62 dev eth0  ← eth0 ✓
 # (hoặc có thể vẫn trống nếu Felix chưa add bird routes lại — xem Kịch bản 2)
 
 # Kiểm tra IP Pool đã apply đúng chưa
@@ -682,7 +681,7 @@ calicoctl get ippool default-ipv4-ippool -o yaml | grep -E "ipipMode|vxlanMode"
 # vxlanMode: Never  ← config đúng, Felix đang xử lý
 
 # Xem Felix log
-kubectl logs -n kube-system -l k8s-app=calico-node \
+kubectl logs -n calico-system -l k8s-app=calico-node \
   -c calico-node --tail=30 | grep -iE "vxlan|cleanup|remove|interface"
 ```
 
@@ -692,8 +691,8 @@ kubectl logs -n kube-system -l k8s-app=calico-node \
 
 ```bash
 # Trên controlplane:
-kubectl rollout restart daemonset/calico-node -n kube-system
-kubectl rollout status daemonset/calico-node -n kube-system
+kubectl rollout restart daemonset/calico-node -n calico-system
+kubectl rollout status daemonset/calico-node -n calico-system
 ```
 
 **Bước 5 — Verify:**
@@ -704,8 +703,8 @@ ip link show | grep -i vxlan
 # (không có output — interface đã xóa)
 
 ip route show proto bird
-# 10.244.0.0/26 via 192.168.64.10 dev eth0
-# 10.244.2.0/26 via 192.168.64.12 dev eth0
+# 10.244.0.0/26 via 192.168.252.60 dev eth0
+# 10.244.2.0/26 via 192.168.252.62 dev eth0
 
 # Confirm pod connectivity vẫn bình thường
 POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
