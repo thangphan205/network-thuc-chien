@@ -31,10 +31,12 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 18
-## Lab 1: Sự cố kết nối (Connection Timeout) không rõ nguyên nhân
+# Tập 18 - Calico - Lab thực chiến 1
+## Sự cố kết nối (Connection Timeout) không rõ nguyên nhân
 
 **Phần 2 — Calico Labs** · `#lab` `#NetworkPolicy` `#troubleshooting`
+
+![height:200px](https://www.tigera.io/app/uploads/2026/01/Calico-logo-2026-white-text.svg)
 
 ---
 

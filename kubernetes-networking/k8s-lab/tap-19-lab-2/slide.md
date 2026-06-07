@@ -31,10 +31,12 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 19
-## Lab 2: Sự cố kết nối từ Máy chủ ngoài vào cụm Kubernetes BGP
+# Tập 19 - Calico - Lab thực chiến 2
+## Sự cố kết nối từ Máy chủ ngoài vào cụm Kubernetes BGP
 
 **Phần 2 — Calico Labs** · `#BGP` `#lab` `#routing` `#troubleshooting`
+
+![height:200px](https://www.tigera.io/app/uploads/2026/01/Calico-logo-2026-white-text.svg)
 
 ---
 

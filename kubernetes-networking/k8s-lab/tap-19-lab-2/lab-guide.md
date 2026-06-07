@@ -152,8 +152,68 @@ Trong môi trường thực tế doanh nghiệp, ta sẽ thiết lập để má
      peerIP: 192.168.64.X         # IP của Monitoring Server
      asNumber: 64512              # AS Number của cụm
    ```
-2. **Cấu hình trên Monitoring Server:**
-   Cài đặt phần mềm routing (như FRR hoặc BIRD) trên máy chủ này, thiết lập peer với các Kubernetes nodes qua TCP port 179. Khi đó, mỗi khi K8s cập nhật Pod CIDR mới, BIRD của Calico sẽ tự động đẩy thông tin route sang cho máy chủ ngoài.
+2. **Cấu hình chi tiết trên Monitoring Server (Sử dụng BIRD 2 làm BGP Daemon):**
+   
+   * **Bước A: Cài đặt BIRD 2**
+     SSH vào máy ảo `monitoring-server` (hoặc chạy lệnh từ host):
+     ```bash
+     multipass shell monitoring-server
+     # Cài đặt BIRD 2
+     sudo apt update && sudo apt install -y bird2
+     ```
+
+   * **Bước B: Cấu hình BGP Peering**
+     Mở và cập nhật file `/etc/bird/bird.conf` trên `monitoring-server`:
+     ```nginx
+     # Router ID của Monitoring Server (thay bằng IP thực tế của máy ảo này, ví dụ: 192.168.64.99)
+     router id 192.168.64.99;
+
+     protocol device {
+     }
+
+     # Đẩy các tuyến định tuyến (routes) học từ BGP vào bảng định tuyến của OS Kernel
+     protocol kernel {
+         ipv4 {
+             export all; # Đồng bộ các routes nhận được vào Linux Kernel
+             import none;
+         };
+     }
+
+     # Định nghĩa template BGP peer với cụm Calico (iBGP - AS 64512)
+     template bgp k8s_nodes {
+         local as 64512;
+         neighbor as 64512;
+         ipv4 {
+             import all;   # Nhận toàn bộ dải IP Pod được quảng bá từ K8s nodes
+             export none;  # Không quảng bá ngược lại
+         };
+     }
+
+     # Thiết lập session BGP với Control Plane Node
+     protocol bgp k8s_controlplane from k8s_nodes {
+         neighbor 192.168.64.A; # Thay bằng IP thực tế của controlplane node
+     }
+
+     # Thiết lập session BGP với Worker 1 Node
+     protocol bgp k8s_worker1 from k8s_nodes {
+         neighbor 192.168.64.B; # Thay bằng IP thực tế của worker1 node
+     }
+     ```
+
+   * **Bước C: Khởi chạy dịch vụ và kiểm tra trạng thái**
+     Khởi động lại BIRD và kiểm tra session BGP:
+     ```bash
+     sudo systemctl restart bird
+     sudo birdc show protocols
+     ```
+     *Kết quả mong đợi:* Trạng thái các session `k8s_controlplane` và `k8s_worker1` phải hiển thị là `Established` (hoặc `up`). 
+     
+     Lúc này, nếu kiểm tra bảng định tuyến trên `monitoring-server`:
+     ```bash
+     ip route show
+     ```
+     Bạn sẽ thấy các tuyến đường tới dải Pod IP (`10.244.x.x/26`) được tự động thêm vào thông qua các Node K8s mà không cần cấu hình thủ công.
+
 
 #### Giải pháp B: Sử dụng Định tuyến tĩnh (Lab Shortcut - Cực kỳ phổ biến với Legacy VM)
 Vì máy ảo `monitoring-server` của chúng ta trong môi trường lab là VM đơn giản, ta sẽ cấu hình **Static Route** trỏ dải Pod CIDR thông qua node `controlplane` làm gateway trung chuyển.
