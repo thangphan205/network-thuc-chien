@@ -236,13 +236,15 @@ ip link show wireguard.cali | grep -o 'mtu [0-9]*'
 # mtu 1440  ← Đúng
 ```
 
-**0c. Kiểm tra MTU và MSS của Pod:**
-Do Calico cấu hình MTU của Pod trực tiếp, Linux TCP stack bên trong Pod sẽ tự giới hạn MSS mà không cần luật iptables `TCPMSS` trên host. Ta confirm bằng cách kiểm tra MTU của Pod `pod-a`:
+**0c. Kiểm tra MTU của Pod:**
+Thực tế, MTU của Pod thường được giữ ở mức mặc định (ví dụ: `1500`):
 ```bash
 kubectl exec pod-a -- ip link show eth0
-# eth0@ifX: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1440 ...
+# eth0@ifX: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 ...
 ```
-> 💡 Điều này có nghĩa là mọi kết nối TCP đi ra từ Pod sẽ tự động thương lượng MSS tối đa là `1440 - 40 = 1400` bytes.
+> 💡 **Lưu ý — Pods cũ vs Pods mới:**
+> - **Pod tạo TRƯỚC khi bật WireGuard** (như `pod-a`, `pod-b` từ Tập 16): Calico CNI không retroactively cập nhật MTU → eth0 MTU=1500. MSS ban đầu sẽ là 1460. Cơ chế điều chỉnh MSS về 1400 là **PMTUD tự động**: host kernel phát hiện inner IP > 1440B khi đi qua `wireguard.cali` (MTU=1440) → drop + gửi ICMP "Fragmentation Needed" nội bộ về pod → TCP stack tự giảm MSS xuống 1400.
+> - **Pod tạo SAU khi bật WireGuard**: Calico CNI set eth0 MTU=1440 ngay lúc tạo → TCP tự advertise MSS=1400 từ đầu, không cần PMTUD discovery phase.
 
 **Trên `controlplane`:**
 
@@ -279,13 +281,13 @@ kubectl exec pod-a -- sh -c "nc -w 10 $POD_B_IP 9999 < /tmp/largefile"
    kubectl -n calico-system rollout status daemonset/calico-node
    ```
 
-   **Verify MTU của Pod đã thay đổi**:
+   **Verify MTU của interface `wireguard.cali` trên host đã thay đổi** (SSH vào `worker1`):
    ```bash
-   kubectl exec pod-a -- ip link show eth0 | grep -o 'mtu [0-9]*'
-   # mtu 1500  ← MTU của Pod tăng lên 1500 (theo FelixConfig mới)
+   ip link show wireguard.cali | grep -o 'mtu [0-9]*'
+   # mtu 1500  ← Interface MTU trên host tăng lên 1500 (theo FelixConfig mới)
    ```
 
-   > ⚠️ **Tại sao MTU 1500 gây Black Hole?** Khi MTU của Pod là 1500, Linux TCP stack trong Pod sẽ thương lượng MSS tối đa là `1500 - 40 = 1460` bytes. Khi gửi file lớn, Pod gửi các gói tin IP kích thước 1500 bytes. Khi đi qua host, WireGuard đóng gói thêm 60 bytes overhead làm gói tin phình to thành **1560 bytes > 1500 bytes (MTU vật lý) → Bị drop**. Do iptables rule phía dưới giả lập drop âm thầm (không phản hồi ICMP), bên gửi không biết để hạ MSS xuống → kết nối treo vô hạn.
+   > ⚠️ **Tại sao MTU 1500 gây Black Hole?** Khi `wireguard.cali` MTU là 1500, Host Kernel sẽ không còn chặn và gửi ICMP Fragmentation Needed nội bộ về cho Pod nữa (vì gói tin 1500 bytes từ Pod vừa khít với interface `wireguard.cali` 1500). Gói tin đi vào WireGuard và bị đóng gói thêm 60 bytes thành **1560 bytes**, sau đó đi ra card mạng vật lý `eth0` (MTU 1500) và bị drop. Vì gói tin bị drop âm thầm ở lớp vật lý (do rule iptables giả lập drop của chúng ta), Pod không bao giờ nhận được ICMP Fragmentation Needed báo lỗi để hạ MSS → kết nối treo vô hạn.
 
 3. **Giả lập drop gói tin quá khổ ở card vật lý (do môi trường ảo hóa Multipass/Bridges nội bộ thường tự bypass và cho qua gói tin > 1500 bytes):**
    **SSH vào `worker1`:**
@@ -307,17 +309,22 @@ kubectl exec pod-a -- sh -c "nc -w 10 $POD_B_IP 9999 < /tmp/largefile"
    # Terminal 2: pod-a gửi file lớn
    POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
    kubectl exec pod-a -- sh -c "nc -w 30 $POD_B_IP 9999 < /tmp/largefile"
-   # (Hang 30 giây rồi timeout) ← PMTUD Black Hole! TCP MSS=1460 → inner 1500B → WireGuard wrap 1560B > 1500B → DROP!
+   # (Hang 30 giây rồi timeout) ← PMTUD Black Hole!
+   # Pod eth0 MTU=1500 → TCP tự advertise MSS=1460 → payload=1460B → inner IP=1500B
+   # wireguard.cali MTU=1500 → host không chặn → WireGuard wrap: 1500+60=1560B > physical 1500B → DROP!
    ```
 
-6. Diagnose with ping DF bit — **sẽ HANG (không có phản hồi):**
+5. Diagnose với ping DF bit — **sẽ HANG (không có phản hồi):**
    ```bash
    kubectl exec pod-a -- ping -s 1440 -M do $(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
    # (Đứng treo hoặc báo timeout) ← PMTUD Black Hole thực tế!
-   # Vì gói tin ICMP kích thước 1468 bytes + 60 bytes WireGuard = 1528 bytes, lớn hơn 1500 bytes vật lý và bị drop.
+   # -s 1440 → inner IP = 1440+8(ICMP)+20(IP) = 1468B
+   # 1468B < 1500 → fit trong wireguard.cali MTU=1500, host không chặn
+   # WireGuard wrap: 1468+60 = 1528B > physical 1500B → DROP bởi iptables → không có ICMP phản hồi → hang
+   # (So sánh: -s 1412 → inner=1440B → outer=1500B → đi qua; -s 1413 → inner=1441B → outer=1501B → bị drop)
    ```
 
-7. **Fix:** Set MTU đúng:
+6. **Fix:** Set MTU đúng:
    **Trên terminal `controlplane`:**
    ```bash
    kubectl patch felixconfiguration default \
@@ -328,28 +335,29 @@ kubectl exec pod-a -- sh -c "nc -w 10 $POD_B_IP 9999 < /tmp/largefile"
    kubectl -n calico-system rollout status daemonset/calico-node
    ```
 
-8. Test lại sau fix — **sẽ thành công ngay lập tức:**
+7. Test lại sau fix — **sẽ thành công:**
    ```bash
-   # Restart listener (nc cũ trên pod-b đã exit sau khi sender timeout ở step 5)
+   # Restart listener (nc cũ trên pod-b đã exit sau khi sender timeout ở step 4)
    kubectl exec pod-b -- pkill nc 2>/dev/null; true
    kubectl exec pod-b -- nc -l -p 9999 > /dev/null &
 
    POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
    kubectl exec pod-a -- sh -c "nc -w 10 $POD_B_IP 9999 < /tmp/largefile"
    # (Hoàn thành trong vài giây) ✅
-   # Vì lúc này TCP MSS=1400 → inner IP 1440B → WireGuard wrap 1500B = physical MTU, đi qua được!
+   # Vì lúc này inner IP ≤ 1440B → WireGuard wrap ≤ 1500B = physical MTU, đi qua được!
    ```
 
-9. **Kiểm tra MTU của Pod sau khi fix:**
+8. **Kiểm tra MTU của interface sau khi fix:**
+   SSH vào `worker1` và chạy:
    ```bash
-   kubectl exec pod-a -- ip link show eth0 | grep -o 'mtu [0-9]*'
+   ip link show wireguard.cali | grep -o 'mtu [0-9]*'
    # mtu 1440  ← MTU đã quay lại 1440
    ```
-   > 💡 Lúc này, Linux TCP stack trong Pod sẽ tự động thương lượng MSS tối đa là `1440 - 40 = 1400` bytes. Gói tin IP tối đa gửi ra từ Pod là 1440 bytes, cộng thêm 60 bytes WireGuard overhead = đúng 1500 bytes, đi qua card mạng vật lý hoàn hảo!
+   > 💡 Lúc này, khi Pod gửi gói tin 1500 bytes ra host, Host Kernel phát hiện nó vượt quá MTU 1440 của `wireguard.cali` nên drop ngay lập tức và gửi ICMP Fragmentation Needed ngược về Pod. Linux TCP stack trong Pod nhận tin báo này sẽ tự động giảm MSS về 1400. Gói tin IP từ Pod gửi ra lúc này chỉ còn tối đa 1440 bytes, cộng thêm 60 bytes WireGuard overhead = đúng 1500 bytes, đi qua card mạng vật lý hoàn hảo!
 
 > 💡 **Giải thích cho học viên:**
 > - **PMTUD Black Hole là gì?** Khi một gói tin TCP được gửi với cờ DF=1 (Don't Fragment) và có kích thước lớn hơn MTU của đường truyền (1440 bytes của WireGuard), thiết bị mạng (hoặc kernel) buộc phải hủy gói tin và gửi lại bản tin ICMP "Fragmentation Needed" (Type 3, Code 4) cho bên gửi để giảm kích thước đóng gói (MSS). Tuy nhiên, nếu bản tin ICMP này bị chặn bởi tường lửa hoặc router dọc đường (chính là lỗ đen - Black Hole), bên gửi sẽ không bao giờ biết lý do tại sao gói tin bị drop và tiếp tục truyền lại với kích thước cũ dẫn đến kết nối bị treo (hang).
-> - **MSS Clamping hoạt động thế nào?** Thay vì viết các luật iptables `TCPMSS` trên host (dễ gây overhead và phức tạp), Calico giải quyết bài toán MSS bằng cách cấu hình trực tiếp MTU của Pod thông qua CNI. Khi MTU của card mạng ảo trong Pod được hạ xuống đúng bằng `wireguardMTU`, Linux TCP stack bên trong container sẽ tự động điều chỉnh trường MSS (Maximum Segment Size) trong quá trình bắt tay 3 bước (TCP 3-way handshake) về mức an toàn.
+> - **MSS Clamping hoạt động thế nào?** Thay vì viết các luật iptables `TCPMSS` trên host (dễ gây overhead và phức tạp), Calico và Linux giải quyết bài toán MSS bằng cơ chế **Path MTU Discovery (PMTUD) tự động**. Khi ta hạ `wireguardMTU: 1440`, interface ảo `wireguard.cali` có MTU 1440. Khi Pod gửi các phân đoạn TCP lớn (1500 bytes), Host Kernel thấy vượt quá MTU của interface đích nên drop và gửi bản tin ICMP "Fragmentation Needed" ngược về Pod. Linux TCP stack bên trong container nhận được bản tin này sẽ tự động điều chỉnh trường MSS (Maximum Segment Size) về `MTU - 40 = 1400` bytes cho các gói tin tiếp theo.
 > - **Công thức tính MSS:** `MSS = wireguardMTU - 20 (IP header) - 20 (TCP header) = 1440 - 40 = 1400 bytes`. Nhờ đó, gói tin IP từ Pod gửi đi không bao giờ vượt quá 1440 bytes. Khi host đóng gói thêm 60 bytes WireGuard, gói tin UDP ngoài cùng đạt tối đa 1500 bytes (vừa khít MTU vật lý), truyền đi trơn tru không bị drop.
 
 ---
@@ -377,4 +385,4 @@ kubectl exec pod-a -- sh -c "nc -w 10 $POD_B_IP 9999 < /tmp/largefile"
 2. **Interface `wireguard.cali`:** Xuất hiện trên mỗi Node sau khi bật, MTU 1440, UDP port 51820.
 3. **Traffic encrypted:** tcpdump thấy UDP 51820 với payload gibberish — không đọc được nội dung.
 4. **PMTUD Black Hole:** MTU sai → file nhỏ OK, file lớn hang — diagnose bằng `ping -M do -s 1440`.
-5. **Fix:** Set `wireguardMTU: 1440` → Calico tự động đồng bộ MTU xuống interface của Pod, giúp Linux TCP stack tự giới hạn MSS về 1400 (`MTU - 40 bytes`) mà không cần luật iptables TCPMSS trên host.
+5. **Fix:** Set `wireguardMTU: 1440` → Calico tự động đồng bộ MTU xuống interface ảo `wireguard.cali` trên host, kích hoạt cơ chế PMTUD gửi ICMP báo cho Pod tự động hạ MSS về 1400 mà không cần luật iptables TCPMSS trên host.
