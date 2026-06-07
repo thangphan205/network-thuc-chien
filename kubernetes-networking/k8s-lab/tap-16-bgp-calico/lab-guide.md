@@ -40,7 +40,7 @@ graph LR
 - `calicoctl` đã cài (từ Tập 10).
 - `pod-a` trên `worker1` và `pod-b` trên `worker2` (tạo lại nếu cần).
 
-> **Điều kiện tiên quyết:** BGP mode không encapsulation (`encapsulation: None`) chỉ hoạt động khi tất cả nodes cùng L2 subnet (flat network). Nếu nodes ở khác subnet, packet sẽ bị router trung gian drop vì không biết route đến Pod CIDR. Trường hợp cross-subnet cần dùng `VXLANCrossSubnet` hoặc `IPIPCrossSubnet` thay thế.
+> **Điều kiện tiên quyết:** BGP mode không encapsulation (`ipipMode: Never`, `vxlanMode: Never`) chỉ hoạt động khi tất cả nodes cùng L2 subnet (flat network). Nếu nodes ở khác subnet, packet sẽ bị router trung gian drop vì không biết route đến Pod CIDR. Trường hợp cross-subnet cần dùng `VXLANCrossSubnet` hoặc `IPIPCrossSubnet` thay thế.
 
 ---
 
@@ -68,22 +68,33 @@ multipass shell controlplane
 
 2. Xem IP Pool hiện tại (VXLAN mode):
    ```bash
-   calicoctl get ippool -o yaml | grep -E "encapsulation|cidr|name"
-   # encapsulation: VXLANCrossSubnet
+   calicoctl get ippool -o yaml | grep -E "ipipMode|vxlanMode|cidr|name"
+   # ipipMode: Never
+   # vxlanMode: CrossSubnet
    ```
+   > 💡 **Giải thích cho học viên:** 
+   > - Lệnh trên lấy cấu hình chi tiết của IPPool dưới dạng YAML rồi lọc ra các thông tin mạng cốt lõi.
+   > - `vxlanMode: CrossSubnet` nghĩa là Calico đang áp dụng cơ chế đóng gói (overlay) bằng VXLAN khi gói tin đi qua các node thuộc subnet vật lý khác nhau.
+   > - `ipipMode: Never` nghĩa là cơ chế đóng gói IP-in-IP đang tắt.
 
 3. Chuyển sang BGP mode (không encapsulation):
    ```bash
    calicoctl patch ippool default-ipv4-ippool \
-     --patch '{"spec": {"encapsulation": "None", "natOutgoing": true}}'
+     --patch '{"spec": {"ipipMode": "Never", "vxlanMode": "Never", "natOutgoing": true}}'
    ```
-   *Lưu ý:* `natOutgoing: true` giữ nguyên — Pod IP (`10.244.x.x`) không được advertise ra ngoài cluster, nên khi Pod gửi traffic ra internet, node sẽ NAT (masquerade) sang Node IP. Nếu tắt, packet từ Pod ra internet sẽ bị router drop.
+   > 💡 **Giải thích cho học viên:** 
+   > - Để tắt hoàn toàn việc đóng gói gói tin (overlay network) và chuyển sang **BGP Direct Routing (định tuyến phẳng)**, chúng ta bắt buộc phải cấu hình cả `ipipMode` và `vxlanMode` về giá trị `Never`.
+   > - Khi tắt cả hai, Calico Felix sẽ định tuyến gói tin gốc đi thẳng ra card mạng vật lý (`eth0`) thay vì đi qua interface ảo `vxlan.calico`.
+   > - *Lưu ý:* `natOutgoing: true` giữ nguyên — Pod IP (`10.244.x.x`) không được advertise ra ngoài cluster, nên khi Pod gửi traffic ra internet, node sẽ NAT (masquerade) sang Node IP. Nếu tắt, packet từ Pod ra internet sẽ bị router drop.
 
 4. Verify:
    ```bash
-   calicoctl get ippool default-ipv4-ippool -o yaml | grep encapsulation
-   # encapsulation: None
+   calicoctl get ippool default-ipv4-ippool -o yaml | grep -E "ipipMode|vxlanMode"
+   # ipipMode: Never
+   # vxlanMode: Never
    ```
+   > 💡 **Giải thích cho học viên:**
+   > - Chúng ta kiểm tra lại IPPool `default-ipv4-ippool` để đảm bảo cả hai chế độ đóng gói đều đã được đưa về `Never`. Lúc này, hệ thống mạng của cụm đã chính thức chuyển sang chế độ định tuyến phẳng (BGP Native Routing).
 
 5. Đợi khoảng 5-10 giây để Calico Felix cập nhật lại bảng định tuyến (cơ chế watch cập nhật dynamic, không cần restart pod):
    ```bash
@@ -323,7 +334,7 @@ multipass shell controlplane
 
 # Patch về VXLAN để xóa sạch bird routes
 calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec": {"encapsulation": "VXLANCrossSubnet"}}'
+  --patch '{"spec": {"vxlanMode": "CrossSubnet", "ipipMode": "Never"}}'
 
 # Đợi Felix apply (routes sẽ biến mất)
 sleep 20
@@ -345,7 +356,7 @@ Trên `controlplane`:
 ```bash
 # Patch về BGP mode
 calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec": {"encapsulation": "None"}}'
+  --patch '{"spec": {"ipipMode": "Never", "vxlanMode": "Never"}}'
 
 # Kiểm tra ngay lập tức — routes chưa có
 echo "=== Kiểm tra ngay sau patch ==="
@@ -364,8 +375,9 @@ ip route show proto bird
 
 ```bash
 # Verify IP Pool đã thực sự thay đổi hay chưa
-calicoctl get ippool default-ipv4-ippool -o yaml | grep encapsulation
-# encapsulation: None  ← đã đúng, vấn đề là Felix chưa apply
+calicoctl get ippool default-ipv4-ippool -o yaml | grep -E "ipipMode|vxlanMode"
+# ipipMode: Never
+# vxlanMode: Never  ← đã đúng, vấn đề là Felix chưa apply
 
 # Theo dõi Felix đang làm gì — chỉ định pod cụ thể trên worker1
 # (kubectl logs -f với -l label selector và nhiều pod sẽ fail hoặc chọn ngẫu nhiên)
@@ -613,7 +625,7 @@ multipass shell controlplane
 
 # Bật lại VXLAN để interface vxlan.calico xuất hiện
 calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec": {"encapsulation": "VXLANCrossSubnet"}}'
+  --patch '{"spec": {"vxlanMode": "CrossSubnet", "ipipMode": "Never"}}'
 
 # Đợi Felix tạo interface
 sleep 20
@@ -624,7 +636,7 @@ multipass exec worker1 -- ip link show vxlan.calico
 
 # Giờ patch về None ngay lập tức
 calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec": {"encapsulation": "None"}}'
+  --patch '{"spec": {"ipipMode": "Never", "vxlanMode": "Never"}}'
 ```
 
 **Bước 2 — Quan sát triệu chứng trên `worker1`:**
@@ -665,8 +677,9 @@ ip route show | grep 10.244
 # (hoặc có thể vẫn trống nếu Felix chưa add bird routes lại — xem Kịch bản 2)
 
 # Kiểm tra IP Pool đã apply đúng chưa
-calicoctl get ippool default-ipv4-ippool -o yaml | grep encapsulation
-# encapsulation: None  ← config đúng, Felix đang xử lý
+calicoctl get ippool default-ipv4-ippool -o yaml | grep -E "ipipMode|vxlanMode"
+# ipipMode: Never
+# vxlanMode: Never  ← config đúng, Felix đang xử lý
 
 # Xem Felix log
 kubectl logs -n kube-system -l k8s-app=calico-node \
@@ -729,7 +742,7 @@ kubectl exec pod-a -- ping -c3 $POD_B_IP
 
 ## ✅ Tổng kết
 
-1. **BGP mode = không encapsulation:** IP Pool `encapsulation: None` → routes trực tiếp qua `eth0`, không qua tunnel. Yêu cầu L2 flat network giữa các nodes.
+1. **BGP mode = không encapsulation:** IP Pool (`ipipMode: Never`, `vxlanMode: Never`) → routes trực tiếp qua `eth0`, không qua tunnel. Yêu cầu L2 flat network giữa các nodes.
 2. **Routing table thay đổi:** Thay vì route qua VXLAN interface, giờ route thẳng qua `eth0` via Node IP, inject bởi BIRD BGP daemon.
 3. **tcpdump confirm:** Không có UDP 8472, packet ICMP có source/dest là Pod IP thật (không wrapped).
 4. **BIRD quản lý routes:** BGP sessions giữa các Nodes trao đổi Pod subnet routes — giống như datacenter routing.

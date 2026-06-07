@@ -123,7 +123,7 @@ ToR Switch (AS 65000)                      controlplane (AS 64512)
 Chúng ta sẽ thực hành:
 
 1. **Kiểm tra hệ thống:** Đảm bảo Nodes, Pods và Calico hoạt động bình thường.
-2. **Switch sang BGP:** Patch IP Pool `encapsulation: None`.
+2. **Switch sang BGP:** Patch IP Pool `ipipMode: Never` và `vxlanMode: Never`.
 3. **Quan sát routing table:** Routes dùng `eth0` thay vì `vxlan.calico`, inject bởi BIRD.
 4. **Xem BGP sessions:** `calicoctl node status` — verify `Established`.
 5. **Test routing:** Tcpdump confirm không còn UDP 8472, ICMP đi thẳng.

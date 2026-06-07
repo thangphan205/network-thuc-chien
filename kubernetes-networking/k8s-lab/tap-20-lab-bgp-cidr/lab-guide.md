@@ -43,14 +43,21 @@ multipass shell controlplane
 
 1. Kiểm tra cluster đang chạy BGP mode:
    ```bash
-   calicoctl get ippool default-ipv4-ippool -o yaml | grep encapsulation
-   # Kết quả mong đợi: encapsulation: None
+   calicoctl get ippool default-ipv4-ippool -o yaml | grep -E "ipipMode|vxlanMode"
+   # Kết quả mong đợi: 
+   # ipipMode: Never
+   # vxlanMode: Never
    ```
+   > 💡 **Giải thích cho học viên:** 
+   > - Chúng ta cần đảm bảo cụm đã tắt hoàn toàn đóng gói overlay (cả `ipipMode` và `vxlanMode` đều là `Never`) trước khi bắt đầu bài lab kiểm tra định tuyến tĩnh từ máy chủ ngoài.
+   
    *Nếu vẫn là VXLAN, chuyển sang BGP trước:*
    ```bash
    calicoctl patch ippool default-ipv4-ippool \
-     --patch '{"spec": {"encapsulation": "None", "natOutgoing": true}}'
+     --patch '{"spec": {"ipipMode": "Never", "vxlanMode": "Never", "natOutgoing": true}}'
    ```
+   > 💡 **Giải thích cho học viên:** 
+   > - Lệnh này cấu hình lại IPPool mặc định để tắt tất cả các cơ chế đóng gói (overlay network). BIRD daemon sẽ chịu trách nhiệm định tuyến gói tin phẳng trực tiếp qua card mạng vật lý.
 
 2. Xác nhận trạng thái BGP sessions giữa các node đang ở trạng thái `Established`:
    ```bash
