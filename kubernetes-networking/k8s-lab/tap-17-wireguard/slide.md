@@ -52,7 +52,7 @@ style: |
 - Reproduce PMTUD Black Hole và fix
 - Hiểu khi nào cần WireGuard vs không cần
 
-**Prerequisites:** Cluster Calico, Ubuntu 26.04 (kernel 6.x/7.x+ — WireGuard được build sẵn)
+**Prerequisites:** Cluster Calico, Ubuntu 26.04 (Kernel 7.x+ có sẵn Wireguard module, cần cài `wireguard-tools` để debug)
 
 ---
 

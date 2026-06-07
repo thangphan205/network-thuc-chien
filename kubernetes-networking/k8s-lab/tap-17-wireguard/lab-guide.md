@@ -67,6 +67,7 @@ graph LR
   - `worker1`: IP `192.168.252.61` (Pod CIDR: `10.244.235.128/26`)
   - `worker2`: IP `192.168.252.62` (Pod CIDR: `10.244.189.64/26`)
 - OS: Ubuntu 26.04 (Kernel 7.0.0-22-generic arm64) đã tích hợp sẵn WireGuard trong kernel.
+- Cài đặt `wireguard-tools` trên các node để có công cụ CLI `wg` (chạy `sudo apt-get update && sudo apt-get install -y wireguard-tools`).
 - `pod-a` chạy trên `worker1` (IP thuộc dải `10.244.235.128/26`), `pod-b` chạy trên `worker2` (IP thuộc dải `10.244.189.64/26`).
 
 ---
@@ -95,6 +96,11 @@ multipass shell worker1
    ```bash
    uname -r
    # 7.0.0-22-generic-arm64   ← Đủ điều kiện (cần 5.6+)
+   ```
+
+4. Cài đặt `wireguard-tools` (công cụ CLI `wg` để debug):
+   ```bash
+   sudo apt-get update && sudo apt-get install -y wireguard-tools
    ```
 
 > 💡 **Giải thích cho học viên:**
@@ -204,6 +210,46 @@ sudo wg show wireguard.cali transfer
 
 ## 💥 Thực nghiệm 4: Reproduce PMTUD Black Hole và Fix
 
+### 📋 Bước 0: Kiểm tra baseline (trước khi thay đổi MTU)
+
+Verify trạng thái đúng làm reference. Tạo file test ở đây để tái sử dụng xuyên suốt thực nghiệm.
+
+**SSH vào `worker1`:**
+```bash
+multipass shell worker1
+```
+
+**0a. Confirm MTU interface = 1440:**
+```bash
+ip link show wireguard.cali | grep -o 'mtu [0-9]*'
+# mtu 1440  ← Đúng
+```
+
+**0b. Confirm MSS Clamping = 1400 (= 1440 − 40):**
+```bash
+sudo iptables -t mangle -L | grep TCPMSS
+# TCPMSS  clamp to 1400  ← 1440 (WG MTU) - 20 (IP header) - 20 (TCP header) = 1400
+```
+
+**Trên `controlplane`:**
+
+**0c. Tạo file test 5MB và verify transfer lớn hoạt động bình thường:**
+```bash
+kubectl exec pod-a -- dd if=/dev/zero of=/tmp/largefile bs=1M count=5 2>&1
+# 5+0 records in, 5+0 records out  ← File tạo thành công
+
+kubectl exec pod-b -- nc -l -p 9999 > /dev/null &
+POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
+kubectl exec pod-a -- sh -c "nc -w 10 $POD_B_IP 9999 < /tmp/largefile"
+# (Hoàn thành ngay) ✅  ← MTU đúng: file lớn qua được hoàn toàn
+```
+
+> 💡 **Tại sao cần baseline?** Tạo reference point rõ ràng: cùng test, cùng điều kiện, chỉ thay đổi một biến là MTU. Khi bước tiếp gây hang, học viên biết chắc MTU là nguyên nhân, không phải config khác. "Trước/Sau" contrast là cách chứng minh tốt nhất trong lab.
+
+---
+
+### 💣 Bước 1: Gây lỗi PMTUD Black Hole
+
 **Trên `controlplane`:**
 
 1. Đặt MTU sai (quá cao) để trigger PMTUD Black Hole:
@@ -220,30 +266,49 @@ sudo wg show wireguard.cali transfer
    kubectl -n calico-system rollout status daemonset/calico-node
    ```
 
-3. Tạo file lớn trong pod-a để test:
+   **Verify MTU và MSS đã thay đổi** — SSH vào `worker1`:
    ```bash
-   kubectl exec pod-a -- dd if=/dev/zero of=/tmp/largefile bs=1M count=5 2>&1
+   ip link show wireguard.cali | grep -o 'mtu [0-9]*'
+   # mtu 1500  ← Interface MTU tăng lên 1500 (theo FelixConfig mới)
+
+   sudo iptables -t mangle -L | grep TCPMSS
+   # TCPMSS  clamp to 1460  ← MSS = 1500 - 40 = 1460  ← ĐÂY LÀ VẤN ĐỀ!
    ```
 
-4. Thử transfer file lớn — **sẽ hang:**
+   > ⚠️ **Tại sao MSS 1460 gây Black Hole?** MSS=1460 → TCP gửi 1460B payload → inner IP packet = 1460+40 = 1500B → WireGuard wrap thêm 60B → outer = **1560B > physical 1500B → DROP**. Iptables rule phía dưới chỉ DROP (không REJECT/gửi ICMP back), nên bên gửi không nhận được "Fragmentation Needed" → retry mãi cùng kích thước → connection hang vô thời hạn.
+
+3. **Giả lập drop gói tin quá khổ ở card vật lý (do môi trường ảo hóa Multipass/Bridges nội bộ thường tự bypass và cho qua gói tin > 1500 bytes):**
+   **SSH vào `worker1`:**
+   ```bash
+   multipass shell worker1
+   ```
+   **Chạy lệnh sau để drop các gói tin UDP Wireguard có kích thước IP packet > 1500 bytes:**
+   ```bash
+   sudo iptables -I OUTPUT -p udp --dport 51820 -m length --length 1501:65535 -j DROP
+   ```
+
+4. Thử transfer file lớn — **sẽ HANG (treo):**
+   > File `/tmp/largefile` đã tạo sẵn từ Bước 0. Nếu pod-a restart, chạy lại: `kubectl exec pod-a -- dd if=/dev/zero of=/tmp/largefile bs=1M count=5`
+
    ```bash
    # Terminal 1: pod-b lắng nghe
    kubectl exec pod-b -- nc -l -p 9999 > /dev/null &
 
    # Terminal 2: pod-a gửi file lớn
    POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
-   kubectl exec pod-a -- nc -w 5 $POD_B_IP 9999 < /tmp/largefile
-   # (Hang! không hoàn thành) ← PMTUD Black Hole!
+   kubectl exec pod-a -- sh -c "nc -w 30 $POD_B_IP 9999 < /tmp/largefile"
+   # (Hang 30 giây rồi timeout) ← PMTUD Black Hole! TCP MSS=1460 → inner 1500B → WireGuard wrap 1560B > 1500B → DROP!
    ```
 
-5. Diagnose with ping DF bit:
+6. Diagnose with ping DF bit — **sẽ HANG (không có phản hồi):**
    ```bash
-   kubectl exec pod-a -- ping -s 1440 -M do $POD_B_IP
-   # ping: local error: message too long, mtu=1440
-   # ← Kernel báo MTU mismatch
+   kubectl exec pod-a -- ping -s 1440 -M do $(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
+   # (Đứng treo hoặc báo timeout) ← PMTUD Black Hole thực tế!
+   # Vì gói tin ICMP kích thước 1468 bytes + 60 bytes WireGuard = 1528 bytes, lớn hơn 1500 bytes vật lý và bị drop.
    ```
 
-6. **Fix:** Set MTU đúng:
+7. **Fix:** Set MTU đúng:
+   **Trên terminal `controlplane`:**
    ```bash
    kubectl patch felixconfiguration default \
      --type merge \
@@ -253,13 +318,19 @@ sudo wg show wireguard.cali transfer
    kubectl -n calico-system rollout status daemonset/calico-node
    ```
 
-7. Test lại sau fix:
+8. Test lại sau fix — **sẽ thành công ngay lập tức:**
    ```bash
-   kubectl exec pod-a -- nc -w 10 $POD_B_IP 9999 < /tmp/largefile
+   # Restart listener (nc cũ trên pod-b đã exit sau khi sender timeout ở step 5)
+   kubectl exec pod-b -- pkill nc 2>/dev/null; true
+   kubectl exec pod-b -- nc -l -p 9999 > /dev/null &
+
+   POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
+   kubectl exec pod-a -- sh -c "nc -w 10 $POD_B_IP 9999 < /tmp/largefile"
    # (Hoàn thành trong vài giây) ✅
+   # Vì lúc này TCP MSS=1400 → inner IP 1440B → WireGuard wrap 1500B = physical MTU, đi qua được!
    ```
 
-8. Xem MSS Clamping được tự động cài (chạy trên `worker1`):
+9. Xem MSS Clamping được tự động cài (chạy trên `worker1`):
    ```bash
    sudo iptables -t mangle -L | grep TCPMSS
    # TCPMSS  tcp  --  anywhere  anywhere  ... TCPMSS clamp to 1400
@@ -276,12 +347,18 @@ sudo wg show wireguard.cali transfer
 
 ## 🧹 Dọn dẹp
 
-```bash
-# Tắt WireGuard nếu không cần cho tập tiếp
-kubectl patch felixconfiguration default \
-  --type merge \
-  --patch '{"spec": {"wireguardEnabled": false}}'
-```
+1. Xóa rule giả lập drop gói tin quá khổ trên `worker1`:
+   **SSH vào `worker1` và chạy:**
+   ```bash
+   sudo iptables -D OUTPUT -p udp --dport 51820 -m length --length 1501:65535 -j DROP
+   ```
+
+2. Tắt WireGuard trên `controlplane`:
+   ```bash
+   kubectl patch felixconfiguration default \
+     --type merge \
+     --patch '{"spec": {"wireguardEnabled": false}}'
+   ```
 
 ---
 
