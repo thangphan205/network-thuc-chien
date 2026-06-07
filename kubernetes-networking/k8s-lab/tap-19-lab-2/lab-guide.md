@@ -1,7 +1,7 @@
 # Lab Tập 19: Lab Thực chiến 2 — Sự cố kết nối từ Máy chủ ngoài vào cụm Kubernetes BGP
 
 **Hiện tượng hiện tại:**
-Cụm Kubernetes đã được cấu hình hoạt động ở chế độ BGP (No Encapsulation), trạng thái các BGP session giữa các Node K8s đều báo `Established` thành công. Tuy nhiên, một máy chủ giám sát độc lập nằm ngoài cụm (`monitoring-server`) không thể kết nối hoặc ping tới IP của Pod chạy trong cụm. Bạn được yêu cầu điều tra và khắc phục sự cố này để đảm bảo máy chủ ngoài có thể kết nối trực tiếp tới Pod IP.
+Cụm Kubernetes đã được cấu hình hoạt động ở chế độ BGP (No Encapsulation), trạng thái các BGP session giữa các Node K8s đều báo `Established` thành công. Tuy nhiên, một máy chủ giám sát độc lập nằm ngoài cụm (`monitoring`) không thể kết nối hoặc ping tới IP của Pod chạy trong cụm. Bạn được yêu cầu điều tra và khắc phục sự cố này để đảm bảo máy chủ ngoài có thể kết nối trực tiếp tới Pod IP.
 
 ### Sơ đồ kiến trúc định tuyến: BGP Peering (Production) vs Static Route (Lab Shortcut)
 
@@ -14,9 +14,9 @@ graph TD
   end
 
   subgraph Lab_Static_Route [2. Giải pháp Thực hành trong Lab: Static Route]
-    Node2[K8s Node: 192.168.64.10]
+    Node2[K8s Node: 192.168.252.60]
     ExtVM[Monitoring VM độc lập]
-    ExtVM == Static Route thủ công: sudo ip route add 10.244.0.0/16 via 192.168.64.10 ==> Node2
+    ExtVM == Static Route thủ công: sudo ip route add 10.244.0.0/16 via 192.168.252.60 ==> Node2
   end
   
   classDef default fill:#151530,stroke:#2a2050,color:#e2e8f0;
@@ -81,24 +81,24 @@ multipass shell controlplane
 
 5. Triển khai một máy ảo (VM) độc lập đại diện cho máy chủ ngoài (External Monitoring Server):
    ```bash
-   multipass launch 26.04 --name monitoring-server \
+   multipass launch 26.04 --name monitoring \
      --cpus 1 --memory 1G --disk 10G
    ```
    *Lấy IP của máy ảo vừa tạo:*
    ```bash
-   MONITOR_IP=$(multipass info monitoring-server | grep IPv4 | awk '{print $2}')
+   MONITOR_IP=$(multipass info monitoring | grep IPv4 | awk '{print $2}')
    echo "Monitoring server IP: $MONITOR_IP"
    ```
 
 6. Kiểm tra kết nối từ máy chủ ngoài tới Pod IP trong cụm:
    ```bash
-   multipass exec monitoring-server -- ping -c 3 -W 2 $POD_IP
+   multipass exec monitoring -- ping -c 3 -W 2 $POD_IP
    # (Kết quả ping thất bại: 100% packet loss)
    ```
 
 7. Kiểm tra bảng định tuyến hiện tại của máy chủ ngoài:
    ```bash
-   multipass exec monitoring-server -- ip route show
+   multipass exec monitoring -- ip route show
    ```
 
 ---
@@ -107,7 +107,7 @@ multipass shell controlplane
 
 > [!IMPORTANT]
 > **Nhiệm vụ của học viên:**
-> Mặc dù BGP session giữa các node K8s đã Established và Pod IP hoạt động tốt, máy chủ giám sát độc lập (`monitoring-server`) vẫn không thể ping được Pod. 
+> Mặc dù BGP session giữa các node K8s đã Established và Pod IP hoạt động tốt, máy chủ giám sát độc lập (`monitoring`) vẫn không thể ping được Pod. 
 > 
 > Hãy tự mình thực hiện các bước điều tra (troubleshooting) theo tư duy và phản xạ tự nhiên của bạn:
 > 1. Tại sao máy chủ ngoài không gửi được gói tin tới Pod IP?
@@ -124,14 +124,14 @@ multipass shell controlplane
 Nếu đã qua 30 phút hoặc bạn đã tự giải xong, hãy đối chiếu các bước xử lý của bạn với quy trình điều tra chuẩn dưới đây:
 
 ### Bước 1: Phân tích nguyên nhân gốc rễ (Root Cause Analysis)
-1. **Kiểm tra bảng định tuyến trên `monitoring-server`:**
+1. **Kiểm tra bảng định tuyến trên `monitoring`:**
    ```bash
-   multipass exec monitoring-server -- ip route show
+   multipass exec monitoring -- ip route show
    ```
-   *Nhận định:* Ta thấy máy chủ ngoài chỉ có route mặc định và route cho dải mạng vật lý `192.168.64.0/24`. Nó hoàn toàn không có thông tin về dải IP của Pod (`10.244.0.0/16`). Khi ping đến `10.244.x.x`, gói tin sẽ bị đẩy ra default gateway (Internet/Router ngoài) và bị drop.
+   *Nhận định:* Ta thấy máy chủ ngoài chỉ có route mặc định và route cho dải mạng vật lý `192.168.252.0/24`. Nó hoàn toàn không có thông tin về dải IP của Pod (`10.244.0.0/16`). Khi ping đến `10.244.x.x`, gói tin sẽ bị đẩy ra default gateway (Internet/Router ngoài) và bị drop.
 2. **Tại sao BGP của cụm K8s đang chạy mà máy chủ ngoài không tự học được route?**
    - BGP là giao thức chạy trên cổng TCP 179. BIRD daemon chạy trên các K8s nodes chỉ trao đổi route với các thiết bị đã được thiết lập kết nối BGP Peer (BGP Peering).
-   - Máy ảo `monitoring-server` là một VM độc lập, không chạy BGP daemon và không peer với bất kỳ node K8s nào, nên nó không nhận được thông tin định tuyến.
+   - Máy ảo `monitoring` là một VM độc lập, không chạy BGP daemon và không peer với bất kỳ node K8s nào, nên nó không nhận được thông tin định tuyến.
 
 ---
 
@@ -147,26 +147,26 @@ Trong môi trường thực tế doanh nghiệp, ta sẽ thiết lập để má
    apiVersion: projectcalico.org/v3
    kind: BGPPeer
    metadata:
-     name: peer-monitoring-server
+     name: peer-monitoring
    spec:
-     peerIP: 192.168.64.X         # IP của Monitoring Server
+     peerIP: 192.168.252.66         # IP của Monitoring Server
      asNumber: 64512              # AS Number của cụm
    ```
 2. **Cấu hình chi tiết trên Monitoring Server (Sử dụng BIRD 2 làm BGP Daemon):**
    
    * **Bước A: Cài đặt BIRD 2**
-     SSH vào máy ảo `monitoring-server` (hoặc chạy lệnh từ host):
+     SSH vào máy ảo `monitoring` (hoặc chạy lệnh từ host):
      ```bash
-     multipass shell monitoring-server
+     multipass shell monitoring
      # Cài đặt BIRD 2
      sudo apt update && sudo apt install -y bird2
      ```
 
    * **Bước B: Cấu hình BGP Peering**
-     Mở và cập nhật file `/etc/bird/bird.conf` trên `monitoring-server`:
+     Mở và cập nhật file `/etc/bird/bird.conf` trên `monitoring`:
      ```nginx
-     # Router ID của Monitoring Server (thay bằng IP thực tế của máy ảo này, ví dụ: 192.168.64.99)
-     router id 192.168.64.99;
+     # Router ID của Monitoring Server (thay bằng IP thực tế của máy ảo này, ví dụ: 192.168.252.66)
+     router id 192.168.252.66;
 
      protocol device {
      }
@@ -191,12 +191,17 @@ Trong môi trường thực tế doanh nghiệp, ta sẽ thiết lập để má
 
      # Thiết lập session BGP với Control Plane Node
      protocol bgp k8s_controlplane from k8s_nodes {
-         neighbor 192.168.64.A; # Thay bằng IP thực tế của controlplane node
+         neighbor 192.168.252.60; # IP thực tế của controlplane node
      }
 
      # Thiết lập session BGP với Worker 1 Node
      protocol bgp k8s_worker1 from k8s_nodes {
-         neighbor 192.168.64.B; # Thay bằng IP thực tế của worker1 node
+         neighbor 192.168.252.61; # IP thực tế của worker1 node
+     }
+
+     # Thiết lập session BGP với Worker 2 Node
+     protocol bgp k8s_worker2 from k8s_nodes {
+         neighbor 192.168.252.62; # IP thực tế của worker2 node
      }
      ```
 
@@ -208,7 +213,7 @@ Trong môi trường thực tế doanh nghiệp, ta sẽ thiết lập để má
      ```
      *Kết quả mong đợi:* Trạng thái các session `k8s_controlplane` và `k8s_worker1` phải hiển thị là `Established` (hoặc `up`). 
      
-     Lúc này, nếu kiểm tra bảng định tuyến trên `monitoring-server`:
+     Lúc này, nếu kiểm tra bảng định tuyến trên `monitoring`:
      ```bash
      ip route show
      ```
@@ -216,31 +221,31 @@ Trong môi trường thực tế doanh nghiệp, ta sẽ thiết lập để má
 
 
 #### Giải pháp B: Sử dụng Định tuyến tĩnh (Lab Shortcut - Cực kỳ phổ biến với Legacy VM)
-Vì máy ảo `monitoring-server` của chúng ta trong môi trường lab là VM đơn giản, ta sẽ cấu hình **Static Route** trỏ dải Pod CIDR thông qua node `controlplane` làm gateway trung chuyển.
+Vì máy ảo `monitoring` của chúng ta trong môi trường lab là VM đơn giản, ta sẽ cấu hình **Static Route** trỏ dải Pod CIDR thông qua node `controlplane` làm gateway trung chuyển.
 
 1. Lấy IP của node `controlplane`:
    ```bash
    MASTER_IP=$(multipass info controlplane | grep IPv4 | awk '{print $2}')
    echo "Controlplane IP: $MASTER_IP"
    ```
-2. Thêm static route trỏ dải Pod CIDR qua `controlplane` trên máy chủ `monitoring-server`:
+2. Thêm static route trỏ dải Pod CIDR qua `controlplane` trên máy chủ `monitoring`:
    ```bash
-   multipass exec monitoring-server -- sudo ip route add 10.244.0.0/16 via $MASTER_IP
+   multipass exec monitoring -- sudo ip route add 10.244.0.0/16 via $MASTER_IP
    ```
-3. Xác minh bảng định tuyến trên `monitoring-server` đã nhận route mới:
+3. Xác minh bảng định tuyến trên `monitoring` đã nhận route mới:
    ```bash
-   multipass exec monitoring-server -- ip route show | grep 10.244
+   multipass exec monitoring -- ip route show | grep 10.244
    # Kết quả mong đợi:
-   # 10.244.0.0/16 via 192.168.64.X dev eth0
+   # 10.244.0.0/16 via 192.168.252.60 dev eth0
    ```
 
 ---
 
 ### Bước 3: Xác minh kết nối thành công
 
-Từ máy ảo `monitoring-server`, ping trực tiếp tới Pod IP trong cụm K8s:
+Từ máy ảo `monitoring`, ping trực tiếp tới Pod IP trong cụm K8s:
 ```bash
-multipass exec monitoring-server -- ping -c 5 $POD_IP
+multipass exec monitoring -- ping -c 5 $POD_IP
 ```
 
 Kết quả mong đợi:
@@ -248,7 +253,7 @@ Kết quả mong đợi:
 5 packets transmitted, 5 received, 0% packet loss ✅ THÀNH CÔNG!
 ```
 *Giải thích đường đi của gói tin:* 
-Packet từ `monitoring-server` đi tới IP `10.244.x.x` -> Khớp với static route -> Gửi sang IP của `controlplane` -> Kernel của `controlplane` nhận được gói tin -> Khớp routing table nội bộ cụm (do BIRD tạo) -> Forward trực tiếp sang Node đích chạy Pod thông qua card vật lý `eth0` (không đóng gói VXLAN).
+Packet từ `monitoring` đi tới IP `10.244.x.x` -> Khớp với static route -> Gửi sang IP của `controlplane` -> Kernel của `controlplane` nhận được gói tin -> Khớp routing table nội bộ cụm (do BIRD tạo) -> Forward trực tiếp sang Node đích chạy Pod thông qua card vật lý `eth0` (không đóng gói VXLAN).
 
 ---
 
@@ -259,7 +264,7 @@ Packet từ `monitoring-server` đi tới IP `10.244.x.x` -> Khớp với static
 kubectl delete pod test-pod
 
 # Trên macOS host
-multipass delete monitoring-server && multipass purge
+multipass delete monitoring && multipass purge
 ```
 
 ---
