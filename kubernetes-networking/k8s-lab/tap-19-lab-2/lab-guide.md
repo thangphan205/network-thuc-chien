@@ -196,6 +196,12 @@ Trong môi trường thực tế doanh nghiệp, ta sẽ thiết lập để má
      # Router ID của Monitoring Server (thay bằng IP thực tế của máy ảo này, ví dụ: 192.168.252.66)
      router id 192.168.252.66;
 
+     # Quan trọng: BIRD cần biết các interface trực tiếp của OS để phân giải Next Hop cho BGP.
+     # Nếu thiếu protocol này, tất cả các route BGP học được sẽ bị đánh dấu là "unreachable".
+     protocol direct {
+         ipv4;
+     }
+
      protocol device {
      }
 
