@@ -108,12 +108,12 @@ Nếu đã qua 30 phút hoặc bạn đã tự giải xong, hãy đối chiếu 
    kubectl -n production get pods -o wide
    # Cả hai Pod backend-v2 và frontend phải đang Running
    ```
-2. Kiểm tra kết nối cơ bản ở tầng mạng (L3 IP Routing) bằng lệnh Ping:
+2. Kiểm tra kết nối cơ bản bằng lệnh Ping:
    ```bash
    kubectl -n production exec frontend -- ping -c 2 $BACKEND_IP
-   # Ping thành công! Kết luận: Tầng IP Routing hoạt động bình thường, gói tin IP đi được tới node đích.
+   # Kết quả: Ping KHÔNG THÀNH CÔNG (100% packet loss)!
    ```
-   *Nhận định:* Do ping được nhưng không telnet/nc được port 8080 (TCP), sự cố rất có thể nằm ở các rule bảo mật / Network Policy chặn cổng TCP 8080.
+   *Nhận định:* Ping thất bại là do chính sách `default-deny` đang chặn toàn bộ traffic đi vào (Ingress) của mọi Pod trong namespace bao gồm cả giao thức ICMP (Ping). Vì vậy, kết quả này là bình thường và xác nhận NetworkPolicy đang hoạt động để chặn lưu lượng chưa được cấu hình cho phép rõ ràng.
 
 ### Bước 2: Kiểm tra NetworkPolicy và Nhãn (Labels)
 1. Liệt kê các NetworkPolicy đang được áp dụng trong namespace `production`:
@@ -202,4 +202,4 @@ kubectl -n production delete networkpolicy default-deny allow-frontend-to-backen
 1. **Root cause:** Thiếu nhãn `app=backend` trên backend Pod làm cho NetworkPolicy selector không tìm thấy đối tượng để mở khóa cổng.
 2. **Triệu chứng đặc trưng:** Lỗi im lặng (Connection Timeout) chứ không phải Connection Refused, do gói tin bị chặn và DROP âm thầm bởi iptables thay vì bị từ chối trả về RST.
 3. **Cơ chế Event-Driven:** Calico Felix giám sát các thay đổi nhãn thông qua Watch API của Kubernetes và cập nhật cấu hình iptables cục bộ chỉ trong mili-giây mà không cần reload/restart dịch vụ.
-4. **Quy trình gỡ lỗi chuẩn:** Kiểm tra trạng thái Pod -> Kiểm tra thông kết nối L3 (Ping) -> Xem nhãn Pod (`--show-labels`) -> Đối chiếu với selector của NetworkPolicy -> Kiểm tra Endpoint trên Calico.
+4. **Quy trình gỡ lỗi chuẩn:** Kiểm tra trạng thái Pod -> Thử kết nối mạng (hiểu rằng default-deny sẽ chặn cả Ping/ICMP) -> Xem nhãn Pod (`--show-labels`) -> Đối chiếu với selector của NetworkPolicy -> Kiểm tra Endpoint trên Calico.
