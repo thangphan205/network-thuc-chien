@@ -126,4 +126,4 @@ Chúng ta sẽ thực hành:
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
-> **Tập tiếp theo:** Tập 20 — Lab 3: WireGuard MTU Black Hole
+> **Tập tiếp theo:** Tập 20 — Lab 3: Sự cố phân quyền truy cập chéo Namespace (Logic AND vs OR)

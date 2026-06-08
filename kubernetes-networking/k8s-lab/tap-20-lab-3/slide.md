@@ -34,115 +34,154 @@ style: |
 <!-- _class: ep -->
 
 # Tập 20
-## Lab 3: Network Policy Nâng Cao với Calico
+## Lab 3: Sự cố phân quyền truy cập chéo Namespace (Logic AND vs OR)
 
-**Phần 2 — Calico Labs** · `#NetworkPolicy` `#GlobalNetworkPolicy` `#NetworkSet` `#egress` `#multi-tenant`
+**Phần 2 — Calico Labs** · `#lab` `#cross-namespace` `#prometheus` `#troubleshooting`
 
 ---
 
 ## Mục tiêu tập này
 
-- Cô lập multi-tenant: namespace A không reach namespace B
-- Kiểm soát egress: chỉ cho phép Pod gọi ra các IP cụ thể (NetworkSet)
-- Áp rule cluster-wide bằng Calico `GlobalNetworkPolicy`
-- Debug policy bằng iptables chains do Calico sinh ra
+- Debug 2 bugs cùng lúc trong cross-namespace policy
+- Hiểu cách Bug 2 (missing label) mask Bug 1 (OR vs AND)
+- Chứng minh fix chỉ 1 bug có thể tạo security hole nghiêm trọng hơn
+- Áp dụng checklist verification trước khi apply cross-namespace policy
 
-**Prerequisites:** Cluster Calico đang chạy (từ Tập 9), `calicoctl` đã cài
+**Prerequisites:** Cluster Calico, namespace `production` và `monitoring`
 
 ---
 
 ## Tình huống thực tế
 
 ```
-Security audit yêu cầu:
-"Cluster đang chạy SaaS multi-tenant.
- Tenant A và Tenant B phải hoàn toàn cô lập.
- Backend chỉ được gọi ra payment gateway (1.1.1.1).
- Không Pod nào được reach AWS IMDS (169.254.169.254)
- — vector tấn công để lấy IAM credentials."
+Monitoring team báo:
+"Prometheus trong namespace 'monitoring' không scrape được
+ backend metrics endpoint (port 9090) trong namespace 'production'.
+ Chúng tôi đã viết NetworkPolicy rồi nhưng vẫn timeout."
 
-Hiện trạng:
-- Không có NetworkPolicy nào → mọi Pod reach mọi Pod
-- backend-a curl ra 8.8.8.8, 1.2.3.4 thoải mái
-- frontend-a curl được frontend-b (cross-tenant)
+Thông tin:
+- Namespace monitoring (label?)
+- Prometheus Pod label: role=prometheus
+- Backend Pod label: app=backend
+- Policy đã apply nhưng không hoạt động
 ```
+
+**Lab này: 2 bugs cùng lúc — phải fix cả 2 mới OK.**
 
 ---
 
 <!-- _class: warn -->
 
-## Bẫy phổ biến: Egress Deny làm chết DNS
+## 2 Bugs cùng lúc — Nguy hiểm đặc biệt
 
 ```
-Thêm egress deny-all trước khi mở port 53:
+Bug 1: OR thay vì AND (dấu "-" sai chỗ)
+  → Policy quá rộng: bất kỳ Pod nào trong monitoring vào được
+  → Security hole!
 
-  frontend-a → nslookup kubernetes.default → TIMEOUT
+Bug 2: Namespace thiếu label
+  → namespaceSelector không match → policy không hoạt động
+  → Bug 2 mask Bug 1 (timeout → người dùng không thấy security hole)
 
-Thứ tự BẮT BUỘC:
-  1. Mở port 53 (UDP + TCP) egress TRƯỚC
-  2. Sau đó mới thêm deny-all còn lại
-
-Vì K8s NetworkPolicy không có "allow implicit" với DNS.
-Khi có bất kỳ egress rule nào → chỉ traffic match rule đó được ra.
-Port 53 không được mention = bị block = mọi hostname resolve thất bại.
+Nếu chỉ fix Bug 2 (thêm label namespace):
+  → Bug 1 trở thành security hole THỰC SỰ
+  → Policy hoạt động nhưng quá rộng
+  → Bất kỳ Pod nào trong monitoring đều vào được!
 ```
+
+**Phải debug và fix CẢ HAI.**
 
 ---
 
-## Ba công cụ Calico vượt qua giới hạn K8s NetworkPolicy
+## Logic Cú Pháp NetworkPolicy: AND vs OR
 
+*Sự khác biệt cực kỳ nhỏ ở cú pháp dấu gạch ngang (`-`) tạo nên hậu quả bảo mật khổng lồ:*
+
+### ❌ Cấu hình sai (OR Logic) - 2 dấu gạch ngang
+```yaml
+ingress:
+- from:
+  - namespaceSelector:
+      matchLabels: {name: monitoring}
+  - podSelector:
+      matchLabels: {role: prometheus}
 ```
-1. NetworkSet — tập hợp CIDR/IP tái sử dụng được:
-   apiVersion: projectcalico.org/v3
-   kind: NetworkSet
-   metadata: { name: allowed-egress-ips, namespace: tenant-a }
-   spec:
-     nets: [1.1.1.1/32]   ← payment gateway
-
-2. Calico NetworkPolicy — dùng selector đến NetworkSet:
-   egress:
-   - action: Allow
-     destination:
-       selector: role == 'allowed-external'
-   - action: Deny        ← block tất cả còn lại
-
-3. GlobalNetworkPolicy — áp toàn cluster, không bị namespace giới hạn:
-   kind: GlobalNetworkPolicy
-   spec:
-     order: 1            ← ưu tiên cao nhất
-     selector: all()
-     egress:
-     - action: Deny
-       destination: { nets: [169.254.169.254/32] }
-```
+> **Kết quả:** Cho phép *bất kỳ Pod nào* thuộc namespace `monitoring` **HOẶC** *bất kỳ Pod nào* có nhãn `role: prometheus` ở bất kỳ đâu trong cluster (bao gồm cả namespace `default`, `dev`...).
 
 ---
 
-## Security Matrix mục tiêu
+## Logic Cú Pháp NetworkPolicy: AND vs OR (tiếp)
 
-| Nguồn | Đích | Kết quả |
-|---|---|---|
-| `frontend-a` (tenant-a) | `frontend-b` (tenant-b) | ❌ BLOCK |
-| `frontend-a` (tenant-a) | `backend-a` (tenant-a) | ✅ ALLOW |
-| `backend-a` | `1.1.1.1` (payment GW) | ✅ ALLOW |
-| `backend-a` | `8.8.8.8` (Google DNS) | ❌ BLOCK |
-| Bất kỳ Pod nào | `169.254.169.254` (IMDS) | ❌ BLOCK |
-| Bất kỳ Pod nào | `kube-dns` port 53 | ✅ ALLOW |
+###  Cấu hình đúng (AND Logic) - 1 dấu gạch ngang duy nhất
+```yaml
+ingress:
+- from:
+  - namespaceSelector:
+      matchLabels: {name: monitoring}
+    podSelector:                  # <- Không có dấu "-" ở đây = AND!
+      matchLabels: {role: prometheus}
+```
+> **Kết quả:** Chỉ cho phép Pod có nhãn `role: prometheus` **VÀ** phải nằm trong namespace `monitoring`. Đây là quy tắc bảo mật chặt chẽ nhất theo nguyên tắc đặc quyền tối thiểu.
 
 ---
 
 <!-- _class: lab -->
 
-## 🔬 Lab Time: Multi-Tenant Isolation + Egress Control
+## Pro Tip: Kubernetes Namespace Auto-Labeling
+
+- Từ **Kubernetes v1.21+**, control plane tự động gắn nhãn mặc định `kubernetes.io/metadata.name: <namespace-name>` cho mọi Namespace khi khởi tạo.
+- **Lợi ích:** Ta không còn lo quên gắn nhãn thủ công (tránh được hoàn toàn Bug 2).
+
+### Cấu hình Modern & An Toàn:
+```yaml
+ingress:
+- from:
+  - namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: monitoring  # Nhãn tự động của K8s
+    podSelector:
+      matchLabels:
+        role: prometheus
+```
+*(Khuyên dùng cho các dự án thực tế để loại bỏ thao tác thủ công dễ sai sót).*
+
+---
+
+## Checklist trước khi apply cross-namespace policy
+
+```bash
+# 1. Verify namespace có label
+kubectl get namespace <ns> --show-labels
+# Expected: name=<ns> trong LABELS column
+
+# 2. Đếm dấu "-" trong from block
+# Mỗi "- " = 1 item = OR với items khác
+# Cùng item = AND
+
+# 3. Test với rogue pod (namespace đúng, label sai)
+kubectl run rogue -n monitoring --image=nicolaka/netshoot -- sleep infinity
+kubectl -n monitoring exec rogue -- nc -zv <backend-ip> 9090
+# Expected: timeout (blocked)
+
+# 4. Test với legit pod (namespace đúng, label đúng)
+kubectl -n monitoring exec prometheus -- nc -zv <backend-ip> 9090
+# Expected: success
+```
+
+---
+
+<!-- _class: lab -->
+
+## 🔬 Lab Time: Debug 2 Bugs Cùng Lúc
 
 Chúng ta sẽ thực hành:
 
-1. **Setup:** Tạo hai namespace `tenant-a`, `tenant-b` với workload tương ứng.
-2. **Verify ban đầu:** Xác nhận tất cả đang thông (chưa có policy).
-3. **Thử thách 30 phút tự giải:** Tự thiết kế và áp đủ 5 policy đạt security matrix.
-4. **Hướng dẫn từng bước:** Đối chiếu default-deny, DNS whitelist, NetworkSet, GlobalNetworkPolicy.
-5. **Verify toàn bộ:** Chạy security matrix test tổng thể.
+1. **Setup incident:** Deploy NetworkPolicy chéo namespace (cấu hình lỗi chéo namespace).
+2. **Reproduce:** Xác minh Prometheus bị chặn kết nối (Connection Timeout) tới Backend.
+3. **Thử thách 30 phút tự giải:** Học viên tự tìm nguyên nhân và khắc phục lỗi logic ẩn.
+4. **Hướng dẫn gỡ lỗi chuẩn:** Đối chiếu các bước troubleshooting chuẩn để tìm ra 2 lỗi ẩn.
+5. **Fix và verify:** Áp dụng logic AND chính xác, dán nhãn namespace và kiểm tra ma trận kết nối bảo mật.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
-> **Tập tiếp theo:** Tập 21 — Lab 4: Cross-namespace policy bug
+> **Tập tiếp theo:** Tập 21 — Lab 4: Network Policy Nâng Cao với Calico

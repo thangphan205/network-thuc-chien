@@ -41,10 +41,10 @@ style: |
 ## Tình huống thực tế
 
 ```
-Cùng scenario như Tập 21 (Calico Lab 3):
+Cùng scenario như Tập 17 (Calico WireGuard MTU):
 "Upload file lớn: hang. File nhỏ: OK."
 
-Với Calico (Tập 21):
+Với Calico (Tập 17):
   1. Observe symptom: file lớn hang (đợi 5 phút)
   2. Manual: ip link show wireguard.cali → xem MTU
   3. Test DF bit: ping -s 1422 -M do <cross-node-ip>
@@ -202,7 +202,7 @@ kubectl exec upload-client -- bash -c \
 
 ## Calico vs Cilium: MTU debug comparison
 
-| Aspect | Calico (Tập 21) | Cilium + Hubble |
+| Aspect | Calico (Tập 17) | Cilium + Hubble |
 | :--- | :--- | :--- |
 | Drop reason | Silent drop | "MTU exceeded (WireGuard overhead)" |
 | Cần ping test? | Bắt buộc | Không cần |

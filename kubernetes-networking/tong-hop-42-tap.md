@@ -156,17 +156,17 @@
 
 ---
 
-### Tập 20 — Lab 3: Sự cố truyền nhận file dung lượng lớn qua WireGuard (MTU Black Hole)
-> **Mô tả ngắn:** Upload file dung lượng nhỏ hoạt động bình thường, nhưng upload file lớn (>5MB) bị treo (hang) hoàn toàn chéo Node. Thực hành chẩn đoán ping với cờ DF=1, sửa đổi FelixConfiguration MTU 1440 và MSS Clamping.
->
-> **Tags:** `#calico` `#WireGuard` `#MTU` `#PMTUD` `#lab`
-
----
-
-### Tập 21 — Lab 4: Sự cố phân quyền truy cập chéo Namespace (Logic AND vs OR)
+### Tập 20 — Lab 3: Sự cố phân quyền truy cập chéo Namespace (Logic AND vs OR)
 > **Mô tả ngắn:** Lỗi cú pháp YAML dấu gạch ngang tạo logic OR thay vì AND cho phép truy cập quá rộng, bị che giấu bởi lỗi thiếu nhãn Namespace (Bug Masking). Thực hành sửa logic AND và thiết lập ma trận kiểm thử an toàn.
 >
 > **Tags:** `#calico` `#NetworkPolicy` `#lab` `#cross-namespace` `#prometheus`
+
+---
+
+### Tập 21 — Lab 4: Network Policy Nâng Cao với Calico (GlobalNetworkPolicy, NetworkSet)
+> **Mô tả ngắn:** Cô lập lưu lượng giữa các tenant bằng default-deny và cho phép nội bộ Namespace, kết hợp Calico NetworkSet để quản lý whitelist Egress và GlobalNetworkPolicy áp dụng baseline bảo mật toàn cụm.
+>
+> **Tags:** `#calico` `#NetworkPolicy` `#GlobalNetworkPolicy` `#NetworkSet` `#egress` `#lab`
 
 ---
 

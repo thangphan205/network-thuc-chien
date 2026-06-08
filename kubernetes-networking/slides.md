@@ -1470,118 +1470,14 @@ Chúng ta sẽ thực hành:
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
-> **Tập tiếp theo:** Tập 20 — Lab 3: WireGuard MTU Black Hole
+> **Tập tiếp theo:** Tập 20 — Lab 3: Sự cố phân quyền truy cập chéo Namespace (Logic AND vs OR)
 
 ---
 
 <!-- _class: ep -->
 
 # Tập 20
-## Lab 3: Sự cố truyền nhận file dung lượng lớn qua WireGuard (MTU Black Hole)
-
-**Phần 2 — Calico Labs** · `#WireGuard` `#MTU` `#PMTUD` `#troubleshooting`
-
----
-
-## Mục tiêu tập này
-
-- Reproduce PMTUD Black Hole với WireGuard MTU sai
-- Chứng minh pattern: same-node OK, cross-node fail
-- Debug: ping DF bit xác định MTU thực tế
-- Fix: wireguardMTU đúng + MSS Clamping
-
-**Prerequisites:** Cluster Calico, Ubuntu 26.04 (WireGuard kernel built-in)
-
----
-
-## Tình huống thực tế
-
-```
-Ticket từ Backend team:
-"Upload file ảnh < 1MB: OK.
- Upload file video > 5MB: hang mãi, không xong.
- Chỉ xảy ra khi upload qua Service vào Pod trên Node khác.
- Cùng Node thì OK.
- WireGuard đang bật trên cluster."
-
-Dấu hiệu đặc trưng:
-  ✓ "cross-node"
-  ✓ "large file"
-  ✓ "WireGuard bật"
-  → Nghi ngờ PMTUD Black Hole ngay!
-```
-
----
-
-<!-- _class: warn -->
-
-## PMTUD Black Hole — Cơ chế
-
-```
-MTU interface Pod = 1500 (sai, WireGuard cần 1440)
-TCP packet lớn: 1450 bytes + DF bit = 1
-
-Path:
-  Pod A → [WireGuard] → 1450 + 60 bytes WG header = 1510
-  Physical MTU = 1500 → 1510 > 1500 → muốn fragment
-  DF = 1 → KHÔNG ĐƯỢC fragment
-  Router SILENTLY DROP (không gửi ICMP fragmentation needed)
-
-Kết quả:
-  Sender không biết → tiếp tục gửi packet lớn
-  → Connection hang mãi, không có error message
-  
-File nhỏ (< 1440 bytes): fit trong 1 packet → OK
-File lớn (> 1440 bytes): bị drop → hang
-```
-
----
-
-## Debug Pattern
-
-```bash
-# 1. Cross-node vs same-node
-# Same-node: không qua WireGuard tunnel → OK
-# Cross-node: qua WireGuard tunnel → fail
-
-# 2. Test với DF bit
-ping -s 1440 -M do <cross-node-pod-ip>
-# Nếu MTU sai → "message too long, mtu=1440"
-# Kernel biết MTU thực = 1440 dù interface nói 1500
-
-# 3. Fix MTU
-kubectl patch felixconfiguration default \
-  --type merge \
-  --patch '{"spec":{"wireguardMTU":1440}}'
-
-# 4. MSS Clamping thêm bảo vệ
-# TCP stack tự negotiate MSS (hoặc set wireguardMssClamp nếu cần)
-```
-
----
-
-<!-- _class: lab -->
-
-## 🔬 Lab Time: Reproduce và Fix PMTUD Black Hole
-
-Chúng ta sẽ thực hành:
-
-1. **Setup incident:** Kích hoạt WireGuard mã hóa và cấu hình MTU mặc định.
-2. **Reproduce:** File nhỏ OK, file lớn chéo node bị treo (hang) -> timeout.
-3. **Thử thách 30 phút tự giải:** Học viên tự tìm nguyên nhân và khắc phục lỗi chéo node.
-4. **Hướng dẫn gỡ lỗi chuẩn:** Đối chiếu các kỹ thuật chẩn đoán (ping DF bit) và xử lý MTU.
-5. **Fix và verify:** Cấu hình MTU tối ưu, MSS Clamping và kiểm tra truyền file thành công.
-
-👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
-
-> **Tập tiếp theo:** Tập 21 — Lab 4: Cross-namespace policy bug
-
----
-
-<!-- _class: ep -->
-
-# Tập 21
-## Lab 4: Sự cố phân quyền truy cập chéo Namespace (Logic AND vs OR)
+## Lab 3: Sự cố phân quyền truy cập chéo Namespace (Logic AND vs OR)
 
 **Phần 2 — Calico Labs** · `#lab` `#cross-namespace` `#prometheus` `#troubleshooting`
 
@@ -1672,8 +1568,6 @@ ingress:
 
 ---
 
-<!-- _class: lab -->
-
 ## Pro Tip: Kubernetes Namespace Auto-Labeling
 
 - Từ **Kubernetes v1.21+**, control plane tự động gắn nhãn mặc định `kubernetes.io/metadata.name: <namespace-name>` cho mọi Namespace khi khởi tạo.
@@ -1728,6 +1622,120 @@ Chúng ta sẽ thực hành:
 3. **Thử thách 30 phút tự giải:** Học viên tự tìm nguyên nhân và khắc phục lỗi logic ẩn.
 4. **Hướng dẫn gỡ lỗi chuẩn:** Đối chiếu các bước troubleshooting chuẩn để tìm ra 2 lỗi ẩn.
 5. **Fix và verify:** Áp dụng logic AND chính xác, dán nhãn namespace và kiểm tra ma trận kết nối bảo mật.
+
+👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
+
+> **Tập tiếp theo:** Tập 21 — Lab 4: Network Policy Nâng Cao với Calico
+
+---
+
+<!-- _class: ep -->
+
+# Tập 21
+## Lab 4: Network Policy Nâng Cao với Calico
+
+**Phần 2 — Calico Labs** · `#NetworkPolicy` `#GlobalNetworkPolicy` `#NetworkSet` `#egress` `#multi-tenant`
+
+---
+
+## Mục tiêu tập này
+
+- Cô lập multi-tenant: namespace A không reach namespace B
+- Kiểm soát egress: chỉ cho phép Pod gọi ra các IP cụ thể (NetworkSet)
+- Áp rule cluster-wide bằng Calico `GlobalNetworkPolicy`
+- Debug policy bằng iptables chains do Calico sinh ra
+
+**Prerequisites:** Cluster Calico đang chạy (từ Tập 9), `calicoctl` đã cài
+
+---
+
+## Tình huống thực tế
+
+```
+Security audit yêu cầu:
+"Cluster đang chạy SaaS multi-tenant.
+ Tenant A và Tenant B phải hoàn toàn cô lập.
+ Backend chỉ được gọi ra payment gateway (1.1.1.1).
+ Không Pod nào được reach AWS IMDS (169.254.169.254)
+ — vector tấn công để lấy IAM credentials."
+
+Hiện trạng:
+- Không có NetworkPolicy nào → mọi Pod reach mọi Pod
+- backend-a curl ra 8.8.8.8, 1.2.3.4 thoải mái
+- frontend-a curl được frontend-b (cross-tenant)
+```
+
+---
+
+## Bẫy phổ biến: Egress Deny làm chết DNS
+
+```
+Thêm egress deny-all trước khi mở port 53:
+
+  frontend-a → nslookup kubernetes.default → TIMEOUT
+
+Thứ tự BẮT BUỘC:
+  1. Mở port 53 (UDP + TCP) egress TRƯỚC
+  2. Sau đó mới thêm deny-all còn lại
+
+Vì K8s NetworkPolicy không có "allow implicit" với DNS.
+Khi có bất kỳ egress rule nào → chỉ traffic match rule đó được ra.
+Port 53 không được mention = bị block = mọi hostname resolve thất bại.
+```
+
+---
+
+## Ba công cụ Calico vượt qua giới hạn K8s NetworkPolicy
+
+```
+1. NetworkSet — tập hợp CIDR/IP tái sử dụng được:
+   apiVersion: projectcalico.org/v3
+   kind: NetworkSet
+   metadata: { name: allowed-egress-ips, namespace: tenant-a }
+   spec:
+     nets: [1.1.1.1/32]   ← payment gateway
+
+2. Calico NetworkPolicy — dùng selector đến NetworkSet:
+   egress:
+   - action: Allow
+     destination:
+       selector: role == 'allowed-external'
+   - action: Deny        ← block tất cả còn lại
+
+3. GlobalNetworkPolicy — áp toàn cluster, không bị namespace giới hạn:
+   kind: GlobalNetworkPolicy
+   spec:
+     order: 1            ← ưu tiên cao nhất
+     selector: all()
+     egress:
+     - action: Deny
+       destination: { nets: [169.254.169.254/32] }
+```
+
+---
+
+## Security Matrix mục tiêu
+
+| Nguồn | Đích | Kết quả |
+|---|---|---|
+| `frontend-a` (tenant-a) | `frontend-b` (tenant-b) | ❌ BLOCK |
+| `frontend-a` (tenant-a) | `backend-a` (tenant-a) | ✅ ALLOW |
+| `backend-a` | `1.1.1.1` (payment GW) | ✅ ALLOW |
+| `backend-a` | `8.8.8.8` (Google DNS) | ❌ BLOCK |
+| Bất kỳ Pod nào | `169.254.169.254` (IMDS) | ❌ BLOCK |
+| Bất kỳ Pod nào | `kube-dns` port 53 | ✅ ALLOW |
+
+---
+
+## 🔬 Lab Time: Multi-Tenant Isolation + Egress Control
+
+Chúng ta sẽ thực hành:
+
+1. **Setup:** Tạo hai namespace `tenant-a`, `tenant-b` với workload tương ứng.
+2. **Verify ban đầu:** Xác nhận tất cả đang thông (chưa có policy).
+3. **Thử thách 30 phút tự giải:** Tự thiết kế và áp đủ 5 policy đạt security matrix.
+4. **Hướng dẫn từng bước:** Đối chiếu default-deny, DNS whitelist, NetworkSet, GlobalNetworkPolicy.
+5. **Verify toàn bộ:** Chạy security matrix test tổng thể.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
@@ -1798,7 +1806,7 @@ Data Plane (Thực thi & Chuyển mạch):
 
 Bẫy kinh điển:
 "BGP UP" ≠ "Routing OK" (Lab 2 - Tập 19)
-"Policy applied" ≠ "iptables rule match" (Lab 1 - Tập 18, Lab 4 - Tập 21)
+"Policy applied" ≠ "iptables rule match" (Lab 1 - Tập 18, Lab 3 - Tập 20)
 → Phải kiểm tra song song cả hai tầng!
 ```
 
@@ -1834,8 +1842,8 @@ Chúng ta đã gỡ lỗi thành công 4 sự cố thực tế kinh điển:
 
 1. **Lab 1 (Tập 18): Label Typo** -> Felix Event-Driven cập nhật iptables cực nhanh, timeout do drop âm thầm khi thiếu nhãn.
 2. **Lab 2 (Tập 19): BGP Route Loss** -> BGP session giữa các Node UP nhưng máy chủ ngoài cluster không có route tĩnh/động để forward packet.
-3. **Lab 3 (Tập 20): WireGuard MTU** -> Lớp mã hóa làm phình packet chéo Node, router drop âm thầm với cờ DF=1 (PMTUD Black Hole). Sửa bằng `wireguardMTU: 1440` & MSS Clamping.
-4. **Lab 4 (Tập 21): Cross-Namespace Policy** -> Lỗi cú pháp dấu gạch ngang (AND vs OR logic) bị che giấu bởi lỗi thiếu nhãn Namespace (Bug Masking).
+3. **Lab 3 (Tập 20): Cross-Namespace Policy** -> Lỗi cú pháp dấu gạch ngang (AND vs OR logic) bị che giấu bởi lỗi thiếu nhãn Namespace (Bug Masking).
+4. **Lab 4 (Tập 21): Network Policy Nâng Cao** -> Hạn chế namespace-level policy bằng cách áp dụng GlobalNetworkPolicy bảo vệ IMDS toàn cụm và Egress control sử dụng NetworkSet.
 
 ---
 

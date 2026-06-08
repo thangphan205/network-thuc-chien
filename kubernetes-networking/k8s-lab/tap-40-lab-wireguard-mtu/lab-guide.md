@@ -1,6 +1,6 @@
 # Lab Tập 40: Cilium Lab 4 — WireGuard MTU với Cilium, Hubble show "MTU exceeded"
 
-Tập này reproduce và debug WireGuard MTU bug với Cilium: inject MTU sai (1500 thay vì 1420) trên cilium_wg0, file lớn hang, Hubble show "MTU exceeded" ngay — không cần `ping -M do` như Calico (Tập 21).
+Tập này reproduce và debug WireGuard MTU bug với Cilium: inject MTU sai (1500 thay vì 1420) trên cilium_wg0, file lớn hang, Hubble show "MTU exceeded" ngay — không cần `ping -M do` như Calico (Tập 17).
 
 ## 🛠 Yêu cầu chuẩn bị
 - Cilium đang chạy (từ Tập 24).
@@ -131,7 +131,7 @@ multipass shell controlplane
    # → Không cần: ping -M do, ip link show manual, trial-error
    ```
 
-3. So sánh với Calico MTU debug (Tập 21):
+3. So sánh với Calico MTU debug (Tập 17):
    ```
    Calico debug (15-25 phút):
      1. Wait to confirm hang (5+ phút)

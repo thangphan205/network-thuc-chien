@@ -92,7 +92,7 @@ Data Plane (Thực thi & Chuyển mạch):
 
 Bẫy kinh điển:
 "BGP UP" ≠ "Routing OK" (Lab 2 - Tập 19)
-"Policy applied" ≠ "iptables rule match" (Lab 1 - Tập 18, Lab 4 - Tập 21)
+"Policy applied" ≠ "iptables rule match" (Lab 1 - Tập 18, Lab 3 - Tập 20)
 → Phải kiểm tra song song cả hai tầng!
 ```
 
@@ -128,8 +128,8 @@ Chúng ta đã gỡ lỗi thành công 4 sự cố thực tế kinh điển:
 
 1. **Lab 1 (Tập 18): Label Typo** -> Felix Event-Driven cập nhật iptables cực nhanh, timeout do drop âm thầm khi thiếu nhãn.
 2. **Lab 2 (Tập 19): BGP Route Loss** -> BGP session giữa các Node UP nhưng máy chủ ngoài cluster không có route tĩnh/động để forward packet.
-3. **Lab 3 (Tập 20): WireGuard MTU** -> Lớp mã hóa làm phình packet chéo Node, router drop âm thầm với cờ DF=1 (PMTUD Black Hole). Sửa bằng `wireguardMTU: 1440` & MSS Clamping.
-4. **Lab 4 (Tập 21): Cross-Namespace Policy** -> Lỗi cú pháp dấu gạch ngang (AND vs OR logic) bị che giấu bởi lỗi thiếu nhãn Namespace (Bug Masking).
+3. **Lab 3 (Tập 20): Cross-Namespace Policy** -> Lỗi cú pháp dấu gạch ngang (AND vs OR logic) bị che giấu bởi lỗi thiếu nhãn Namespace (Bug Masking).
+4. **Lab 4 (Tập 21): Network Policy Nâng Cao** -> Hạn chế namespace-level policy bằng cách áp dụng GlobalNetworkPolicy bảo vệ IMDS toàn cụm và Egress control sử dụng NetworkSet.
 
 ---
 

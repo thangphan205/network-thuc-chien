@@ -88,8 +88,8 @@ Khóa học **bỏ qua khái niệm cơ bản**, đi thẳng vào kiến trúc m
 | **19** | WireGuard trong Calico: Mã hóa traffic nội bộ & bẫy MTU 1440 bytes | [`tap-17-wireguard/`](./kubernetes-networking/k8s-lab/tap-17-wireguard) |
 | **20** | Lab 1: "Pod thiếu label" — Connection Timeout không rõ lý do | [`tap-18-lab-1/`](./kubernetes-networking/k8s-lab/tap-18-lab-1) |
 | **21** | Lab 2: BGP không quảng bá Pod CIDR — Server vật lý không ping được Pod | [`tap-19-lab-2/`](./kubernetes-networking/k8s-lab/tap-19-lab-2) |
-| **22** | Lab 3: WireGuard MTU & PMTUD Black Hole — File nhỏ ok, file lớn fail | [`tap-20-lab-3/`](./kubernetes-networking/k8s-lab/tap-20-lab-3) |
-| **23** | Lab 4: Cross-namespace AND/OR Bug — Prometheus không scrape được Backend | [`tap-21-lab-4/`](./kubernetes-networking/k8s-lab/tap-21-lab-4) |
+| **22** | Lab 3: Sự cố phân quyền truy cập chéo Namespace (Logic AND vs OR) | [`tap-20-lab-3/`](./kubernetes-networking/k8s-lab/tap-20-lab-3) |
+| **23** | Lab 4: Network Policy Nâng Cao với Calico (GlobalNetworkPolicy, NetworkSet) | [`tap-21-lab-4/`](./kubernetes-networking/k8s-lab/tap-21-lab-4) |
 | **24** | Tổng kết & Workflow Troubleshooting Calico chuẩn | [`tap-22-calico-troubleshooting/`](./kubernetes-networking/k8s-lab/tap-22-calico-troubleshooting) |
 | **25** | Calico Observability: Prometheus + Grafana + AlertManager | [`tap-23-calico-observability/`](./kubernetes-networking/k8s-lab/tap-23-calico-observability) |
 
