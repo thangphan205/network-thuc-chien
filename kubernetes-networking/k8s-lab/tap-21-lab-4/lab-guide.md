@@ -285,6 +285,16 @@ kubectl exec frontend-a -n tenant-a -- nslookup kubernetes.default && echo "DNS 
 
 Calico mở rộng K8s NetworkPolicy bằng `NetworkSet` — cho phép define tập hợp CIDR/IP có thể tái sử dụng trong nhiều policy.
 
+> [!IMPORTANT]
+> **Lưu ý lỗi `no matches for kind "NetworkSet" in version "projectcalico.org/v3"`:**
+> Nếu cụm Lab của bạn cài đặt Calico bằng file Manifest (mặc định không chạy Calico API Server), `kubectl` sẽ báo lỗi không tìm thấy tài nguyên thuộc `projectcalico.org/v3`.
+> 
+> **Cách xử lý (chọn 1 trong 2 cách):**
+> - **Cách 1:** Sử dụng `calicoctl apply` thay vì `kubectl apply` (ví dụ: `calicoctl apply -f - <<'EOF'`).
+> - **Cách 2:** Tiếp tục sử dụng `kubectl apply` nhưng đổi toàn bộ `apiVersion: projectcalico.org/v3` thành `apiVersion: crd.projectcalico.org/v1` cho tất cả cấu hình Calico trong bài lab này (bao gồm cả `NetworkSet`, `NetworkPolicy` của projectcalico và `GlobalNetworkPolicy`).
+> 
+> *Ví dụ ở bước 3.1 dưới đây trình bày theo định dạng chuẩn `projectcalico.org/v3`, bạn hãy tự điều chỉnh `apiVersion` theo cách bạn chọn.*
+
 **3.1 Tạo NetworkSet chứa các IP được phép:**
 ```bash
 kubectl apply -f - <<'EOF'
