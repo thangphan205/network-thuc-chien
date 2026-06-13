@@ -27,7 +27,7 @@ namespace: monitoring                    namespace: production
 
 ## Bước 1: Dựng môi trường Lab
 
-Để bạn có thể chủ động thực hành, tìm hiểu và khắc phục sự cố trực tiếp, trước hết hãy dựng môi trường Lab chứa cấu hình lỗi.
+Để bạn có thể chủ động thực hành, tìm hiểu và khắc phục sự cố trực tiếp, trước hết hãy dựng môi trường Lab ban đầu.
 
 1. **SSH vào controlplane:**
    ```bash
@@ -40,7 +40,7 @@ namespace: monitoring                    namespace: production
    kubectl create namespace monitoring 2>/dev/null || true
    kubectl create namespace production 2>/dev/null || true
 
-   # BẮT BUỘC: gán nhãn cho namespace để cấu hình lỗi hoạt động (tái hiện lỗ hổng bảo mật)
+   # Gán nhãn cho namespace
    kubectl label namespace monitoring name=monitoring --overwrite
 
    # Triển khai Pod Backend ở namespace production
@@ -73,7 +73,7 @@ namespace: monitoring                    namespace: production
        command: ["sleep", "infinity"]
    EOF
 
-   # Triển khai Pod rogue (không có quyền thu thập metrics) ở namespace monitoring
+   # Triển khai Pod rogue ở namespace monitoring
    kubectl run rogue -n monitoring --image=nicolaka/netshoot -- sleep infinity
    ```
 
@@ -86,9 +86,9 @@ namespace: monitoring                    namespace: production
    echo "Backend IP: $BACKEND_IP"
    ```
 
-4. **Áp dụng chính sách NetworkPolicy (Chứa cấu hình lỗi ban đầu):**
+4. **Áp dụng các chính sách NetworkPolicy ban đầu:**
    ```bash
-   # Chính sách chặn toàn bộ traffic ingress vào namespace production mặc định
+   # Áp dụng chính sách default-deny
    kubectl apply -n production -f - <<'EOF'
    apiVersion: networking.k8s.io/v1
    kind: NetworkPolicy
@@ -100,7 +100,7 @@ namespace: monitoring                    namespace: production
      - Ingress
    EOF
 
-   # Chính sách allow-prometheus-metrics (đang bị lỗi logic OR)
+   # Áp dụng chính sách allow-prometheus-metrics
    kubectl apply -n production -f - <<'EOF'
    apiVersion: networking.k8s.io/v1
    kind: NetworkPolicy
@@ -132,23 +132,23 @@ namespace: monitoring                    namespace: production
 
 ### Hiện tượng báo cáo từ vận hành & bảo mật
 Bộ phận bảo mật và vận hành hệ thống phát hiện cảnh báo:
-> "Hệ thống giám sát bảo mật ghi nhận có kết nối từ một IP lạ nằm trong namespace `monitoring` (được xác định là của Pod `rogue` - một Pod không được phân quyền) đi qua cổng `9090` của Backend trong namespace `production`. Theo thiết kế bảo mật, chỉ có duy nhất Pod `prometheus` mới được phép kết nối tới cổng này, các Pod khác phải bị chặn hoàn toàn."
+> "Hệ thống giám sát bảo mật ghi nhận có kết nối từ một IP lạ nằm trong namespace `monitoring` (được xác định là của Pod `rogue`) đi qua cổng `9090` của Backend trong namespace `production`. Theo thiết kế bảo mật, chỉ có duy nhất Pod `prometheus` mới được phép kết nối tới cổng này, các Pod khác phải bị chặn hoàn toàn."
 
 ### Nhiệm vụ của bạn
-Bạn đóng vai trò là kỹ sư SRE/Infra, hãy tự thực hiện các bước sau để tìm và sửa lỗ hổng bảo mật này:
+Bạn đóng vai trò là kỹ sư SRE/Infra, hãy tự thực hiện các bước sau để điều tra và khắc phục sự cố:
 
-1. **Xác nhận hiện tượng lỗi (Tái hiện lỗi):**
+1. **Xác nhận hiện tượng (Tái hiện):**
    - Kiểm tra trạng thái các Pod (`kubectl get pods`).
-   - Thử kết nối từ `prometheus` sang `backend:9090` -> kỳ vọng: **Thành công** (Đúng mục tiêu scrape).
-   - Thử kết nối từ `rogue` sang `backend:9090` -> kỳ vọng: **Thành công** (Sai thiết kế - Lỗ hổng bảo mật!).
+   - Kiểm tra kết nối từ `prometheus` sang `backend:9090`.
+   - Kiểm tra kết nối từ `rogue` sang `backend:9090`:
      ```bash
      kubectl -n monitoring exec rogue -- nc -zv -w 3 $BACKEND_IP 9090
      ```
-2. **Tiến hành phân tích và sửa lỗi:**
-   - Kiểm tra xem NetworkPolicy đang hoạt động như thế nào (`kubectl describe networkpolicy ...`).
-   - Kiểm tra nhãn (Labels) của Namespace `monitoring` và Pod `prometheus`.
-   - Tìm ra các điểm bất hợp lý trong cấu hình YAML hiện tại khiến `rogue` có thể kết nối được.
-   - Viết lại cấu hình NetworkPolicy mới để chỉ cho phép `prometheus` và chặn đứng `rogue`.
+2. **Điều tra nguyên nhân & Sửa lỗi:**
+   - Kiểm tra trạng thái và thông tin chi tiết của các NetworkPolicy (`kubectl describe networkpolicy ...`).
+   - Kiểm tra nhãn (Labels) của Namespace và các Pod.
+   - Xác định tại sao lưu lượng truy cập từ các Pod lại không đi đúng theo thiết kế ban đầu.
+   - Cập nhật lại cấu hình NetworkPolicy để đảm bảo chỉ cho phép Pod Prometheus được kết nối và chặn tất cả các Pod khác.
 3. **Xác minh kết quả sửa lỗi:**
    - Kết nối từ Pod `prometheus` trong namespace `monitoring` tới `backend:9090` phải **thành công**.
    - Kết nối từ Pod `rogue` trong namespace `monitoring` tới `backend:9090` phải **bị chặn**.
