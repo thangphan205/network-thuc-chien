@@ -33,10 +33,13 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 20
-## Lab 3: Sự cố phân quyền truy cập chéo Namespace (Logic AND vs OR)
+# Tập 20 - Lab Thực chiến 3
+## Sự cố phân quyền truy cập chéo Namespace
 
 **Phần 2 — Calico Labs** · `#lab` `#cross-namespace` `#prometheus` `#troubleshooting`
+
+![height:200px](https://www.tigera.io/app/uploads/2026/01/Calico-logo-2026-white-text.svg)
+
 
 ---
 

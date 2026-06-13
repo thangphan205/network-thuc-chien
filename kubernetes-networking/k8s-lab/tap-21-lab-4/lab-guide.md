@@ -1,12 +1,11 @@
-# Lab Tập 21: Lab 4 — Network Policy Nâng Cao với Calico (Thực Chiến Production)
-
+# Lab Tập 21: Lab Thực Chiến 4 — Network Policy Nâng Cao với Calico
 **Bối cảnh:**
-Công ty triển khai nền tảng SaaS multi-tenant trên cùng một cluster Kubernetes. Mỗi tenant chạy trong namespace riêng và phải được cô lập hoàn toàn với nhau. Đồng thời, cluster cần kiểm soát chặt chẽ lưu lượng egress ra ngoài Internet để ngăn data exfiltration và giới hạn chỉ các dịch vụ bên ngoài được phép.
+Công ty triển khai nền tảng SaaS multi-tenant trên cùng một hạ tầng On-Premise dùng chung một cluster Kubernetes. Mỗi tenant chạy trong namespace riêng và phải được cô lập hoàn toàn với nhau. Đồng thời, cluster cần kiểm soát chặt chẽ lưu lượng egress ra ngoài Internet để ngăn data exfiltration và giới hạn chỉ các dịch vụ bên ngoài được phép.
 
 Đây là ba thách thức thực tế bạn sẽ giải quyết trong lab này:
 1. **Multi-tenant isolation**: Các Pod giữa hai tenant phải không thể giao tiếp với nhau, nhưng vẫn cho phép DNS.
 2. **Egress control**: Chỉ cho phép Pod của backend gọi ra một số domain/IP ngoài cụ thể (ví dụ: payment gateway, database hosted ngoài).
-3. **GlobalNetworkPolicy**: Áp rule cluster-wide (bảo vệ node metadata endpoint AWS IMDSv1) mà không cần cấu hình từng namespace.
+3. **GlobalNetworkPolicy**: Áp rule chi phối toàn cluster (chặn truy cập vào dải IP quản trị thiết bị / Link-Local Metadata 169.254.169.254 của hạ tầng On-Premise) mà không cần cấu hình từng namespace.
 
 ### Sơ đồ kiến trúc mạng mục tiêu:
 
@@ -167,7 +166,7 @@ kubectl exec backend-a -n tenant-a -- curl -s --max-time 5 https://ifconfig.me 2
 > 2. **[Intra-tenant]** `frontend-a` VẪN có thể kết nối tới `backend-a` (cùng namespace).
 > 3. **[DNS]** Mọi Pod trong cả hai tenant vẫn resolve được DNS (`nslookup kubernetes.default`).
 > 4. **[Egress Control]** `backend-a` CHỈ được phép kọi ra IP `1.1.1.1` (Cloudflare DNS — giả lập payment gateway). Mọi egress khác bị chặn.
-> 5. **[GlobalNetworkPolicy]** Block toàn bộ cluster truy cập `169.254.169.254` (AWS IMDS endpoint) — không cần sửa từng namespace.
+> 5. **[GlobalNetworkPolicy]** Block toàn bộ cluster truy cập `169.254.169.254` (IP quản trị hạ tầng / Metadata endpoint) — không cần sửa từng namespace.
 >
 > **Tài liệu tham khảo:**
 > - K8s NetworkPolicy: https://kubernetes.io/docs/concepts/services-networking/network-policies/
@@ -347,23 +346,23 @@ kubectl exec backend-a -n tenant-a -- ping -c 2 -W 3 8.8.8.8 && echo "LEAK ❌" 
 
 ---
 
-### Bước 4: GlobalNetworkPolicy — Block AWS IMDS toàn cluster
+### Bước 4: GlobalNetworkPolicy — Block IP quản trị hạ tầng / Metadata endpoint toàn cluster
 
-`GlobalNetworkPolicy` (Calico-only) áp cho toàn cluster, không bị giới hạn trong namespace. Dùng để bảo vệ cloud metadata endpoint — vector tấn công phổ biến trong môi trường AWS/GCP/Azure.
+`GlobalNetworkPolicy` (chỉ có ở Calico) áp dụng cho toàn bộ cluster mà không bị giới hạn trong phạm vi namespace. Trong môi trường hạ tầng doanh nghiệp **On-Premise**, một yêu cầu bảo mật bắt buộc là chặn toàn bộ các Pod của ứng dụng truy cập vào dải IP quản trị của các máy chủ vật lý (như IPMI, iLO, vCenter) hoặc các dịch vụ Metadata nội bộ (như OpenStack Metadata IP: `169.254.169.254`) để tránh nguy cơ dò quét và tấn công ngược lại hạ tầng mạng vật lý.
 
 ```bash
 kubectl apply -f - <<'EOF'
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: block-cloud-metadata
+  name: block-metadata
 spec:
   order: 1
   selector: all()
   types:
   - Egress
   egress:
-  # Block tất cả traffic đến AWS IMDS (và tương tự GCP: 169.254.169.254)
+  # Block tất cả traffic đến IP quản trị hạ tầng / metadata (169.254.169.254)
   - action: Deny
     destination:
       nets:
@@ -373,9 +372,9 @@ spec:
 EOF
 ```
 
-> **Giải thích ordering:** Calico evaluate policy theo thứ tự `order` (số nhỏ = ưu tiên cao hơn). `GlobalNetworkPolicy` với `order: 1` được evaluate TRƯỚC các `NetworkPolicy` namespace-level. Vì block IMDS là security requirement toàn cluster, đặt order thấp đảm bảo không bị override.
+> **Giải thích ordering:** Calico evaluate policy theo thứ tự `order` (số nhỏ = ưu tiên cao hơn). `GlobalNetworkPolicy` với `order: 1` được evaluate TRƯỚC các `NetworkPolicy` namespace-level. Vì block metadata/IP quản trị là security requirement toàn cluster, đặt order thấp đảm bảo không bị override.
 
-**Kiểm tra block IMDS hoạt động:**
+**Kiểm tra block metadata hoạt động:**
 ```bash
 # Từ frontend-a (tenant-a) — PHẢI bị block
 kubectl exec frontend-a -n tenant-a -- curl -s --max-time 3 http://169.254.169.254/ 2>&1 || echo "BLOCKED ✅"
@@ -411,9 +410,9 @@ kubectl exec backend-a -n tenant-a -- ping -c 2 -W 3 8.8.8.8 2>&1 | grep -q "2 r
   && echo "LEAK ❌" || echo "BLOCKED ✅"
 
 echo ""
-echo "=== GlobalNetworkPolicy: IMDS block ==="
+echo "=== GlobalNetworkPolicy: Metadata block ==="
 kubectl exec frontend-a -n tenant-a -- curl -s --max-time 3 http://169.254.169.254/ \
-  && echo "LEAK ❌" || echo "IMDS BLOCKED ✅"
+  && echo "LEAK ❌" || echo "METADATA BLOCKED ✅"
 ```
 
 Kết quả mong đợi: tất cả 5 kiểm tra đều báo `✅`.
@@ -447,7 +446,7 @@ sudo iptables -nL | grep -E "cali|DROP" | head -30
 kubectl delete namespace tenant-a tenant-b
 
 # Xóa GlobalNetworkPolicy
-kubectl delete globalnetworkpolicy block-cloud-metadata
+kubectl delete globalnetworkpolicy block-metadata
 ```
 
 ---
@@ -461,7 +460,7 @@ kubectl delete globalnetworkpolicy block-cloud-metadata
 | **DNS whitelist** | Mở port 53 trong egress policy | Luôn cần khi áp egress deny |
 | **NetworkSet** | Calico `NetworkSet` CRD | Reuse tập IP/CIDR trong nhiều policy |
 | **Egress IP whitelist** | Calico `NetworkPolicy` + `NetworkSet` | Control outbound đến payment gateway, DB ngoài |
-| **Cluster-wide rule** | Calico `GlobalNetworkPolicy` | Block cloud metadata, chặn C2 infrastructure |
+| **Cluster-wide rule** | Calico `GlobalNetworkPolicy` | Chặn IP quản trị hạ tầng, chặn C2 infrastructure |
 
 **Bài học core:**
 - K8s `NetworkPolicy` mặc định **không chặn egress** trừ khi có ít nhất 1 egress policy.
