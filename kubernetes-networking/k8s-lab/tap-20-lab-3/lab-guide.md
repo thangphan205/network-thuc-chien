@@ -9,11 +9,11 @@ Hệ thống gồm 2 namespace với các thành phần sau:
 ```
 namespace: monitoring                    namespace: production
 ┌─────────────────────────────┐         ┌────────────────────────────────┐
-│  Pod: prometheus             │         │  Pod: backend                  │
-│  labels: role=prometheus     │──?──►   │  labels: app=backend           │
-│                              │         │  port: 9090                    │
-│  Pod: rogue                  │         │                                │
-│  (không có label đặc biệt)   │         │  NetworkPolicy:                │
+│  Pod: prometheus            │         │  Pod: backend                  │
+│  labels: role=prometheus    │──?──►   │  labels: app=backend           │
+│                             │         │  port: 9090                    │
+│  Pod: rogue                 │         │                                │
+│  (không có label đặc biệt)  │         │  NetworkPolicy:                │
 └─────────────────────────────┘         │    default-deny (all ingress)  │
                                         │    allow-prometheus-metrics    │
                                         └────────────────────────────────┘
