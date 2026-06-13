@@ -1,4 +1,4 @@
-# Lab Tập 20: Lab 3 — Sự cố phân quyền truy cập chéo Namespace
+# Lab Tập 20: Lab Thực Chiến 3 — Sự cố phân quyền truy cập chéo Namespace
 
 ---
 
