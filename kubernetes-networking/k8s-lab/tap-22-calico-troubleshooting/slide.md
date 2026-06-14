@@ -31,18 +31,20 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 22
+# Tập 22 - Calico - Troubleshooting Tổng Kết
 ## Tổng kết & Workflow Troubleshooting Calico chuẩn
 
 **Phần 2 — Calico** · `#troubleshooting` `#debug` `#methodology` `#calicoctl`
+
+![height:200px](https://www.tigera.io/app/uploads/2026/01/Calico-logo-2026-white-text.svg)
 
 ---
 
 ## Mục tiêu tập này
 
-- Hệ thống hóa workflow debug Calico (không đoán mò) sau 4 bài Lab thực hành
+- Hệ thống hóa workflow debug Calico sau 4 bài Lab thực hành
 - Đúc kết đủ bộ tool: calicoctl, ip route, iptables-save, tcpdump
-- Tổng kết 4 sự cố mạng kinh điển: Label Typo, BGP Route Loss, WireGuard MTU Black Hole, Cross-Namespace Policy
+- Tổng kết 4 sự cố mạng kinh điển: Label Typo, BGP Route Loss, Cross-Namespace Policy, Network Policy Nâng Cao (Egress)
 - Phân biệt rạch ròi lúc nào check Control Plane vs Data Plane
 
 **Prerequisites:** Đã hoàn thành 4 bài Lab thực hành từ Tập 18 đến Tập 21
@@ -59,12 +61,12 @@ Bước 1: CHECK BASICS
   kubectl get endpoints          # Service có endpoints chưa?
 
 Bước 2: CHECK ROUTING & BGP
-  calicoctl node status          # BGP sessions UP/Established?
+  sudo calicoctl node status     # BGP sessions UP/Established?
   ip route show proto bird       # Có route đến subnet của Pod B?
 
 Bước 3: CHECK NETWORK POLICY
   kubectl get networkpolicy      # Có policy nào select Pod không?
-  calicoctl get workloadep       # Felix đã nhận diện Pod endpoint?
+  calicoctl get workloadendpoint # Felix đã nhận diện Pod endpoint?
 
 Bước 4: CHECK LABELS & LOGIC
   kubectl get pod --show-labels  # Nhãn Pod có khớp selector (AND/OR)?
@@ -86,9 +88,9 @@ Control Plane (Quản lý & Thiết lập):
 
 Data Plane (Thực thi & Chuyển mạch):
   ip route show               → Route có nạp vào Linux Kernel?
-  iptables -L cali-FORWARD    → Rule có trong Linux iptables/eBPF?
-  conntrack -L | grep <ip>    → Bảng theo dõi trạng thái kết nối
-  tcpdump -i any host <ip>    → Gói tin thực tế đi/đến đâu?
+  sudo iptables -L cali-FORWARD → Rule có trong Linux iptables/eBPF?
+  sudo conntrack -L | grep <ip> → Bảng theo dõi trạng thái kết nối
+  sudo tcpdump -i any host <ip> → Gói tin thực tế đi/đến đâu?
 
 Bẫy kinh điển:
 "BGP UP" ≠ "Routing OK" (Lab 2 - Tập 19)
@@ -102,20 +104,20 @@ Bẫy kinh điển:
 
 ```bash
 # Control plane
-calicoctl node status                        # BGP sessions
+sudo calicoctl node status                   # BGP sessions
 calicoctl get workloadendpoint               # Workload endpoints Felix nhận diện
 calicoctl get networkpolicy --all-namespaces # Tất cả policies trong Calico
 
 # Data plane
 ip route show proto bird                     # Pod subnet routes học qua BGP
-iptables-save | grep cali | wc -l            # Số lượng Calico rules trong Node
-iptables -L cali-tw-<iface-id> -n            # Xem rule inbound vào Pod (tw = to-workload)
-iptables -L cali-fw-<iface-id> -n            # Xem rule outbound từ Pod (fw = from-workload)
-conntrack -L -p tcp | grep <pod-ip>          # Trạng thái connection
+sudo iptables-save | grep cali | wc -l       # Số lượng Calico rules trong Node
+sudo iptables -L cali-tw-<iface-id> -n       # Xem rule inbound vào Pod (tw = to-workload)
+sudo iptables -L cali-fw-<iface-id> -n       # Xem rule outbound từ Pod (fw = from-workload)
+sudo conntrack -L -p tcp | grep <pod-ip>     # Trạng thái connection
 
 # Packet trace (TEMP, xóa sau khi debug)
-iptables -I FORWARD 1 -j LOG --log-prefix "DBG: "
-dmesg -w | grep DBG
+sudo iptables -I FORWARD 1 -j LOG --log-prefix "DBG: "
+sudo dmesg -w | grep DBG
 ```
 
 ---
@@ -129,7 +131,7 @@ Chúng ta đã gỡ lỗi thành công 4 sự cố thực tế kinh điển:
 1. **Lab 1 (Tập 18): Label Typo** -> Felix Event-Driven cập nhật iptables cực nhanh, timeout do drop âm thầm khi thiếu nhãn.
 2. **Lab 2 (Tập 19): BGP Route Loss** -> BGP session giữa các Node UP nhưng máy chủ ngoài cluster không có route tĩnh/động để forward packet.
 3. **Lab 3 (Tập 20): Cross-Namespace Policy** -> Lỗi cú pháp dấu gạch ngang (AND vs OR logic) bị che giấu bởi lỗi thiếu nhãn Namespace (Bug Masking).
-4. **Lab 4 (Tập 21): Network Policy Nâng Cao** -> Hạn chế namespace-level policy bằng cách áp dụng GlobalNetworkPolicy bảo vệ IMDS toàn cụm và Egress control sử dụng NetworkSet.
+4. **Lab 4 (Tập 21): Network Policy Nâng Cao** -> Vượt qua giới hạn namespace bằng cách áp dụng GlobalNetworkPolicy chặn IP quản trị hạ tầng/metadata toàn cụm và Egress control sử dụng NetworkSet.
 
 ---
 
