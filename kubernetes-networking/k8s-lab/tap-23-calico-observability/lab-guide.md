@@ -1,49 +1,46 @@
-# Lab Tập 23: Calico Observability — Prometheus + Grafana + AlertManager + Telegram
+# Lab Tập 23: Calico Observability — Prometheus + Grafana + Alertmanager (Native Telegram Alerts)
 
-Tập này dựng stack observability đầy đủ cho Calico: Felix metrics → Prometheus → Grafana → AlertManager → Telegram alerts.
+Tập này dựng hệ thống giám sát và cảnh báo bảo mật cấp độ doanh nghiệp (Production-grade) cho cụm mạng Calico. Hệ thống sử dụng Prometheus Operator thu thập metrics, Alertmanager tích hợp trực tiếp để gửi cảnh báo Telegram, và Grafana trực quan hóa lưu lượng mạng hợp lệ (Allowed) đối chiếu với lưu lượng bị chặn (Denied).
 
-### Sơ đồ kiến trúc giám sát: Calico Observability Flow
+### Sơ đồ kiến trúc giám sát & Kịch bản thực tế:
 
 ```mermaid
 graph TD
-  subgraph k8s_nodes ["Kubernetes Nodes (DaemonSet)"]
-    A1["Node 1: calico-node<br/>(Felix & BIRD)"] -- "Exposes metrics<br/>Port 9091" --> S
-    A2["Node 2: calico-node<br/>(Felix & BIRD)"] -- "Exposes metrics<br/>Port 9091" --> S
-    A3["Node 3: calico-node<br/>(Felix & BIRD)"] -- "Exposes metrics<br/>Port 9091" --> S
+  subgraph target_apps ["Ứng dụng Demo (webapp)"]
+    TG["traffic-generator<br/>(Loop: curl frontend)"] -- "Allowed Traffic" --> FE["webapp-frontend<br/>(Nginx)"]
+    FE --> BE["webapp-backend<br/>(Nginx)"]
+    BE -- "6379/TCP" --> DB["webapp-db<br/>(Redis)"]
+    AT["attacker-pod<br/>(default namespace)"] -.->|Blocked & Dropped<br/>Port 6379| DB
   end
 
-  subgraph service_discovery ["Service Discovery (calico-system)"]
-    S["Service: calico-felix-metrics<br/>(Selector: k8s-app=calico-node)"]
+  subgraph k8s_nodes ["Kubernetes Nodes (calico-node)"]
+    N1["Node: Felix Agent"] -- "Exposes metrics<br/>Port 9091" --> SVC["Service: calico-felix-metrics"]
   end
 
   subgraph prometheus_stack ["Prometheus Stack (monitoring)"]
-    SM["ServiceMonitor: calico-felix<br/>(namespace: monitoring)"] -.->|Discovers| S
-    PO["Prometheus Operator"] -->|Reads ServiceMonitor| SM
-    PO -->|Configures Scrape Targets| P["Prometheus Server"]
-    P -->|Pull Metrics /metrics| S
-    PR["PrometheusRule: calico-alerts"] -->|Defines Alert Rules| P
-    P -->|Alert Firing| AM["AlertManager"]
+    SM["ServiceMonitor: calico-felix"] -.->|Discovers| SVC
+    PO["Prometheus Operator"] -->|Reads| SM
+    P["Prometheus Server"] -->|Scrapes /metrics| SVC
+    PR["PrometheusRule: calico-alerts"] -->|Alert Rules| P
+    P -->|Alert Firing| AM["Alertmanager"]
   end
 
-  subgraph notification ["Notification Pipeline"]
-    AM -->|webhook POST| TW["telegram-alertmanager-webhook<br/>(Python, port 5000)"]
-    TW -->|Bot API| TG["📱 Telegram"]
-  end
-
-  subgraph visualization ["Visualization"]
+  subgraph notification ["Notification & Dashboard"]
+    AM -->|Native HTTP API POST| TG_BOT["📱 Telegram Bot API"]
     G["Grafana Dashboards"] -->|Queries API| P
   end
 
-  style A1 fill:#1e1e38,stroke:#a78bfa,stroke-width:2px,color:#e2e8f0
-  style A2 fill:#1e1e38,stroke:#a78bfa,stroke-width:2px,color:#e2e8f0
-  style A3 fill:#1e1e38,stroke:#a78bfa,stroke-width:2px,color:#e2e8f0
-  style S fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
+  style TG fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff
+  style FE fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff
+  style BE fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff
+  style DB fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff
+  style AT fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fff
+  style N1 fill:#1e1e38,stroke:#a78bfa,stroke-width:2px,color:#e2e8f0
+  style SVC fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
   style SM fill:#2d1b69,stroke:#f59e0b,stroke-width:2px,color:#fde68a
-  style PO fill:#2d1b69,stroke:#a78bfa,stroke-width:2px,color:#e2e8f0
   style P fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
   style AM fill:#2d080a,stroke:#f87171,stroke-width:2px,color:#fca5a5
-  style TW fill:#1a2a1a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
-  style TG fill:#0d2137,stroke:#38bdf8,stroke-width:2px,color:#bae6fd
+  style TG_BOT fill:#0d2137,stroke:#38bdf8,stroke-width:2px,color:#bae6fd
   style G fill:#1e293b,stroke:#ec4899,stroke-width:2px,color:#fbcfe8
 ```
 
@@ -51,117 +48,108 @@ graph TD
 
 ## Yêu cầu chuẩn bị
 
-- Cụm K8s với Calico đang chạy (từ Tập 9+)
+- Cụm Kubernetes chạy Calico (từ Tập 9+)
 - Ít nhất 4GB RAM trống trên cluster
-- Kết nối internet để pull Helm chart và images
-- **Tài khoản Telegram** (để nhận alert thực tế)
+- Kết nối Internet để pull Helm chart & docker images
+- **Tài khoản Telegram** và **Telegram Bot** để nhận tin nhắn alert.
 
 ---
 
-## Thực nghiệm 1: Bật Felix metrics và verify
+## Thực nghiệm 1: Kích hoạt Felix metrics và kiểm tra thủ công
+
+Theo mặc định, Calico Felix (agent quản lý data plane trên mỗi Node) tắt endpoints xuất metrics để tiết kiệm tài nguyên. Ta cần kích hoạt lên.
 
 **SSH vào `controlplane`:**
-
 ```bash
 multipass shell controlplane
 ```
 
-1. Bật Felix metrics endpoint:
+1. Cập nhật FelixConfiguration mặc định của cụm để bật Prometheus metrics:
    ```bash
    kubectl patch felixconfiguration default \
      --type merge \
      --patch '{"spec": {"prometheusMetricsEnabled": true}}'
    ```
 
-2. Verify FelixConfiguration:
+2. Xác minh cấu hình đã được áp dụng:
    ```bash
    kubectl get felixconfiguration default -o yaml | grep prometheus
-   # prometheusMetricsEnabled: true
+   # Kết quả kỳ vọng: prometheusMetricsEnabled: true
    ```
 
-3. Lưu IP worker1 (dùng nhiều lần trong lab):
+3. Lấy IP của `worker1` để kiểm tra kết nối:
    ```bash
    export WORKER1_IP=$(multipass info worker1 | grep IPv4 | awk '{print $2}')
    echo "Worker1 IP: $WORKER1_IP"
    ```
 
-4. Chờ Felix reload (~10 giây) rồi scrape thủ công:
+4. Chờ 10-15 giây để Felix reload cấu hình, sau đó scrape thử metrics thủ công:
    ```bash
    curl -s http://$WORKER1_IP:9091/metrics | grep -E "^felix_|^bgp_" | head -15
-   # felix_active_local_endpoints 2
-   # felix_denied_packets_total{...} 0
-   # felix_iptables_restore_calls_total 5
-   # bgp_peers{status="Established",ip_version="IPv4"} 2
    ```
-   *Nhận xét:* Felix expose metrics dạng Prometheus text format trên port 9091 mỗi node.
+   *Giải thích:* Bạn sẽ thấy các metrics định dạng Prometheus xuất hiện trên cổng `9091`. Ví dụ:
+   - `felix_active_local_endpoints`: Số lượng Pod đang chạy trên node đó.
+   - `felix_denied_packets_total`: Số lượng gói tin bị chặn bởi NetworkPolicy (hiện tại bằng 0).
+   - `bgp_peers{status="Established"}`: Trạng thái kết nối BGP với các Node khác.
 
 ---
 
-## Thực nghiệm 2: Chuẩn bị Telegram Bot
+## Thực nghiệm 2: Tạo Telegram Bot & lấy thông tin cấu hình
 
-**Bước này thực hiện trên máy local (không cần SSH):**
+Ta sẽ chuẩn bị một kênh cảnh báo bảo mật qua Telegram.
 
-1. Mở Telegram, chat với **@BotFather**:
-   ```
-   /newbot
-   → Đặt tên hiển thị: Calico Lab Alerts
-   → Đặt username: calico_lab_alerts_bot (phải kết thúc bằng _bot)
-   → BotFather trả về token dạng: 7123456789:AAHdqTcvCH1vGWJxfSeofSs4tDqowbqUIiZE
-   ```
-
-2. **Trên `controlplane`** — lưu token vào biến môi trường:
+1. Truy cập Telegram trên điện thoại/máy tính và tìm kiếm **@BotFather**.
+2. Chat lệnh `/newbot` để tạo bot mới:
+   - Đặt tên hiển thị: `Calico Security Alerts`
+   - Đặt username: `calico_alerts_yourname_bot` (phải kết thúc bằng `_bot`).
+   - Copy mã **Token** được BotFather cấp (ví dụ: `7123456789:AAHdqTcv...`).
+3. Nhấp vào link bot vừa tạo và nhấn **Start** hoặc gửi một tin nhắn bất kỳ (ví dụ: `hello`).
+4. Trên máy `controlplane`, lưu token này vào biến môi trường:
    ```bash
-   export TELEGRAM_BOT_TOKEN="7123456789:AAHdqTcvCH1vGWJxfSeofSs4tDqowbqUIiZE"
-   # Thay bằng token thực của bạn
+   export TELEGRAM_BOT_TOKEN="7123456789:AAHdqTcv..." # Điền token thực tế của bạn
    ```
-
-3. Lấy CHAT_ID:
+5. Thực hiện lấy **Chat ID** của bạn để bot biết gửi tin nhắn về đâu:
    ```bash
-   # Bước 1: Gửi bất kỳ tin nhắn nào cho bot trong Telegram app (ví dụ: "hello")
-   # Bước 2: Lấy chat_id từ API:
-   curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates" \
-     | python3 -c "
+   curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates" | python3 -c "
    import sys, json
    data = json.load(sys.stdin)
    if data['result']:
-       print(data['result'][0]['message']['chat']['id'])
+       print('CHAT_ID:', data['result'][0]['message']['chat']['id'])
    else:
-       print('Chưa có message! Hãy gửi tin nhắn cho bot trước.')
+       print('LỖI: Chưa có message! Hãy nhấn Start và gửi tin nhắn bất kỳ cho Bot trước.')
    "
-   export TELEGRAM_CHAT_ID="123456789"  # Thay bằng số hiện ra
    ```
-
-4. Test gửi message từ `controlplane`:
+6. Lưu ID nhận được vào biến môi trường (ví dụ: `123456789`):
+   ```bash
+   export TELEGRAM_CHAT_ID="123456789" # Thay bằng số Chat ID thực tế
+   ```
+7. Test thử xem Bot Telegram hoạt động không:
    ```bash
    curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
      -H "Content-Type: application/json" \
-     -d "{\"chat_id\": \"${TELEGRAM_CHAT_ID}\", \"text\": \"✅ Calico Lab bot kết nối thành công từ cluster!\", \"parse_mode\": \"Markdown\"}" \
-     | python3 -m json.tool | grep '"ok"'
-   # "ok": true  ← Bot hoạt động
+     -d "{\"chat_id\": \"${TELEGRAM_CHAT_ID}\", \"text\": \"🔔 Cảnh báo thử nghiệm: Kết nối thành công từ Kubernetes cluster!\"}"
    ```
-   *Kiểm tra Telegram:* Phải thấy message ngay lập tức.
 
 ---
 
-## Thực nghiệm 3: Cài Helm và deploy kube-prometheus-stack
+## Thực nghiệm 3: Triển khai kube-prometheus-stack qua Helm
 
-**Trên `controlplane`:**
+Chúng ta sử dụng Helm để triển khai nhanh toàn bộ Stack giám sát, đồng thời cấu hình trực tiếp Alertmanager sử dụng tính năng gửi Telegram gốc (Native Integration).
 
-1. Cài Helm nếu chưa có:
+1. Cài đặt Helm trên `controlplane` (nếu chưa có):
    ```bash
    which helm || curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-   helm version
    ```
 
-2. Thêm Prometheus community repo:
+2. Thêm Prometheus Community repository và cập nhật:
    ```bash
    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
    helm repo update
    ```
 
-3. Tạo values file với AlertManager config trỏ về Telegram webhook:
+3. Tạo file cấu hình `values.yaml` sử dụng shell substitution để tự động điền Token và Chat ID:
    ```bash
-   cat > /tmp/monitoring-values.yaml <<'EOF'
+   cat <<EOF > /tmp/monitoring-values.yaml
    grafana:
      adminPassword: admin123
      resources:
@@ -188,211 +176,206 @@ multipass shell controlplane
        global:
          resolve_timeout: 5m
        route:
-         group_by: ['alertname', 'node']
+         group_by: ['alertname', 'instance']
          group_wait: 10s
          group_interval: 30s
-         repeat_interval: 2h
+         repeat_interval: 1h
          receiver: telegram
        receivers:
        - name: telegram
-         webhook_configs:
-         - url: http://telegram-alertmanager-webhook.monitoring.svc.cluster.local:5000
+         telegram_configs:
+         - bot_token: "${TELEGRAM_BOT_TOKEN}"
+           chat_id: ${TELEGRAM_CHAT_ID}
            send_resolved: true
+           parse_mode: HTML
+           message: |
+             {{ if eq .Status "firing" }}🔴 <b>[ALARM: FIRING] Calico Security Triggered</b>
+             {{ else }}✅ <b>[ALARM: RESOLVED] Network Restored</b>
+             {{ end }}
+             <b>Tên cảnh báo:</b> <code>{{ .CommonLabels.alertname }}</code>
+             <b>Mức độ nguy hại:</b> <code>{{ .CommonLabels.severity }}</code>
+             <b>Đối tượng bị ảnh hưởng:</b> <code>{{ .CommonLabels.instance }}</code>
+             
+             <b>Mô tả chi tiết:</b>
+             <i>{{ .CommonAnnotations.description }}</i>
    EOF
    ```
 
-4. Deploy stack (mất 3-5 phút):
+4. Thực hiện cài đặt Prometheus Operator stack trong namespace `monitoring`:
    ```bash
    helm install monitoring prometheus-community/kube-prometheus-stack \
      --namespace monitoring --create-namespace \
      -f /tmp/monitoring-values.yaml
    ```
 
-5. Theo dõi pods:
+5. Theo dõi cho đến khi các Pod chạy trạng thái `Running` (mất khoảng 2-3 phút):
    ```bash
-   watch kubectl -n monitoring get pods
-   # Chờ tất cả Running/Completed:
-   # monitoring-grafana-xxx                  3/3   Running
-   # monitoring-kube-prometheus-prometheus-0  2/2   Running
-   # alertmanager-monitoring-kube-prom-...   2/2   Running
-   # monitoring-kube-state-metrics-xxx       1/1   Running
-   # monitoring-prometheus-node-exporter-xxx  1/1   Running  (mỗi node)
+   kubectl get pods -n monitoring
    ```
 
 ---
 
-## Thực nghiệm 4: Deploy Telegram Webhook Receiver
+## Thực nghiệm 4: Triển khai Ứng dụng Demo (Microservices) & Traffic Generator
 
-**Trên `controlplane`:**
+Để mô phỏng môi trường sản xuất thực tế, ta triển khai một ứng dụng 3 tầng đơn giản trong namespace `webapp` và thiết lập giả lập traffic.
 
-Webhook này là một Python server đơn giản nhận POST từ AlertManager và gửi message lên Telegram Bot API. Dùng Python stdlib (không cần pip install thêm gì).
-
-1. Tạo Secret chứa credentials (không hardcode vào YAML):
+1. Tạo namespace và deploy các pod ứng dụng:
    ```bash
-   kubectl create secret generic telegram-credentials \
-     --namespace monitoring \
-     --from-literal=bot-token="${TELEGRAM_BOT_TOKEN}" \
-     --from-literal=chat-id="${TELEGRAM_CHAT_ID}"
+   kubectl create namespace webapp
 
-   kubectl -n monitoring get secret telegram-credentials
-   # telegram-credentials   Opaque   2   5s
-   ```
-
-2. Deploy webhook receiver (ConfigMap + Deployment + Service):
-   ```bash
-   kubectl apply -f - <<'EOF'
-   ---
-   apiVersion: v1
-   kind: ConfigMap
-   metadata:
-     name: telegram-webhook-script
-     namespace: monitoring
-   data:
-     app.py: |
-       import os, json
-       from http.server import HTTPServer, BaseHTTPRequestHandler
-       import urllib.request
-
-       BOT_TOKEN = os.environ['TELEGRAM_BOT_TOKEN']
-       CHAT_ID   = os.environ['TELEGRAM_CHAT_ID']
-
-       def send_telegram(text):
-           body = json.dumps({
-               "chat_id": CHAT_ID,
-               "text": text,
-               "parse_mode": "Markdown"
-           }).encode()
-           req = urllib.request.Request(
-               f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-               data=body,
-               headers={"Content-Type": "application/json"}
-           )
-           try:
-               urllib.request.urlopen(req, timeout=10)
-           except Exception as e:
-               print(f"[ERROR] Telegram API: {e}")
-
-       class AlertHandler(BaseHTTPRequestHandler):
-           def do_POST(self):
-               length = int(self.headers.get('Content-Length', 0))
-               body   = json.loads(self.rfile.read(length))
-               for alert in body.get('alerts', []):
-                   status   = alert['status'].upper()
-                   name     = alert['labels'].get('alertname', 'Unknown')
-                   node     = alert['labels'].get('node',
-                              alert['labels'].get('instance', 'N/A'))
-                   severity = alert['labels'].get('severity', '?')
-                   summary  = alert.get('annotations', {}).get('summary', name)
-                   emoji    = '🔴' if status == 'FIRING' else '✅'
-                   msg = (
-                       f"{emoji} *\\[{status}\\]* `{name}`\n"
-                       f"*Severity:* {severity}\n"
-                       f"*Node:* `{node}`\n"
-                       f"{summary}"
-                   )
-                   print(f"[{status}] {name} → {node}")
-                   send_telegram(msg)
-               self.send_response(200)
-               self.end_headers()
-               self.wfile.write(b'ok')
-
-           def log_message(self, fmt, *args):
-               pass
-
-       print("[INFO] Telegram webhook receiver listening on :5000")
-       HTTPServer(('0.0.0.0', 5000), AlertHandler).serve_forever()
-   ---
+   kubectl apply -n webapp -f - <<'EOF'
    apiVersion: apps/v1
    kind: Deployment
    metadata:
-     name: telegram-alertmanager-webhook
-     namespace: monitoring
+     name: webapp-db
    spec:
      replicas: 1
      selector:
        matchLabels:
-         app: telegram-alertmanager-webhook
+         app: webapp-db
      template:
        metadata:
          labels:
-           app: telegram-alertmanager-webhook
+           app: webapp-db
        spec:
          containers:
-         - name: webhook
-           image: python:3.11-slim
-           command: ["python3", "/app/app.py"]
-           env:
-           - name: TELEGRAM_BOT_TOKEN
-             valueFrom:
-               secretKeyRef:
-                 name: telegram-credentials
-                 key: bot-token
-           - name: TELEGRAM_CHAT_ID
-             valueFrom:
-               secretKeyRef:
-                 name: telegram-credentials
-                 key: chat-id
+         - name: redis
+           image: redis:alpine
            ports:
-           - containerPort: 5000
-           volumeMounts:
-           - name: script
-             mountPath: /app
-         volumes:
-         - name: script
-           configMap:
-             name: telegram-webhook-script
+           - containerPort: 6379
    ---
    apiVersion: v1
    kind: Service
    metadata:
-     name: telegram-alertmanager-webhook
-     namespace: monitoring
+     name: webapp-db
    spec:
-     selector:
-       app: telegram-alertmanager-webhook
      ports:
-     - port: 5000
-       targetPort: 5000
+     - port: 6379
+       targetPort: 6379
+     selector:
+       app: webapp-db
+   ---
+   apiVersion: apps/v1
+   kind: Deployment
+   metadata:
+     name: webapp-backend
+   spec:
+     replicas: 1
+     selector:
+       matchLabels:
+         app: webapp-backend
+     template:
+       metadata:
+         labels:
+           app: webapp-backend
+       spec:
+         containers:
+         - name: backend
+           image: nginx:alpine
+           ports:
+           - containerPort: 80
+   ---
+   apiVersion: v1
+   kind: Service
+   metadata:
+     name: webapp-backend
+   spec:
+     ports:
+     - port: 80
+       targetPort: 80
+     selector:
+       app: webapp-backend
+   ---
+   apiVersion: apps/v1
+   kind: Deployment
+   metadata:
+     name: webapp-frontend
+   spec:
+     replicas: 1
+     selector:
+       matchLabels:
+         app: webapp-frontend
+     template:
+       metadata:
+         labels:
+           app: webapp-frontend
+       spec:
+         containers:
+         - name: frontend
+           image: nginx:alpine
+           ports:
+           - containerPort: 80
+   ---
+   apiVersion: v1
+   kind: Service
+   metadata:
+     name: webapp-frontend
+   spec:
+     ports:
+     - port: 80
+       targetPort: 80
+     selector:
+       app: webapp-frontend
    EOF
    ```
 
-3. Verify webhook đang chạy và log bình thường:
+2. Tạo **Traffic Generator** gửi yêu cầu hợp lệ liên tục từ Frontend sang Backend (giả lập người dùng thật):
    ```bash
-   kubectl -n monitoring wait --for=condition=Ready \
-     pod -l app=telegram-alertmanager-webhook --timeout=120s
-
-   kubectl -n monitoring logs -l app=telegram-alertmanager-webhook
-   # [INFO] Telegram webhook receiver listening on :5000
+   kubectl apply -n webapp -f - <<'EOF'
+   apiVersion: apps/v1
+   kind: Deployment
+   metadata:
+     name: traffic-generator
+   spec:
+     replicas: 1
+     selector:
+       matchLabels:
+         app: traffic-generator
+     template:
+       metadata:
+         labels:
+           app: traffic-generator
+       spec:
+         containers:
+         - name: generator
+           image: nicolaka/netshoot
+           command: ["/bin/sh", "-c"]
+           args:
+           - |
+             echo "Bắt đầu sinh healthy traffic..."
+             while true; do
+               curl -s -o /dev/null -w "%{http_code}" http://webapp-frontend
+               echo " -> Truy cập Frontend thành công"
+               sleep 0.5
+             done
+   EOF
    ```
 
-4. Test webhook thủ công bằng cách giả lập payload từ AlertManager:
+3. Tạo **Attacker Pod** (Rogue Scanner) ở namespace `default` liên tục cố gắng truy cập trái phép cổng Database của ứng dụng:
    ```bash
-   WEBHOOK_POD=$(kubectl -n monitoring get pod \
-     -l app=telegram-alertmanager-webhook -o jsonpath='{.items[0].metadata.name}')
-
-   kubectl -n monitoring exec -it $WEBHOOK_POD -- python3 -c "
-   import urllib.request, json
-   payload = json.dumps({
-     'alerts': [{
-       'status': 'firing',
-       'labels': {'alertname': 'TestAlert', 'severity': 'warning', 'node': 'controlplane'},
-       'annotations': {'summary': 'Test message từ webhook receiver'}
-     }]
-   }).encode()
-   req = urllib.request.Request('http://localhost:5000', data=payload,
-         headers={'Content-Type': 'application/json'})
-   print(urllib.request.urlopen(req).read())
+   kubectl run attacker-pod -n default --image=nicolaka/netshoot -- /bin/sh -c "
+   echo 'Bắt đầu scan cổng DB...'
+   while true; do
+     nc -zv -w 1 webapp-db.webapp 6379
+     sleep 0.2
+   done
    "
-   # Kiểm tra Telegram: phải thấy message 🔴 [FIRING] TestAlert
+   ```
+
+4. Theo dõi log của `attacker-pod`:
+   ```bash
+   kubectl logs attacker-pod -f
+   # Bạn sẽ thấy: webapp-db.webapp (10.x.x.x:6379) open!
+   # Hiện tại chưa áp dụng Network Policy bảo vệ nên kết nối vẫn THÀNH CÔNG.
    ```
 
 ---
 
-## Thực nghiệm 5: Cấu hình ServiceMonitor và Service cho Felix
+## Thực nghiệm 5: Cấu hình Service & ServiceMonitor cho Felix
 
-**Trên `controlplane`:**
+Ta cần chỉ ra cho Prometheus biết cách tìm kiếm và kéo dữ liệu metrics từ endpoint của Calico Felix trên các node.
 
-1. Tạo Service expose Felix metrics trong namespace `calico-system`:
+1. Tạo một Service đại diện cho Felix metrics trong namespace `calico-system` (nơi chứa các thành phần Calico):
    ```bash
    kubectl apply -n calico-system -f - <<'EOF'
    apiVersion: v1
@@ -411,7 +394,7 @@ Webhook này là một Python server đơn giản nhận POST từ AlertManager 
    EOF
    ```
 
-2. Tạo ServiceMonitor trong namespace `monitoring`:
+2. Tạo ServiceMonitor trong namespace `monitoring` để Prometheus Operator tự động nạp cấu hình cào dữ liệu (scrape):
    ```bash
    kubectl apply -n monitoring -f - <<'EOF'
    apiVersion: monitoring.coreos.com/v1
@@ -435,350 +418,274 @@ Webhook này là một Python server đơn giản nhận POST từ AlertManager 
    EOF
    ```
 
-3. Verify Service và ServiceMonitor:
+3. Kiểm tra xem cấu hình ServiceMonitor đã được Prometheus load thành công chưa:
    ```bash
-   kubectl -n calico-system get svc calico-felix-metrics
-   # calico-felix-metrics   ClusterIP   10.x.x.x   <none>   9091/TCP
-
-   kubectl -n monitoring get servicemonitor calico-felix
-   # calico-felix   ... 10s
-   ```
-
-4. Port-forward Prometheus và verify target status:
-   ```bash
+   # Thiết lập port-forward sang Prometheus service
    kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-prometheus 9090:9090 &
    PROM_PF_PID=$!
-   echo "Prometheus PID: $PROM_PF_PID"
-
-   # Chờ ~30 giây để Prometheus reload config
-   sleep 30
-
-   # Verify target calico-felix đang UP (tất cả 3 nodes):
+   
+   # Chờ 15s để Prometheus Operator nạp lại config
+   sleep 15
+   
+   # Truy vấn API của Prometheus kiểm tra Target calico-felix
    curl -s 'http://localhost:9090/api/v1/targets' \
      | python3 -c "
    import sys, json
    data = json.load(sys.stdin)
-   for t in data['data']['activeTargets']:
-       if 'calico' in t.get('labels', {}).get('job', ''):
-           print(t['labels']['instance'], '->', t['health'])
+   targets = [t for t in data['data']['activeTargets'] if 'calico' in t.get('labels', {}).get('job', '')]
+   for t in targets:
+       print(t['labels']['instance'], '-> Status:', t['health'])
    "
-   # 10.x.x.x:9091 -> up
-   # 10.x.x.x:9091 -> up
-   # 10.x.x.x:9091 -> up
+   # Kết quả kỳ vọng thấy 3 Node của cụm K8s đều báo -> Status: up
    ```
-   *Nhận xét:* `serviceMonitorSelectorNilUsesHelmValues=false` cho phép Prometheus pickup ServiceMonitor từ bất kỳ namespace nào.
 
 ---
 
-## Thực nghiệm 6: Query metrics trong Prometheus
+## Thực nghiệm 6: Kiểm tra metrics cơ bản trên Prometheus
 
-**Trên `controlplane`:**
+Chúng ta sẽ thực hiện kiểm tra nhanh dữ liệu metrics thô thu thập được từ Calico trên Prometheus.
 
-1. Query BGP sessions đang UP:
+1. Truy vấn số lượng phiên BGP đang hoạt động tốt (Established):
    ```bash
    curl -s 'http://localhost:9090/api/v1/query?query=bgp_peers%7Bstatus%3D%22Established%22%7D' \
      | python3 -c "
    import sys, json
    r = json.load(sys.stdin)
    for m in r['data']['result']:
-       print(m['metric']['instance'], '=', m['value'][1], 'established BGP peers')
+       print(m['metric']['instance'], 'có BGP Peers Established =', m['value'][1])
    "
-   # 10.x.x.1:9091 = 2 established BGP peers   (controlplane)
-   # 10.x.x.2:9091 = 2 established BGP peers   (worker1)
-   # 10.x.x.3:9091 = 2 established BGP peers   (worker2)
    ```
 
-2. Query active endpoints per node:
+2. Truy vấn số lượng packet bị chặn hiện tại (đang là 0):
    ```bash
-   curl -s 'http://localhost:9090/api/v1/query?query=felix_active_local_endpoints' \
+   curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(felix_denied_packets_total%5B1m%5D))' \
      | python3 -c "
-   import sys, json
-   r = json.load(sys.stdin)
-   for m in r['data']['result']:
-       print(m['metric']['instance'], '->', m['value'][1], 'endpoints')
+   import sys, json; r=json.load(sys.stdin)
+   print('Tốc độ packet drop hiện tại:', r['data']['result'][0]['value'][1], 'packets/giây')
    "
    ```
-
-3. Query policy calculation time p99:
-   ```bash
-   curl -s 'http://localhost:9090/api/v1/query?query=histogram_quantile(0.99%2Cfelix_calc_graph_update_time_seconds_bucket)' \
-     | python3 -c "
-   import sys, json
-   r = json.load(sys.stdin)
-   for m in r['data']['result']:
-       print(m['metric'].get('instance','?'), '-> p99:', m['value'][1], 's')
-   "
-   # Bình thường: < 0.01s
-   ```
-
-   *Browser:* `http://localhost:9090` → Graph → paste PromQL query để xem graph trực quan.
 
 ---
 
-## Thực nghiệm 7: Tạo Alert rules
+## Thực nghiệm 7: Cấu hình PrometheusRule để định nghĩa các Cảnh báo bảo mật
 
-**Trên `controlplane`:**
+Ta định nghĩa các luật cảnh báo thông qua resource `PrometheusRule`. Khi thỏa mãn biểu thức PromQL, Alertmanager sẽ gửi tin nhắn Telegram.
 
-1. Tạo PrometheusRule với 3 alerts:
+1. Tạo file định nghĩa luật cảnh báo trong namespace `monitoring`:
    ```bash
    kubectl apply -n monitoring -f - <<'EOF'
    apiVersion: monitoring.coreos.com/v1
    kind: PrometheusRule
    metadata:
-     name: calico-alerts
+     name: calico-security-alerts
      namespace: monitoring
      labels:
        release: monitoring
    spec:
      groups:
-     - name: calico.rules
+     - name: calico.security.rules
        rules:
        - alert: CalicoBGPSessionDown
          expr: bgp_peers{status="Established"} < 1
-         for: 2m
+         for: 1m
          labels:
            severity: critical
          annotations:
-           summary: "BGP session down trên {{ $labels.instance }}"
-           description: "Không có established BGP peers trong 2+ phút"
-
+           summary: "BGP Session Down trên node {{ $labels.instance }}"
+           description: "Mất kết nối định tuyến BGP giữa node {{ $labels.instance }} và các node lân cận trong 1+ phút."
+ 
        - alert: CalicoHighDeniedPackets
-         expr: rate(felix_denied_packets_total[1m]) > 0.5
+         expr: sum by (instance) (rate(felix_denied_packets_total[1m])) > 0.5
          for: 10s
          labels:
            severity: warning
          annotations:
-           summary: "Packet drop rate cao trên {{ $labels.instance }}"
-           description: "{{ $value | humanize }} packets/sec bị NetworkPolicy DROP"
-
+           summary: "Lưu lượng bị DROP tăng cao bất thường trên Node {{ $labels.instance }}"
+           description: "Có thiết bị mạng hoặc Pod đang quét cổng hoặc cố truy cập trái phép. Tỷ lệ drop: {{ $value | printf \"%.2f\" }} packets/s bị chặn bởi Calico NetworkPolicy."
+ 
        - alert: CalicoEndpointDrop
          expr: felix_active_local_endpoints < 1
          for: 5m
          labels:
            severity: warning
          annotations:
-           summary: "Không có active endpoints trên {{ $labels.instance }}"
-           description: "Node {{ $labels.instance }} không có Calico endpoints trong 5+ phút"
+           summary: "Không còn Pod hoạt động trên Node {{ $labels.instance }}"
+           description: "Node {{ $labels.instance }} không chạy bất cứ ứng dụng (WorkloadEndpoint) nào quản lý bởi Calico trong 5+ phút."
    EOF
    ```
 
-2. Verify rules được Prometheus load:
+2. Chờ 15 giây, kiểm tra xem Prometheus đã cập nhật các Rules mới chưa:
    ```bash
-   sleep 15  # Chờ reload
-
    curl -s 'http://localhost:9090/api/v1/rules' \
      | python3 -c "
    import sys, json
    r = json.load(sys.stdin)
    for group in r['data']['groups']:
        if 'calico' in group['name']:
+           print('Group:', group['name'])
            for rule in group['rules']:
-               print(f\"  {rule['name']}: {rule.get('state', 'ok')}\")
+               print(f\"  - Cảnh báo: {rule['name']} | Trạng thái: {rule.get('state', 'ok')}\")
    "
-   # CalicoBGPSessionDown: inactive
-   # CalicoHighDeniedPackets: inactive
-   # CalicoEndpointDrop: inactive
+   # Trạng thái sẽ là "inactive" vì chưa có sự cố nào xảy ra.
    ```
 
 ---
 
-## Thực nghiệm 8: Trigger alert và xem Telegram notification
+## Thực nghiệm 8: Mô phỏng Tấn công (Rogue Traffic), chặn kết nối & Nhận cảnh báo Telegram
 
-**Trên `controlplane`:**
+Bây giờ chúng ta sẽ kích hoạt lớp phòng thủ bảo mật Zero-Trust và quan sát cách hệ thống phát hiện, gửi cảnh báo tức thì.
 
-### Phần A: Setup môi trường
+### Bước 1: Áp dụng Network Policy bảo mật cho Database
+
+Mặc định, K8s cho phép tất cả các pod nói chuyện với nhau. Ta áp dụng chính sách cô lập Database, chỉ chấp nhận truy cập từ Backend:
 
 ```bash
-kubectl create namespace production 2>/dev/null || true
-
-# Default deny toàn bộ ingress và egress
-kubectl apply -n production -f - <<'EOF'
+kubectl apply -n webapp -f - <<'EOF'
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: default-deny
+  name: restrict-db-access
+  namespace: webapp
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels:
+      app: webapp-db
   policyTypes:
   - Ingress
-  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: webapp-backend
+    ports:
+    - protocol: TCP
+      port: 6379
 EOF
-
-# Target pod: nginx (ổn định, không crash khi bị deny)
-kubectl run target -n production --image=nginx --port=80
-# Attacker pod
-kubectl run attacker -n production --image=nicolaka/netshoot -- sleep infinity
-
-kubectl -n production wait --for=condition=Ready pod/target pod/attacker --timeout=90s
-
-export TARGET_IP=$(kubectl -n production get pod target -o jsonpath='{.status.podIP}')
-echo "Target IP: $TARGET_IP"
 ```
 
-### Phần B: Baseline — xem denied_packets trước
+### Bước 2: Kiểm tra lưu lượng mạng
 
-```bash
-curl -s http://$WORKER1_IP:9091/metrics | grep felix_denied_packets_total
-# felix_denied_packets_total{...} 0   ← baseline
-```
+1. **Với Normal Traffic (Hợp lệ):** Kiểm tra log của `traffic-generator` xem luồng frontend truy cập bình thường không:
+   ```bash
+   kubectl logs -n webapp -l app=traffic-generator --tail=10
+   # Bạn sẽ thấy Frontend vẫn truy cập thành công bình thường.
+   ```
+2. **Với Rogue Traffic (Bị chặn):** Kiểm tra log của `attacker-pod`:
+   ```bash
+   kubectl logs attacker-pod --tail=10
+   # Kết quả: nc: connect to webapp-db.webapp (10.x.x.x) port 6379 (tcp) failed: Connection timed out
+   # Kết nối bị chặn hoàn toàn bởi Calico và silent drop.
+   ```
 
-### Phần C: Generate traffic bị deny liên tục
+### Bước 3: Quan sát quá trình bắn Cảnh báo Telegram
 
-Cần duy trì > 0.5 packets/sec trong ít nhất 10 giây để alert FIRING. Script chạy ~5 req/sec trong 90 giây:
+Do `attacker-pod` gửi gói tin kết nối liên tục, Calico Felix sẽ thực thi chính sách DROP và cộng dồn số lượng packets bị từ chối.
 
-```bash
-kubectl -n production exec attacker -- bash -c "
-echo 'Bắt đầu generate denied traffic (~5 req/sec trong 90s)...'
-END=\$((SECONDS+90))
-COUNT=0
-while [ \$SECONDS -lt \$END ]; do
-  for i in 1 2 3 4 5; do
-    nc -zv -w 1 ${TARGET_IP} 80 &>/dev/null &
-  done
-  COUNT=\$((COUNT+5))
-  sleep 1
-done
-wait
-echo \"Xong! Tổng: \$COUNT connection attempts\"
-" &
+1. Theo dõi tốc độ packet drop tăng vọt trên node chứa Database:
+   ```bash
+   watch -n 2 "curl -s 'http://localhost:9090/api/v1/query?query=sum+by+(instance)+(rate(felix_denied_packets_total%5B1m%5D))'"
+   # Tỷ lệ drop sẽ tăng vượt quá 0.5 packets/giây.
+   ```
 
-TRAFFIC_PID=$!
-echo "Traffic generator PID: $TRAFFIC_PID"
-```
+2. Xem trạng thái Alert đổi từ `PENDING` sang `FIRING` trên Prometheus:
+   ```bash
+   # Chạy liên tục để theo dõi alert state
+   curl -s 'http://localhost:9090/api/v1/alerts' \
+     | python3 -c "
+   import sys, json; data = json.load(sys.stdin)
+   alerts = [a for a in data['data']['alerts'] if 'Calico' in a['labels'].get('alertname', '')]
+   if alerts:
+       for a in alerts:
+           print(a['labels']['alertname'], '-> State:', a['state'])
+   else:
+       print('Chưa có cảnh báo nào.')
+   "
+   ```
 
-### Phần D: Theo dõi metrics tăng
-
-```bash
-# Terminal 1: watch denied packets tăng
-watch -n 3 "curl -s http://$WORKER1_IP:9091/metrics | grep felix_denied_packets_total"
-
-# Terminal 2: watch alert state
-watch -n 5 "curl -s 'http://localhost:9090/api/v1/alerts' \
-  | python3 -c \"
-import sys,json; r=json.load(sys.stdin)
-alerts = r['data']['alerts']
-calico = [a for a in alerts if 'Calico' in a['labels'].get('alertname','')]
-if calico:
-    for a in calico: print(a['labels']['alertname'], '->', a['state'])
-else:
-    print('Chưa có Calico alerts')
-\""
-```
-
-**Timeline kỳ vọng:**
-```
-T+0s:   Traffic bắt đầu, denied_packets tăng
-T+15s:  Prometheus scrape → CalicoHighDeniedPackets = PENDING
-T+25s:  Alert PENDING → FIRING (for: 10s thỏa mãn)
-T+30s:  AlertManager gửi POST đến webhook
-T+35s:  📱 Telegram nhận message!
-```
-
-### Phần E: Verify toàn pipeline
-
-```bash
-# 1. Xem alert FIRING trong Prometheus
-curl -s 'http://localhost:9090/api/v1/alerts' \
-  | python3 -c "
-import sys,json; r=json.load(sys.stdin)
-for a in r['data']['alerts']:
-    if 'Calico' in a['labels'].get('alertname',''):
-        print('ALERT:', a['labels']['alertname'])
-        print('STATE:', a['state'])
-        print('VALUE:', a.get('value',''))
-        print()
-"
-
-# 2. Xem log webhook receiver
-kubectl -n monitoring logs -l app=telegram-alertmanager-webhook --tail=20
-# [FIRING] CalicoHighDeniedPackets → 10.x.x.2:9091
-
-# 3. Kiểm tra Telegram
-# Phải thấy message dạng:
-# 🔴 [FIRING] `CalicoHighDeniedPackets`
-# Severity: warning
-# Node: `10.x.x.2:9091`
-# Packet drop rate cao trên 10.x.x.2:9091
-```
-
-### Phần F: Xem RESOLVED khi traffic dừng
-
-Sau khi script traffic chạy xong (~90s), chờ thêm vài phút:
-
-```bash
-# AlertManager sẽ gửi resolved notification
-# Telegram nhận:
-# ✅ [RESOLVED] `CalicoHighDeniedPackets`
-# Severity: warning
-# ...
-```
+3. **Mở điện thoại / Telegram lên:**
+   Bạn sẽ nhận được tin nhắn trực tiếp từ Bot Telegram định dạng HTML tuyệt đẹp:
+   > 🔴 **[ALARM: FIRING] Calico Security Triggered**
+   > **Tên cảnh báo:** `CalicoHighDeniedPackets`
+   > **Mức độ nguy hại:** `warning`
+   > **Đối tượng bị ảnh hưởng:** `10.x.x.x:9091`
+   >
+   > **Mô tả chi tiết:**
+   > *Có thiết bị mạng hoặc Pod đang quét cổng hoặc cố truy cập trái phép. Tỷ lệ drop: 4.80 packets/s bị chặn bởi Calico NetworkPolicy.*
 
 ---
 
-## Thực nghiệm 9: Truy cập Grafana và import dashboard
+### Bước 4: Xử lý sự cố mạng & Nhận tin nhắn RESOLVED
 
-**Trên `controlplane`:**
+Là một kỹ sư DevSecOps, khi nhận được cảnh báo bảo mật, bạn tiến hành điều tra và phát hiện `attacker-pod` là đối tượng đang gửi các luồng quét trái phép. Tiến hành cô lập hoặc xóa pod tấn công:
 
-1. Port-forward Grafana:
+```bash
+# Xóa pod attacker để chấm dứt lưu lượng quét trái phép
+kubectl delete pod attacker-pod -n default
+```
+
+1. Kiểm tra biểu đồ drop rate trên Prometheus, giá trị sẽ lập tức giảm về `0`.
+2. Chờ khoảng 1-2 phút (thời gian resolve timeout của Prometheus & Alertmanager), hãy kiểm tra lại điện thoại.
+3. Bot Telegram sẽ gửi tin nhắn báo hạ nhiệt sự cố:
+   > ✅ **[ALARM: RESOLVED] Network Restored**
+   > **Tên cảnh báo:** `CalicoHighDeniedPackets`
+   > **Mức độ nguy hại:** `warning`
+   > **Đối tượng bị ảnh hưởng:** `10.x.x.x:9091`
+   >
+   > **Mô tả chi tiết:**
+   > *Có thiết bị mạng hoặc Pod đang quét cổng hoặc cố truy cập trái phép...*
+
+---
+
+## Thực nghiệm 9: Giám sát Trực quan trên Grafana Dashboard
+
+Ta sẽ dựng một giao diện Grafana tuyệt đẹp hiển thị sự tương phản giữa **Normal Traffic** (Allowed) và **Rogue Traffic** (Denied).
+
+1. Thiết lập port-forward sang Grafana service:
    ```bash
    kubectl -n monitoring port-forward svc/monitoring-grafana 3000:80 &
    GRAFANA_PF_PID=$!
-   echo "Grafana PID: $GRAFANA_PF_PID"
-   # Browser: http://localhost:3000
-   # Login: admin / admin123
    ```
 
-2. Verify Prometheus datasource tự động configured:
-   ```bash
-   curl -s -u admin:admin123 http://localhost:3000/api/datasources \
-     | python3 -c "
-   import sys,json; ds=json.load(sys.stdin)
-   for d in ds: print(d['name'], '->', d['url'], '->', d['type'])
-   "
-   # Prometheus -> http://monitoring-kube-prometheus-prometheus:9090 -> prometheus
-   ```
+2. Mở trình duyệt web của bạn và truy cập: `http://localhost:3000`
+   - Đăng nhập: tài khoản `admin` / mật khẩu `admin123` (được cấu hình trong Helm values).
 
-3. Import Calico Felix dashboard từ Grafana.com:
-   ```
-   Grafana → + → Import → Nhập ID: 12175 → Load
-   → Chọn datasource Prometheus → Import
-   ```
+3. Import dashboard cộng đồng của Calico Felix:
+   - Vào menu bên trái chọn **Dashboards** -> Nhấp **+ Import** ở góc phải.
+   - Điền ID dashboard: `12175` và nhấn **Load**.
+   - Chọn data source: **Prometheus** và nhấn **Import**.
+   - Giao diện này cung cấp đầy đủ các biểu đồ chuyên sâu về Felix Agent, thời gian tính toán Policy (Policy Calculation Time), số lượng Endpoint.
 
-4. Tạo custom panel BGP Sessions:
-   ```
-   Grafana → + → New Dashboard → Add visualization
-   Query: bgp_peers{status="Established"}
-   Legend: {{instance}}
-   Title: BGP Sessions per Node
-   Visualization: Stat (hiển thị số)
-   Save dashboard
-   ```
-
-5. Tạo panel Deny Rate:
-   ```
-   Add visualization
-   Query: rate(felix_denied_packets_total[1m])
-   Legend: {{instance}}
-   Title: Packet Deny Rate (pkts/sec)
-   Visualization: Time series
-   Alert threshold: 0.5 (vẽ đường ngang)
-   Save
-   ```
+4. Tạo một Dashboard tùy chỉnh hiển thị trực quan kịch bản Lab:
+   - Nhấp vào **New** -> **Dashboard** -> **Add visualization**.
+   - Chọn data source là **Prometheus**.
+   - **Tạo biểu đồ Deny Traffic (Rogue):**
+     - Query PromQL: `sum by (instance) (rate(felix_denied_packets_total[1m]))`
+     - Legend: `Denied - {{instance}}`
+     - Chọn loại biểu đồ: **Time Series**.
+     - Đặt tên panel: `⚠️ Rogue Security Incidents (Packet Deny Rate)`
+   - Nhấp **Apply** ở góc trên.
+   - Nhấp tiếp **Add** -> **Visualization** để tạo biểu đồ thứ 2:
+     - Query PromQL: `sum by (instance) (rate(felix_active_local_endpoints[1m]))`
+     - Legend: `Allowed - {{instance}}`
+     - Đặt tên panel: `✅ Allowed Normal Endpoints Active`
+   - Sắp xếp 2 biểu đồ cạnh nhau để thấy rõ độ tương quan: Khi xảy ra tấn công, biểu đồ `Rogue` sẽ dựng cột đứng (spike), trong khi biểu đồ `Allowed` vẫn chạy phẳng và ổn định. Điều này thể hiện khả năng cô lập lỗi mạng của Calico.
 
 ---
 
-## Dọn dẹp
+## Dọn dẹp tài nguyên
+
+Sau khi hoàn thành bài lab, chạy các lệnh sau để dọn dẹp và trả lại tài nguyên cho cụm:
 
 ```bash
-# Dừng tất cả port-forward background
+# Tắt các port-forward chạy ngầm
 kill $PROM_PF_PID $GRAFANA_PF_PID 2>/dev/null
 pkill -f "port-forward" 2>/dev/null || true
 
-# Giữ lại stack nếu muốn dùng tiếp cho lab sau,
-# hoặc xóa để giải phóng tài nguyên:
+# Xóa các namespace
 helm uninstall monitoring -n monitoring
-kubectl delete namespace monitoring production
+kubectl delete namespace monitoring webapp
 
+# Khôi phục cấu hình mặc định của Felix (tắt metrics)
 kubectl patch felixconfiguration default \
   --type merge \
   --patch '{"spec": {"prometheusMetricsEnabled": false}}'
@@ -786,11 +693,8 @@ kubectl patch felixconfiguration default \
 
 ---
 
-## Tổng kết
+## Tổng kết bài học
 
-1. **Felix tự expose metrics:** Chỉ cần patch `prometheusMetricsEnabled: true` → port 9091 active trên mỗi node.
-2. **ServiceMonitor = discovery config:** Prometheus Operator đọc ServiceMonitor → tự config scrape jobs — không sửa Prometheus config thủ công.
-3. **AlertManager → Telegram:** Pipeline: Alert FIRING → AlertManager webhook POST → Python receiver → Telegram Bot API. Python stdlib đủ, không cần thư viện ngoài.
-4. **4 metrics cốt lõi:** BGP peers established, denied packets rate, active endpoints, policy calc time.
-5. **Alert priority:** BGP down (critical, 2m) > High deny rate (warning, 10s) > No endpoints (warning, 5m).
-6. **Limitation:** Calico cần tự setup toàn bộ stack. Cilium (Tập 24+) có Hubble built-in — flow visibility không cần setup thêm gì.
+1. **Zero-Trust Networking**: Kịch bản thực tế chứng minh việc chỉ cần áp dụng một Network Policy chuẩn, các luồng traffic trái phép sẽ bị chặn đứng âm thầm và độc lập ở cấp độ hạt nhân (kernel) mà không gây gián đoạn hay ảnh hưởng đến hiệu năng các Pod hợp lệ khác.
+2. **Native Alertmanager Integration**: Việc tích hợp trực tiếp webhook Telegram vào Alertmanager giúp tối giản kiến trúc vận hành, giảm tải việc bảo trì các microservices phụ trợ tự viết.
+3. **Giám sát số liệu trực quan**: Thông qua việc so sánh đối chiếu giữa packet drop rate và active endpoints, quản trị viên hệ thống có thể nhận diện ngay lập tức sự cố do cấu hình sai NetworkPolicy hay cụm đang bị tấn công quét cổng dịch vụ.

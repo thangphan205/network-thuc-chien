@@ -73,25 +73,23 @@ curl http://<node-ip>:9091/metrics | grep -E "^felix_|^bgp_" | head -10
 
 ---
 
-## Stack Observability Calico
+## Stack Observability Calico (Production)
 
 ```
-Felix (port 9091) ──► Prometheus ──► Grafana Dashboards
+Felix (port 9091) ──► Prometheus ──► Grafana (Visual)
                             │
-                            └──► AlertManager ──► Email/Slack/PagerDuty
+                            └──► AlertManager ──► Telegram (Native Integration)
 
-Cài đặt qua kube-prometheus-stack (Helm chart):
-  - Prometheus Operator
-  - Prometheus
-  - Grafana (với Datasource tự động)
-  - AlertManager
-  - Node Exporter
-  - kube-state-metrics
+Cài đặt chuyên nghiệp qua kube-prometheus-stack (Helm):
+  - Prometheus Operator (Quản lý cấu hình động qua Custom Resource)
+  - Prometheus Server & AlertManager (Gửi cảnh báo trực tiếp)
+  - Grafana (Tích hợp sẵn Datasource & Sidecar Dashboard)
+  - Node Exporter & kube-state-metrics (Thu thập metrics hạ tầng)
 ```
 
 ---
 
-## ServiceMonitor — Cách Prometheus biết scrape gì
+## ServiceMonitor — Cách Prometheus phát hiện targets
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -104,68 +102,78 @@ spec:
     matchNames: [calico-system]
   selector:
     matchLabels:
-      k8s-app: calico-node    # Service có label này
+      k8s-app: calico-node    # Trỏ vào Service đại diện calico-node
   endpoints:
   - port: metrics
     interval: 15s
     path: /metrics
 ```
 
-**Luồng:**
-```
-ServiceMonitor → Prometheus Operator đọc → Prometheus config update
-→ Prometheus scrape Service → Pull metrics từ Felix
-→ Metrics available trong Prometheus/Grafana
-```
+**Nguyên lý hoạt động:**
+`ServiceMonitor` -> `Prometheus Operator` phát hiện -> tự động sinh cấu hình scrape -> `Prometheus Server` kéo metrics từ endpoint port `9091` của Felix.
 
 ---
 
-## Alert Rules quan trọng
+## Alert Rules & Native Telegram Config
+
+**Alertmanager gửi trực tiếp tin nhắn Telegram không qua Webhook trung gian:**
 
 ```yaml
-# BGP session down — critical
-- alert: CalicoBGPSessionDown
-  expr: bgp_peers{status="Established"} < 1
-  for: 2m
-  labels: {severity: critical}
-
-# Packet drop rate cao — warning (possible misconfigured policy)
-- alert: CalicoHighDeniedPackets
-  expr: rate(felix_denied_packets_total[1m]) > 0.5
-  for: 10s
-  labels: {severity: warning}
-
-# Không có active endpoints — warning
-- alert: CalicoEndpointDrop
-  expr: felix_active_local_endpoints < 1
-  for: 5m
-  labels: {severity: warning}
+receivers:
+- name: telegram
+  telegram_configs:
+  - bot_token: "<TELEGRAM_BOT_TOKEN>"
+    chat_id: <TELEGRAM_CHAT_ID>
+    send_resolved: true
+    parse_mode: HTML
+    message: |
+      {{ if eq .Status "firing" }}🔴 <b>[FIRING] {{ .CommonLabels.alertname }}</b>{{ else }}✅ <b>[RESOLVED] {{ .CommonLabels.alertname }}</b>{{ end }}
+      <b>Mức độ:</b> {{ .CommonLabels.severity }}
+      <b>Mô tả:</b> {{ .CommonAnnotations.summary }}
 ```
 
 ---
 
-## 4 Dashboards cần có trong production
+## Kịch bản Demo Traffic thực tế
 
-| Dashboard | Query PromQL | Alert khi |
+Để học viên thấy trực quan nhất, chúng ta triển khai mô hình sau:
+
+```
+[Normal User] ──► [Web Frontend] ──► [Web API] ──► [Database] (Cho phép)
+                                                      ▲
+[Rogue Actor] ────────────────────────────────────────┘ (Bị chặn & Drop)
+```
+
+- **Traffic Generator**: Tạo HTTP requests liên tục để mô phỏng traffic sạch (Allowed).
+- **Rogue Scanner**: Liên tục quét cổng Database (Deny).
+- **Calico NetworkPolicy**: Chặn đứng Rogue Scanner.
+- **Kết quả**: Biểu đồ Grafana hiển thị đồng thời cả Normal Traffic và Deny Traffic (Spike).
+
+---
+
+## 4 Dashboards & Metrics cần có trong Production
+
+| Dashboard Panel | PromQL Query | Ngưỡng Alert |
 | :--- | :--- | :--- |
-| **BGP Status** | `bgp_peers{status="Established"}` | < 1 per node |
-| **Deny Rate** | `rate(felix_denied_packets_total[1m])` | > 100/s |
-| **Endpoint Count** | `felix_active_local_endpoints` | < 1 per node |
-| **Policy Calc Time** | `felix_calc_graph_update_time_seconds` | p99 > 1s |
+| **BGP Status** | `bgp_peers{status="Established"}` | `< 1` (Critical) |
+| **Normal Traffic** | `rate(felix_active_local_endpoints[1m])` | Theo dõi hoạt động |
+| **Deny Traffic** | `rate(felix_denied_packets_total[1m])` | `> 0.5 pkts/s` (Warning) |
+| **Policy Calc Time** | `felix_calc_graph_update_time_seconds` | `p99 > 1s` (Warning) |
 
 ---
 
 <!-- _class: lab -->
 
-## 🔬 Lab Time: Deploy Observability Stack
+## 🔬 Lab Time: Triển khai Calico Observability
 
-Chúng ta sẽ thực hành:
+Chúng ta sẽ thực hành từng bước:
 
-1. **Bật Felix metrics:** Patch FelixConfiguration và verify port 9091.
-2. **Deploy kube-prometheus-stack:** Helm install Prometheus + Grafana + AlertManager.
-3. **Cấu hình ServiceMonitor:** Prometheus tự động scrape Felix.
-4. **Tạo Alert rules:** PrometheusRule cho BGP và packet drop.
-5. **Trigger alert:** Generate traffic bị deny và xem alert FIRING.
+1. **Bật Felix metrics:** Cấu hình Felix expose metrics qua port 9091.
+2. **Cài đặt kube-prometheus-stack:** Deploy qua Helm với native Telegram Alerting.
+3. **Triển khai Demo App & Traffic Generator:** Chạy mock microservices và giả lập normal + rogue traffic.
+4. **Cấu hình ServiceMonitor:** Cấu hình tự động thu thập Felix metrics.
+5. **Thiết lập Alert Rules & Chặn Traffic:** Áp dụng NetworkPolicy, kích hoạt cảnh báo gửi về Telegram.
+6. **Giám sát trên Grafana:** Import Dashboard và theo dõi trực quan lượng traffic.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
