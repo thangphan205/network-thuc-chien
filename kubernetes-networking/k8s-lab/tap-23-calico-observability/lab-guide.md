@@ -135,6 +135,19 @@ graph TD
 > # Theo dõi cho đến khi các node chuyển sang Ready
 > watch kubectl get nodes
 > ```
+>
+> **Bước 5: Cài đặt công cụ `calicoctl` (Chạy trên `controlplane`):**
+> ```bash
+> # Xác định kiến trúc chip và tải calicoctl
+> ARCH=$(uname -m)
+> if [[ "$ARCH" == "x86_64" ]]; then CLI_ARCH="amd64"; else CLI_ARCH="arm64"; fi
+> curl -L "https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-${CLI_ARCH}" -o calicoctl
+> chmod +x calicoctl
+> sudo mv calicoctl /usr/local/bin/
+> 
+> # Xác minh hoạt động
+> calicoctl version
+> ```
 
 ---
 
@@ -315,6 +328,38 @@ Chúng ta sử dụng Helm để triển khai nhanh toàn bộ Stack giám sát,
 ## Thực nghiệm 4: Triển khai Ứng dụng Demo (Microservices) & Traffic Generator
 
 Để mô phỏng môi trường sản xuất thực tế, ta triển khai một ứng dụng 3 tầng đơn giản trong namespace `webapp` và thiết lập giả lập traffic.
+
+### Mô hình luồng dữ liệu của ứng dụng Demo:
+
+```mermaid
+flowchart LR
+    subgraph namespace_webapp ["Namespace: webapp"]
+        TG["traffic-generator<br/>(nicolaka/netshoot)"]
+        FE["webapp-frontend<br/>(nginx:alpine, Port 80)"]
+        BE["webapp-backend<br/>(nginx:alpine, Port 80)"]
+        DB["webapp-db<br/>(redis:alpine, Port 6379)"]
+
+        TG -->|1. curl http://webapp-frontend| FE
+        FE -->|2. HTTP requests| BE
+        BE -->|3. TCP Connection| DB
+    end
+
+    subgraph namespace_default ["Namespace: default"]
+        AT["attacker-pod<br/>(nicolaka/netshoot)"]
+    end
+
+    AT -.->|4. nc -zv - Quét cổng trực tiếp| DB
+
+    classDef allowed stroke:#10b981,stroke-width:2px,fill:#10b98122,color:#fff;
+    classDef blocked stroke:#ef4444,stroke-width:2px,fill:#ef444422,color:#fff;
+    classDef defaultNS stroke:#6b7280,stroke-width:1px,fill:#1f2937,color:#fff;
+    classDef webappNS stroke:#3b82f6,stroke-width:2px,fill:#1e3a8a22,color:#fff;
+
+    class TG,FE,BE,DB allowed;
+    class AT blocked;
+    class namespace_webapp webappNS;
+    class namespace_default defaultNS;
+```
 
 1. Tạo namespace và deploy các pod ứng dụng:
    ```bash
@@ -552,13 +597,22 @@ Chúng ta sẽ thực hiện kiểm tra nhanh dữ liệu metrics thô thu thậ
        print(m['metric']['instance'], 'có BGP Peers Established =', m['value'][1])
    "
    ```
+   > [!NOTE]
+   > **Lưu ý về kết quả rỗng (result: []):**
+   > Nếu cụm lab của bạn được dựng bằng cấu hình `VXLAN` hoặc `VXLANCrossSubnet` ở bước chuẩn bị (mặc định), Calico sẽ định tuyến qua đường hầm VXLAN và **tắt định tuyến BGP (BIRD)**. 
+   > Do đó, câu lệnh trên ```curl -s 'http://localhost:9090/api/v1/query?query=bgp_peers%7Bstatus%3D%22Established%22%7D'``` sẽ trả về kết quả rỗng `{"status":"success","data":{"resultType":"vector","result":[]}}` (không in ra gì). Bạn có thể kiểm tra bằng lệnh: `sudo calicoctl node status` (sẽ báo BGP chưa cấu hình hoặc disabled). Đây là hiện tượng bình thường!
 
 2. Truy vấn số lượng packet bị chặn hiện tại (đang là 0):
    ```bash
    curl -s 'http://localhost:9090/api/v1/query?query=sum(rate(felix_denied_packets_total%5B1m%5D))' \
      | python3 -c "
-   import sys, json; r=json.load(sys.stdin)
-   print('Tốc độ packet drop hiện tại:', r['data']['result'][0]['value'][1], 'packets/giây')
+   import sys, json
+   r = json.load(sys.stdin)
+   result = r['data']['result']
+   if result:
+       print('Tốc độ packet drop hiện tại:', result[0]['value'][1], 'packets/giây')
+   else:
+       print('Tốc độ packet drop hiện tại: 0 packets/giây (Chưa phát sinh packet drop)')
    "
    ```
 
@@ -762,9 +816,9 @@ Ta sẽ dựng một giao diện Grafana tuyệt đẹp hiển thị sự tươn
      - Đặt tên panel: `⚠️ Rogue Security Incidents (Packet Deny Rate)`
    - Nhấp **Apply** ở góc trên.
    - Nhấp tiếp **Add** -> **Visualization** để tạo biểu đồ thứ 2:
-     - Query PromQL: `sum by (instance) (rate(felix_active_local_endpoints[1m]))`
-     - Legend: `Allowed - {{instance}}`
-     - Đặt tên panel: `✅ Allowed Normal Endpoints Active`
+     - Query PromQL: `felix_active_local_endpoints`
+     - Legend: `Endpoints - {{instance}}`
+     - Đặt tên panel: `✅ Active Endpoints per Node`
    - Sắp xếp 2 biểu đồ cạnh nhau để thấy rõ độ tương quan: Khi xảy ra tấn công, biểu đồ `Rogue` sẽ dựng cột đứng (spike), trong khi biểu đồ `Allowed` vẫn chạy phẳng và ổn định. Điều này thể hiện khả năng cô lập lỗi mạng của Calico.
 
 ---

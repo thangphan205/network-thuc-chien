@@ -202,6 +202,19 @@ kubectl patch felixconfiguration default \
 if ! command -v helm &>/dev/null; then
     curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 fi
+
+# Cài đặt calicoctl
+if ! command -v calicoctl &>/dev/null; then
+    ARCH=\$(uname -m)
+    if [[ "\$ARCH" == "x86_64" ]]; then
+        CLI_ARCH="amd64"
+    else
+        CLI_ARCH="arm64"
+    fi
+    curl -L "https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-\${CLI_ARCH}" -o calicoctl
+    chmod +x calicoctl
+    sudo mv calicoctl /usr/local/bin/
+fi
 EOF
 
 echo ""
