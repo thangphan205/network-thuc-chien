@@ -89,6 +89,31 @@ Cài đặt chuyên nghiệp qua kube-prometheus-stack (Helm):
 
 ---
 
+## GitOps Deployment Blueprint (Argo CD)
+
+**Trong Production, toàn bộ Monitoring Stack được khai báo dưới dạng mã (YAML):**
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring-stack
+  namespace: argocd
+spec:
+  source:
+    chart: kube-prometheus-stack
+    repoURL: https://prometheus-community.github.io/helm-charts
+    targetRevision: 61.3.0 # Khóa cứng phiên bản Helm
+    helm:
+      valueFiles:
+      - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+```
+
+---
+
 ## ServiceMonitor — Cách Prometheus phát hiện targets
 
 ```yaml
@@ -134,6 +159,32 @@ receivers:
 
 ---
 
+## Secrets & AlertmanagerConfig CRD (Production)
+
+**Không hardcode Secrets/Token vào Git! Sử dụng Kubernetes Secret + CRD:**
+
+```yaml
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: telegram-security-alerts
+  namespace: monitoring
+  labels:
+    release: monitoring # Tự động phát hiện bởi Prometheus Operator
+spec:
+  route:
+    receiver: telegram-secops
+  receivers:
+  - name: telegram-secops
+    telegramConfigs:
+    - botToken:
+        name: alertmanager-telegram-secret # Tên K8s Secret
+        key: token                         # Key chứa Bot Token
+      chatId: -1001234567890
+```
+
+---
+
 ## Kịch bản Demo Traffic thực tế
 
 Để học viên thấy trực quan nhất, chúng ta triển khai mô hình sau:
@@ -151,14 +202,51 @@ receivers:
 
 ---
 
-## 4 Dashboards & Metrics cần có trong Production
+## Incident Response chuẩn Production (SANS/NIST)
 
-| Dashboard Panel | PromQL Query | Ngưỡng Alert |
-| :--- | :--- | :--- |
-| **BGP Status** | `bgp_peers{status="Established"}` | `< 1` (Critical) |
-| **Normal Traffic** | `rate(felix_active_local_endpoints[1m])` | Theo dõi hoạt động |
-| **Deny Traffic** | `rate(felix_denied_packets_total[1m])` | `> 0.5 pkts/s` (Warning) |
-| **Policy Calc Time** | `felix_calc_graph_update_time_seconds` | `p99 > 1s` (Warning) |
+**Không xoá Pod ngay lập tức khi phát hiện bị tấn công!**
+
+1. **Phát hiện (Detection)**: Alertmanager bắn cảnh báo `CalicoHighDeniedPackets` sang Telegram.
+2. **Cô lập (Containment)**: Cách ly mạng bằng **Network Policy (Deny-All)** & Dán nhãn Pod.
+   - Pod bị ngắt kết nối mạng hoàn toàn nhưng **vẫn hoạt động** để phục vụ phân tích.
+3. **Điều tra (Forensics)**: Chạy lệnh `kubectl exec` kiểm tra tiến trình, logs, mã độc trong bộ nhớ.
+4. **Triệt tiêu (Eradication)**: Xoá bỏ triệt để Pod hoặc hạ tầng chứa lỗ hổng bảo mật.
+
+---
+
+## Cấu hình Quarantine Policy (Cách ly mạng)
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: quarantine-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      security-status: quarantined
+  policyTypes: [Ingress, Egress]
+```
+
+- Nhãn cách ly: `security-status: quarantined`
+- Bỏ trống `ingress`/`egress` -> **Mặc định chặn 100% kết nối đi vào/ra (Deny-All)**.
+- Kích hoạt bằng lệnh: `kubectl label pod <pod-name> security-status=quarantined`
+
+---
+
+## GitOps Dashboard & Custom Security Panels
+
+**Dashboard-as-Code (GitOps) thực tế:**
+- Lưu trữ file JSON Dashboard vào `ConfigMap`.
+- Thêm nhãn: `grafana_dashboard="1"`.
+- Grafana **Sidecar** tự động phát hiện, đồng bộ và hiển thị dashboard không cần nạp thủ công.
+
+**Biểu đồ Custom Security Dashboard cần có:**
+1. **Denied Packet Rate (Time Series)**:
+   - Query: `sum by (instance) (rate(felix_denied_packets_total[1m]))` (Đơn vị: `pps`)
+2. **Legitimate Workloads (Stat/Gauge)**:
+   - Query: `felix_active_local_endpoints` (Độ ổn định của ứng dụng hợp lệ)
 
 ---
 
@@ -169,11 +257,11 @@ receivers:
 Chúng ta sẽ thực hành từng bước:
 
 1. **Bật Felix metrics:** Cấu hình Felix expose metrics qua port 9091.
-2. **Cài đặt kube-prometheus-stack:** Deploy qua Helm với native Telegram Alerting.
-3. **Triển khai Demo App & Traffic Generator:** Chạy mock microservices và giả lập normal + rogue traffic.
+2. **Cài đặt kube-prometheus-stack:** Helm deploy với NodePorts `30090` (Prom) / `32300` (Grafana).
+3. **Triển khai Demo App & Traffic Generator:** Giả lập healthy baseline & rogue traffic.
 4. **Cấu hình ServiceMonitor:** Cấu hình tự động thu thập Felix metrics.
-5. **Thiết lập Alert Rules & Chặn Traffic:** Áp dụng NetworkPolicy, kích hoạt cảnh báo gửi về Telegram.
-6. **Giám sát trên Grafana:** Import Dashboard và theo dõi trực quan lượng traffic.
+5. **Thiết lập Rules & Incident Response:** Áp dụng NetworkPolicy, cách ly mạng (Quarantine) & Telegram Alerts.
+6. **Giám sát trên Grafana:** Xem GitOps Dashboard & Tạo Custom Security Panel (Denied vs Active).
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
