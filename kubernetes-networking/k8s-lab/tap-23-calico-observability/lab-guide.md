@@ -48,10 +48,90 @@ graph TD
 
 ## Yêu cầu chuẩn bị
 
-- Cụm Kubernetes chạy Calico (từ Tập 9+)
-- Ít nhất 4GB RAM trống trên cluster
-- Kết nối Internet để pull Helm chart & docker images
+- Ít nhất 4GB RAM trống trên cụm lab (hoặc máy host).
+- Kết nối Internet để pull Helm chart & docker images.
 - **Tài khoản Telegram** và **Telegram Bot** để nhận tin nhắn alert.
+- **Cụm Kubernetes 3 Node chạy Calico CNI (Tập 9+)**:
+  
+> [!TIP]
+> **Nếu bạn chưa có cụm Lab hoặc muốn dựng mới từ đầu sạch hoàn toàn:**
+>
+> Chúng tôi đã chuẩn bị sẵn một script tự động hoá toàn bộ quá trình dựng VM, khởi tạo K8s cluster, cài Calico CNI, kích hoạt Felix Metrics và cài Helm chỉ trong **1 cú click**.
+>
+> Bạn chỉ cần mở Terminal trên máy host, di chuyển đến thư mục bài lab này (`tap-23-calico-observability`) và chạy:
+> ```bash
+> chmod +x setup-lab.sh
+> ./setup-lab.sh
+> ```
+> *Script sẽ tự động nhận diện cấu trúc chip (ARM vs Intel/AMD) để cấp phát tài nguyên RAM/CPU tối ưu và hoàn thành toàn bộ công đoạn setup. Bạn có thể bỏ qua tất cả các bước thủ công dưới đây và tiến thẳng đến **Thực nghiệm 2**!*
+>
+> Nếu bạn muốn tự chạy thủ công từng bước để học bản chất, hãy tham khảo các bước bên dưới:
+>
+> **Bước 1: Khởi tạo 3 máy ảo VM (controlplane, worker1, worker2) trên máy host (Mac/Windows/Linux):**
+> ```bash
+> # Di chuyển tới thư mục cài đặt lab 00
+> cd kubernetes-networking/k8s-lab/tap-00-setup-lab/
+> chmod +x setup-lab.sh
+> ./setup-lab.sh
+> ```
+>
+> **Bước 2: Khởi tạo cụm Kubernetes trên Node `controlplane`:**
+> ```bash
+> # SSH vào controlplane
+> multipass shell controlplane
+> 
+> # Khởi tạo Control Plane
+> sudo kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$(ip route get 1.1.1.1 | awk '{print $7}')
+> 
+> # Cấu hình quyền truy cập kubectl
+> mkdir -p $HOME/.kube
+> sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+> sudo chown $(id -u):$(id -g) $HOME/.kube/config
+> ```
+> *Lưu ý: Copy câu lệnh `kubeadm join ...` xuất ra ở cuối quá trình khởi tạo.*
+>
+> **Bước 3: Tham gia các Node Worker vào cụm:**
+> Mở terminal mới trên máy host và chạy:
+> - SSH vào `worker1` và chạy lệnh join:
+>   ```bash
+>   multipass shell worker1
+>   sudo kubeadm join <APISERVER_IP>:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
+>   exit
+>   ```
+> - SSH vào `worker2` và chạy lệnh join:
+>   ```bash
+>   multipass shell worker2
+>   sudo kubeadm join <APISERVER_IP>:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
+>   exit
+>   ```
+>
+> **Bước 4: Cài đặt Calico CNI qua Tigera Operator (Chạy trên `controlplane`):**
+> ```bash
+> # SSH lại vào controlplane
+> multipass shell controlplane
+>
+> # Cài đặt Operator
+> kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
+> 
+> # Khởi tạo Custom Resource cho mạng Calico
+> kubectl create -f - <<'EOF'
+> apiVersion: operator.tigera.io/v1
+> kind: Installation
+> metadata:
+>   name: default
+> spec:
+>   calicoNetwork:
+>     ipPools:
+>     - blockSize: 26
+>       cidr: 10.244.0.0/16
+>       encapsulation: VXLANCrossSubnet
+>       natOutgoing: Enabled
+>       nodeSelector: all()
+> EOF
+> 
+> # Theo dõi cho đến khi các node chuyển sang Ready
+> watch kubectl get nodes
+> ```
 
 ---
 
@@ -79,7 +159,7 @@ multipass shell controlplane
 
 3. Lấy IP của `worker1` để kiểm tra kết nối:
    ```bash
-   export WORKER1_IP=$(multipass info worker1 | grep IPv4 | awk '{print $2}')
+   export WORKER1_IP=$(kubectl get node worker1 -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
    echo "Worker1 IP: $WORKER1_IP"
    ```
 
