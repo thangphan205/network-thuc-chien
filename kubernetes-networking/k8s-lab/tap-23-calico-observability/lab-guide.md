@@ -193,8 +193,14 @@ Ta sẽ chuẩn bị một kênh cảnh báo bảo mật qua Telegram.
    curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates" | python3 -c "
    import sys, json
    data = json.load(sys.stdin)
-   if data['result']:
-       print('CHAT_ID:', data['result'][0]['message']['chat']['id'])
+   chat_id = None
+   for update in data.get('result', []):
+       chat = update.get('message', {}).get('chat') or update.get('my_chat_member', {}).get('chat')
+       if chat:
+           chat_id = chat['id']
+           break
+   if chat_id:
+       print('CHAT_ID:', chat_id)
    else:
        print('LỖI: Chưa có message! Hãy nhấn Start và gửi tin nhắn bất kỳ cho Bot trước.')
    "
@@ -206,8 +212,8 @@ Ta sẽ chuẩn bị một kênh cảnh báo bảo mật qua Telegram.
 7. Test thử xem Bot Telegram hoạt động không:
    ```bash
    curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-     -H "Content-Type: application/json" \
-     -d "{\"chat_id\": \"${TELEGRAM_CHAT_ID}\", \"text\": \"🔔 Cảnh báo thử nghiệm: Kết nối thành công từ Kubernetes cluster!\"}"
+     -d "chat_id=${TELEGRAM_CHAT_ID}" \
+     -d "text=🔔 Cảnh báo thử nghiệm: Kết nối thành công từ Kubernetes cluster!"
    ```
 
 ---
