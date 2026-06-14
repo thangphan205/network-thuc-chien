@@ -2,7 +2,7 @@
 
 Tập này dựng cluster Kubernetes mới với **Cilium làm CNI duy nhất từ đầu** — không qua Flannel hay Calico. Cấu hình theo hướng production: Cilium thay thế hoàn toàn kube-proxy bằng eBPF, routing không dùng VXLAN, mã hóa WireGuard toàn bộ pod-to-pod traffic, và Hubble built-in.
 
-Cluster này là **nền tảng cho toàn bộ Tập 23–40**.
+Cluster này là **nền tảng cho toàn bộ Tập 24–40**.
 
 ---
 
@@ -270,6 +270,7 @@ cilium version --client
      --set k8sServiceHost="${CONTROL_PLANE_IP}" \
      --set k8sServicePort=6443 \
      --set routingMode=native \
+     --set ipv4NativeRoutingCIDR="10.244.0.0/16" \
      --set autoDirectNodeRoutes=true \
      --set ipam.mode=cluster-pool \
      --set "ipam.operator.clusterPoolIPv4PodCIDRList=10.244.0.0/16" \
@@ -285,6 +286,12 @@ cilium version --client
      --set "hubble.metrics.enabled={dns,drop,tcp,flow,port-distribution,icmp,httpV2}" \
      --set operator.replicas=1
    ```
+
+   > [!TIP]
+   > **Lỗi thường gặp:** Nếu gặp lỗi `Error: INSTALLATION FAILED: cannot re-use a name that is still in use`, hãy chạy lệnh sau để xoá bản cài đặt cũ trước:
+   > `helm uninstall cilium -n kube-system`
+   > Hoặc thêm cờ `--upgrade` (nếu muốn update trực tiếp):
+   > `helm upgrade --install cilium cilium/cilium --namespace kube-system ...`
 
    **Giải thích từng flag:**
 
@@ -463,10 +470,12 @@ kubectl exec cross-client -- ping -c 50 $CROSS_IP | tail -2
 
 ### 6.3 — Bandwidth test
 
+> **Lưu ý:** Số liệu bên dưới là trên bare metal. Trong Multipass VM trên MacBook thường đạt 5–10 Gbps (same-node) và 0.5–1.5 Gbps (cross-node) tùy hardware host. Tỉ lệ same-node/cross-node vẫn giữ ~8–10x.
+
 ```bash
 # Same-node bandwidth
 kubectl exec same-client -- iperf3 -c $SAME_IP -t 10 -P 4
-# [SUM] 18.4 Gbits/sec   ← Near-loopback (sockops redirect)
+# [SUM] 18.4 Gbits/sec   ← Near-loopback (sockops redirect, bare metal)
 
 # Cross-node bandwidth (note: WireGuard overhead ~5%)
 kubectl exec cross-client -- iperf3 -c $CROSS_IP -t 10 -P 4
@@ -499,7 +508,7 @@ kubectl -n kube-system exec -it $WORKER1_CILIUM -- \
 
 ```bash
 kubectl delete pod same-server same-client cross-server cross-client
-kill $HUBBLE_PF_PID 2>/dev/null || true
+kill $HUBBLE_PF_PID 2>/dev/null || pkill -f "port-forward.*hubble" 2>/dev/null || true
 ```
 
 **Giữ lại cluster** — dùng cho toàn bộ Tập 24–40.

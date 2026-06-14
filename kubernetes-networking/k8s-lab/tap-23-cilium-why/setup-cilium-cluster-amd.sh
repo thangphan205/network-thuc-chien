@@ -200,6 +200,7 @@ helm install cilium cilium/cilium \
     --set k8sServiceHost="${CONTROL_PLANE_IP}" \
     --set k8sServicePort="${K8S_PORT}" \
     --set routingMode=native \
+    --set ipv4NativeRoutingCIDR="${POD_CIDR}" \
     --set autoDirectNodeRoutes=true \
     --set ipam.mode=cluster-pool \
     --set "ipam.operator.clusterPoolIPv4PodCIDRList=${POD_CIDR}" \

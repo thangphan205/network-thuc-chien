@@ -31,10 +31,12 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 23
+# Tập 23 - Cài đặt Cilium
 ## Tại sao Cilium? Pain points của Calico & sockops bypass
 
 **Phần 3 — Cilium** · `#cilium` `#ebpf` `#sockops` `#calico` `#painpoints`
+
+![height:200px](https://cilium.io/static/full-logo-b987be9e2a68cb946cab55dea5518989.svg)
 
 ---
 
@@ -45,7 +47,6 @@ style: |
 - sockops bypass hoạt động ra sao — loại bỏ hoàn toàn iptables
 - Cilium như "thế hệ tiếp theo" của CNI
 
-**Prerequisites:** Cluster K8s đang chạy, chuẩn bị cài Cilium thay thế Calico
 
 ---
 
@@ -62,8 +63,8 @@ Mỗi packet phải traverse LINEAR list của rules!
 → Latency tăng khi cluster grow
 → iptables-restore: 30-60 giây cho cluster lớn
 
-Real metric (OpenAI report 2023):
-- 5000 nodes, 100k policies
+Real metric (OpenAI Kubernetes scaling, 2023):
+- 2500+ nodes, 100k+ policies
 - iptables update: 45 minutes (!!)
 - Cilium BPF maps: < 1 giây
 ```
@@ -137,7 +138,7 @@ Gain: 6-10x faster cho same-node Pod-to-Pod!
 | Rule scale | O(n) iptables | O(1) BPF maps |
 | L7 visibility | Không có | Native HTTP/gRPC |
 | Observability | Manual tcpdump | Hubble real-time |
-| Same-node latency | ~0.3ms | ~0.05ms (sockops) |
+| Same-node latency | ~0.3ms | ~0.06ms (sockops) |
 | Policy update time | Giây-phút | Milliseconds |
 
 ```
@@ -154,8 +155,8 @@ Packet filtering → Programmable kernel
 
 Chúng ta sẽ thực hành:
 
-1. **Cài Cilium** qua Helm thay thế CNI cũ.
-2. **Verify sockops active:** `cilium status`, `bpftool prog list | grep sock`.
+1. **Dựng fresh cluster** — kubeadm init không có kube-proxy, cài Cilium qua Helm.
+2. **Verify sockops active:** `cilium status`, `cilium bpf metrics list | grep -i sock`.
 3. **Deploy pods same-node** trên worker1, đo latency với iperf3.
 4. **So sánh** bandwidth và latency same-node vs cross-node.
 
