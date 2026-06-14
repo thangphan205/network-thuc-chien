@@ -113,6 +113,9 @@ graph TD
 > # Cài đặt Operator
 > kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 > 
+> # Chờ Tigera Operator Pod sẵn sàng và đăng ký xong các CRD (tránh lỗi mapping CRD)
+> kubectl wait --for=condition=Ready pod -l k8s-app=tigera-operator -n tigera-operator --timeout=60s
+> 
 > # Khởi tạo Custom Resource cho mạng Calico
 > kubectl create -f - <<'EOF'
 > apiVersion: operator.tigera.io/v1
@@ -188,6 +191,14 @@ Ta sẽ chuẩn bị một kênh cảnh báo bảo mật qua Telegram.
    ```bash
    export TELEGRAM_BOT_TOKEN="7123456789:AAHdqTcv..." # Điền token thực tế của bạn
    ```
+
+> [!NOTE]
+> **Góc nhìn Production:**
+> Trong môi trường Lab, chúng ta sử dụng `export` vào biến môi trường tạm thời để shell tự động điền vào tệp cấu hình `values.yaml` ở bước tiếp theo. 
+> Tuy nhiên ở môi trường **Production thực tế**, tuyệt đối không dùng shell export hoặc hardcode Token dạng plain-text vào Git. Thay vào đó, bạn nên quản lý theo các chuẩn doanh nghiệp:
+> 1. **Kubernetes Secret:** Lưu thông tin bảo mật vào một Secret và tham chiếu động tới cấu hình Alertmanager.
+> 2. **Secret Manager / GitOps:** Sử dụng HashiCorp Vault, AWS Secrets Manager tích hợp với **External Secrets Operator** hoặc mã hóa tệp cấu hình bằng **SOPS/Sealed Secrets** trước khi đẩy lên Git.
+
 5. Thực hiện lấy **Chat ID** của bạn để bot biết gửi tin nhắn về đâu:
    ```bash
    curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates" | python3 -c "

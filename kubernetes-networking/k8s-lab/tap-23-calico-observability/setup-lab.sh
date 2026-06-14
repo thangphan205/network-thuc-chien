@@ -19,16 +19,16 @@ sleep 0.5
 
 if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
     echo "🍏 PHÁT HIỆN CHIP ARM (Apple Silicon)!"
-    MEM_CP="2560M"
-    MEM_WK="2048M"
+    MEM_CP="3G"
+    MEM_WK="2560M"
     CPU_CP=2
     CPU_WK=2
 else
     echo "💻 PHÁT HIỆN CHIP AMD/INTEL (x86_64)!"
-    MEM_CP="2G"
-    MEM_WK="1536M"
+    MEM_CP="3G"
+    MEM_WK="2560M"
     CPU_CP=2
-    CPU_WK=1
+    CPU_WK=2
 fi
 echo "===================================================================="
 
@@ -82,13 +82,13 @@ fi
 echo ""
 echo "━━━ [1/6] Đang khởi chạy 3 máy ảo Ubuntu 26.04 qua Multipass ━━━"
 
-multipass launch 26.04 --name controlplane --cpus "$CPU_CP" --memory "$MEM_CP" --disk 15G --cloud-init "$CLOUD_INIT"
+multipass launch 26.04 --name controlplane --cpus "$CPU_CP" --memory "$MEM_CP" --disk 20G --cloud-init "$CLOUD_INIT"
 echo "✅ VM controlplane đã sẵn sàng"
 
-multipass launch 26.04 --name worker1 --cpus "$CPU_WK" --memory "$MEM_WK" --disk 15G --cloud-init "$CLOUD_INIT"
+multipass launch 26.04 --name worker1 --cpus "$CPU_WK" --memory "$MEM_WK" --disk 20G --cloud-init "$CLOUD_INIT"
 echo "✅ VM worker1 đã sẵn sàng"
 
-multipass launch 26.04 --name worker2 --cpus "$CPU_WK" --memory "$MEM_WK" --disk 15G --cloud-init "$CLOUD_INIT"
+multipass launch 26.04 --name worker2 --cpus "$CPU_WK" --memory "$MEM_WK" --disk 20G --cloud-init "$CLOUD_INIT"
 echo "✅ VM worker2 đã sẵn sàng"
 
 # ─────────────────────────────────────────────────────────────────
