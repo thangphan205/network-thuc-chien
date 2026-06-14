@@ -1,4 +1,4 @@
-# 📺 Danh sách 42 Tập — Khóa học Kubernetes Networking & NetworkPolicy
+# 📺 Danh sách 41 Tập — Khóa học Kubernetes Networking & NetworkPolicy
 ## Kênh: @NetworkThucChien
 
 ---
@@ -177,144 +177,138 @@
 
 ---
 
-### Tập 23 — Calico Observability: Prometheus + Grafana + AlertManager
-> **Mô tả ngắn:** Calico expose metrics qua Felix. Tập này build stack monitoring hoàn chỉnh: scrape metrics Felix qua ServiceMonitor, thiết lập Grafana Dashboard giám sát BGP sessions, packet drop và tự động cảnh báo qua AlertManager.
->
-> **Tags:** `#calico` `#prometheus` `#grafana` `#monitoring` `#observability`
 
----
+## 🟣 PHẦN 3: CILIUM (Tập 23–39)
 
-## 🟣 PHẦN 3: CILIUM (Tập 24–40)
-
-### Tập 24 — Tại sao Cilium? Pain points của Calico & sockops bypass
+### Tập 23 — Tại sao Cilium? Pain points của Calico & sockops bypass
 > **Mô tả ngắn:** Calico có 3 vấn đề: observability phải tự build, iptables vẫn tồn tại dù bật eBPF, và packet vẫn đi full network stack. Cilium giải quyết cả 3 — Hubble built-in, eBPF thuần, sockops bypass 3-5x nhanh hơn.
 >
 > **Tags:** `#cilium` `#eBPF` `#kubernetes` `#CNI` `#performance`
 
 ---
 
-### Tập 25 — BPF Maps: Hash, LRU, Array, Per-CPU — Vũ khí hiệu năng của Cilium
+### Tập 24 — BPF Maps: Hash, LRU, Array, Per-CPU — Vũ khí hiệu năng của Cilium
 > **Mô tả ngắn:** BPF Maps là cấu trúc dữ liệu trong kernel — Policy lookup O(1) thay vì O(n) của iptables. Per-CPU map không cần lock — scale tuyến tính như ASIC multi-core. Hiểu Maps = hiểu tại sao Cilium nhanh.
 >
 > **Tags:** `#cilium` `#eBPF` `#BPFMaps` `#kernel` `#performance`
 
 ---
 
-### Tập 26 — Kiến trúc Cilium: Operator, Agent, GoBGP, Hubble — So sánh với Calico
+### Tập 25 — Kiến trúc Cilium: Operator, Agent, GoBGP, Hubble — So sánh với Calico
 > **Mô tả ngắn:** Calico dùng BIRD (process riêng) cho BGP — Cilium embed GoBGP ngay trong Agent. Calico cần tự cài Prometheus — Cilium có Hubble built-in. Bảng so sánh component 1-1 giúp chuyển đổi tư duy từ Calico sang Cilium.
 >
 > **Tags:** `#cilium` `#calico` `#architecture` `#kubernetes` `#CNI`
 
 ---
 
-### Tập 27 — 3 Hook Points của eBPF: XDP, TC và sockops — Mỗi cái làm gì?
+### Tập 26 — 3 Hook Points của eBPF: XDP, TC và sockops — Mỗi cái làm gì?
 > **Mô tả ngắn:** XDP hook ngay tại driver network card — sớm nhất, dùng cho DDoS protection. TC hook sau khi packet vào kernel — dùng cho policy enforcement. sockops hook tại socket — bypass toàn bộ network stack cho traffic cùng Node.
 >
 > **Tags:** `#cilium` `#eBPF` `#XDP` `#TC` `#sockops`
 
 ---
 
-### Tập 28 — Cùng Node vs Khác Node: Tại sao sockops bypass hoàn toàn XDP/TC?
+### Tập 27 — Cùng Node vs Khác Node: Tại sao sockops bypass hoàn toàn XDP/TC?
 > **Mô tả ngắn:** Pod A và Pod B cùng Node: sockops kết nối thẳng socket-to-socket, XDP và TC không chạy. Khác Node: TC egress → XDP ingress → TC ingress — 3 điểm kiểm tra, Zero Trust. BPF Maps survive Agent restart = không mất traffic.
 >
 > **Tags:** `#cilium` `#eBPF` `#sockops` `#performance` `#zerotrust`
 
 ---
 
-### Tập 29 — L3/L4 Policy trong Cilium: So sánh với Kubernetes NetworkPolicy
+### Tập 28 — L3/L4 Policy trong Cilium: So sánh với Kubernetes NetworkPolicy
 > **Mô tả ngắn:** CiliumNetworkPolicy là superset của Kubernetes NetworkPolicy — cú pháp tương tự nhưng thêm endpoint selector, entity (world, cluster, host). Migrate policy từ K8s NetworkPolicy sang CiliumNetworkPolicy từng bước.
 >
 > **Tags:** `#cilium` `#NetworkPolicy` `#CiliumNetworkPolicy` `#kubernetes` `#security`
 
 ---
 
-### Tập 30 — L7 Policy: Chặn HTTP POST theo path với Envoy Proxy
+### Tập 29 — L7 Policy: Chặn HTTP POST theo path với Envoy Proxy
 > **Mô tả ngắn:** Kubernetes NetworkPolicy chỉ hiểu IP và port. Cilium hiểu HTTP method, URL path, gRPC service. Cơ chế: Cilium redirect traffic L7 qua Envoy Proxy (userspace) để inspect. Demo: allow GET /api nhưng deny POST /api/admin.
 >
 > **Tags:** `#cilium` `#L7` `#HTTP` `#Envoy` `#NetworkPolicy`
 
 ---
 
-### Tập 31 — DNS Policy với toFQDNs: Filter theo domain thay vì IP — CDN multi-IP trap
+### Tập 30 — DNS Policy với toFQDNs: Filter theo domain thay vì IP — CDN multi-IP trap
 > **Mô tả ngắn:** Chặn theo IP không hiệu quả với CDN (1 domain = hàng trăm IP thay đổi liên tục). `toFQDNs` filter theo domain name — DNS Proxy intercept response, track tất cả IP trả về, tự cleanup khi TTL hết.
 >
 > **Tags:** `#cilium` `#DNS` `#toFQDNs` `#security` `#egress`
 
 ---
 
-### Tập 32 — Cilium + Istio: Khi nào kết hợp, khi nào dùng Cilium thuần?
+### Tập 31 — Cilium + Istio: Khi nào kết hợp, khi nào dùng Cilium thuần?
 > **Mô tả ngắn:** Greenfield project: dùng Cilium thuần — L7 policy + mTLS không cần Istio. Đã có Istio trong production: giữ Istio lo L7, Cilium lo L3/L4 — tận dụng eBPF để tăng performance cho Istio. Khi nào migrate hoàn toàn?
 >
 > **Tags:** `#cilium` `#istio` `#servicemesh` `#kubernetes` `#architecture`
 
 ---
 
-### Tập 33 — Hubble CLI: `hubble observe` — Debug real-time không cần SSH vào Pod
+### Tập 32 — Hubble CLI: `hubble observe` — Debug real-time không cần SSH vào Pod
 > **Mô tả ngắn:** `hubble observe` stream flow logs real-time: Pod name, namespace, L7 info (HTTP method + path), Verdict (FORWARDED/DROPPED), Drop reason. Filter theo namespace, label, verdict. Debug nhanh gấp 10 lần so với `tcpdump`.
 >
 > **Tags:** `#cilium` `#hubble` `#observability` `#debug` `#kubernetes`
 
 ---
 
-### Tập 34 — Hubble UI: Service Map tự động & DROPPED màu đỏ
+### Tập 33 — Hubble UI: Service Map tự động & DROPPED màu đỏ
 > **Mô tả ngắn:** Hubble UI tự vẽ service dependency map từ actual traffic — không cần config thủ công. Flow bị DROP hiển thị màu đỏ với lý do ngay trên graph. Demo: phát hiện misconfigured NetworkPolicy chỉ bằng cách nhìn vào UI.
 >
 > **Tags:** `#cilium` `#hubble` `#UI` `#servicemap` `#observability`
 
 ---
 
-### Tập 35 — Hubble Metrics: hubble_drop_total, http_requests — Đúng tool, đúng tình huống
+### Tập 34 — Hubble Metrics: hubble_drop_total, http_requests — Đúng tool, đúng tình huống
 > **Mô tả ngắn:** 3 tình huống, 3 tool khác nhau: 3 giờ sáng + alert = AlertManager. Security audit tuần = Hubble UI. Debug 1 Pod cụ thể = `hubble observe`. Metrics quan trọng: `hubble_drop_total`, `hubble_http_requests_total`, `hubble_flows_processed`.
 >
 > **Tags:** `#cilium` `#hubble` `#prometheus` `#metrics` `#monitoring`
 
 ---
 
-### Tập 36 — Troubleshooting Cilium: cilium status → hubble observe → cilium CLI
+### Tập 35 — Troubleshooting Cilium: cilium status → hubble observe → cilium CLI
 > **Mô tả ngắn:** Workflow debug Cilium chuẩn: `cilium status` xem tổng quan → `hubble observe` xem flow thực tế → `cilium` CLI deep dive endpoint/policy. Thực hành với 3 lab broken khác nhau, áp dụng workflow từng bước.
 >
 > **Tags:** `#cilium` `#troubleshooting` `#hubble` `#debug` `#kubernetes`
 
 ---
 
-### Tập 37 — Lab 1: Pod label sai — Hubble show "Policy denied" ngay lập tức
+### Tập 36 — Lab 1: Pod label sai — Hubble show "Policy denied" ngay lập tức
 > **Mô tả ngắn:** Symptom: connection timeout. Với Calico phải đoán mò. Với Cilium: `hubble observe` show ngay `DROPPED` + `Policy denied` + tên Pod + label thực tế. Root cause trong 30 giây: `app=web` thay vì `app=frontend`.
 >
 > **Tags:** `#cilium` `#lab` `#hubble` `#NetworkPolicy` `#troubleshooting`
 
 ---
 
-### Tập 38 — Lab 2: L7 Policy thiếu HTTP method — HTTP 403 & quy trình confirm dev
+### Tập 37 — Lab 2: L7 Policy thiếu HTTP method — HTTP 403 & quy trình confirm dev
 > **Mô tả ngắn:** Frontend nhận HTTP 403 khi gọi `POST /api/orders`. Hubble show: `POST /api/orders → DENIED`. Root cause: policy chỉ allow GET. Quan trọng: không tự fix — confirm với dev team trước. Lesson về quy trình change management.
 >
 > **Tags:** `#cilium` `#L7` `#lab` `#HTTP403` `#process`
 
 ---
 
-### Tập 39 — Lab 3: DNS Egress Policy & toFQDNs trap — External API fail bí ẩn
+### Tập 38 — Lab 3: DNS Egress Policy & toFQDNs trap — External API fail bí ẩn
 > **Mô tả ngắn:** App không gọi được external payment API. DNS resolve ok. HTTP request DROPPED. Root cause: thiếu `toFQDNs` egress rule cho `api.payment.com` port 443. Bonus: CDN có 50 IP khác nhau — `toFQDNs` track tất cả tự động.
 >
 > **Tags:** `#cilium` `#DNS` `#toFQDNs` `#lab` `#egress`
 
 ---
 
-### Tập 40 — Lab 4: WireGuard MTU với Cilium — Hubble show "MTU exceeded" ngay!
+### Tập 39 — Lab 4: WireGuard MTU với Cilium — Hubble show "MTU exceeded" ngay!
 > **Mô tả ngắn:** Upload file lớn fail — cùng triệu chứng như Lab Calico. Nhưng debug khác hoàn toàn: Hubble show `DROPPED → MTU exceeded` ngay lập tức, không cần ping test mò mẫm. Fix: `helm upgrade --set tunnel=wireguard --set mtu=1420`.
 >
 > **Tags:** `#cilium` `#WireGuard` `#MTU` `#lab` `#hubble`
 
 ---
 
-## 🏆 PHẦN 4: KẾT (Tập 41–42)
+## 🏆 PHẦN 4: KẾT (Tập 40–41)
 
-### Tập 41 — So sánh 3 CNI: Flannel vs Calico vs Cilium — Bảng đánh giá toàn diện
+### Tập 40 — So sánh 3 CNI: Flannel vs Calico vs Cilium — Bảng đánh giá toàn diện
 > **Mô tả ngắn:** Bảng so sánh 8 tiêu chí: Dataplane, NetworkPolicy, BGP, Observability, Performance, Độ phức tạp, DNS Policy, L7 Policy. Không có CNI nào tốt nhất — chỉ có CNI phù hợp nhất với bài toán cụ thể.
 >
 > **Tags:** `#kubernetes` `#CNI` `#flannel` `#calico` `#cilium`
 
 ---
 
-### Tập 42 — Decision Framework: Khi nào dùng Flannel, Calico, Cilium trong Production?
+### Tập 41 — Decision Framework: Khi nào dùng Flannel, Calico, Cilium trong Production?
 > **Mô tả ngắn:** Flowchart quyết định thực chiến: Dev/lab không cần NetworkPolicy → Flannel. Production cần policy + team quen BGP → Calico. Cần L7 policy hoặc observability built-in hoặc cluster lớn nhiều microservices → Cilium.
 >
 > **Tags:** `#kubernetes` `#CNI` `#production` `#architecture` `#decision`

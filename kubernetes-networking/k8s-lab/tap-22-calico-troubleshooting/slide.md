@@ -145,4 +145,4 @@ Chúng ta đã gỡ lỗi thành công 4 sự cố thực tế kinh điển:
 
 ---
 
-> **Tập tiếp theo:** Tập 23 — Calico Observability: Giám sát mạng K8s với Prometheus & Grafana
+> **Tập tiếp theo:** Tập 23 — Tại sao Cilium? Pain points của Calico & sockops bypass
