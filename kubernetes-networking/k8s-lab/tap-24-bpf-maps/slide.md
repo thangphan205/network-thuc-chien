@@ -143,10 +143,12 @@ Khi packet đến:
 ## LRU Hash Map: Conntrack không cần lock
 
 ```
-cilium_ct_tcp4 (BPF_MAP_TYPE_LRU_HASH)
-───────────────────────────────────────
+cilium_ct4_glob / cilium_ct_tcp4 (BPF_MAP_TYPE_LRU_HASH)
+────────────────────────────────────────────────────────
 Key: {src_ip, src_port, dst_ip, dst_port, proto}
 Value: {state, last_seen, flags, rev_nat_index}
+
+(Tên thực tế bị rút ngắn thành 15 ký tự do giới hạn của Kernel)
 
 Giải thích thuật ngữ:
   - Conntrack (Connection Tracking): Theo dõi trạng thái kết nối TCP/UDP.

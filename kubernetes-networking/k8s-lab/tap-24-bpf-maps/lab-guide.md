@@ -27,13 +27,15 @@ multipass shell controlplane
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      bpftool map list | head -40
-   # Output dạng:
-   # 12: hash  name cilium_policy_00023  flags 0x0
-   #     key 24B  value 8B  max_entries 16384
-   # 13: lru_hash  name cilium_ct_tcp4  flags 0x0
-   #     key 24B  value 56B  max_entries 524288
-   # ...
-   ```
+    # Output dạng:
+    # 12: hash  name cilium_policy_00023  flags 0x0
+    #     key 24B  value 8B  max_entries 16384
+    # 63: lru_hash  name cilium_ct4_glob  flags 0x0
+    #     key 24B  value 56B  max_entries 524288
+    # ...
+    ```
+
+    > **💡 Lưu ý về tên Map conntrack:** Do giới hạn **15 ký tự** của Linux Kernel đối với tên đối tượng BPF, tên gốc `cilium_ct4_global` bị Kernel cắt ngắn bớt thành `cilium_ct4_glob`! Ở các bản Cilium cũ hơn, bạn có thể thấy tên `cilium_ct_tcp4`.
 
    **💡 Giải thích các thông số trong output:**
    - **`12:` / `13:`**: Map ID - Định danh duy nhất của Map trong kernel.
@@ -41,7 +43,7 @@ multipass shell controlplane
    - **`name cilium_policy_...`**: Tên của Map, giúp lập trình viên và CLI dễ nhận diện.
    - **`key 24B`**: Độ rộng của Key là 24 Bytes (chứa thông tin IP, port...).
    - **`value 8B`**: Độ rộng của Value là 8 Bytes (chứa action ALLOW/DROP...).
-   - **`max_entries`**: Giới hạn số lượng bản ghi tối đa trong Map. Ví dụ `cilium_ct_tcp4` (bảng conntrack) có thể chứa tới 524.288 kết nối đồng thời.
+   - **`max_entries`**: Giới hạn số lượng bản ghi tối đa trong Map. Ví dụ `cilium_ct4_glob` (hoặc `cilium_ct_tcp4`) có thể chứa tới 524.288 kết nối đồng thời.
 
 3. Đếm số maps Cilium đang dùng:
    ```bash
@@ -218,13 +220,23 @@ multipass shell controlplane
 2. So sánh: BPF map lookup không đổi dù có nhiều entries:
     ```bash
     kubectl -n kube-system exec -it $CILIUM_POD -- bash -c '
-      # Tìm Map ID của conntrack map
-      MAP_ID=$(bpftool map list | grep "cilium_ct_tcp4" | cut -d: -f1 | head -1)
+      # Tìm đường dẫn chuẩn của bpftool (đề phòng PATH của non-interactive shell bị thiếu)
+      BPFTOOL=$(which bpftool 2>/dev/null || echo "/usr/sbin/bpftool")
+
+      # Tìm Map ID của conntrack map (tìm cả tên cilium_ct4_glob và cilium_ct_tcp4)
+      MAP_ID=$($BPFTOOL map list | grep -E "cilium_ct4_glob|cilium_ct_tcp4" | cut -d: -f1 | head -1)
       echo "Map ID: $MAP_ID"
-      # Xem metadata của Map
-      bpftool map show id $MAP_ID
-      # Dump thử 10 dòng dữ liệu thực tế (hex key/value) trong kernel space
-      bpftool map dump id $MAP_ID | head -10
+
+      if [ -z "$MAP_ID" ]; then
+        echo "❌ Lỗi: Không tìm thấy Map conntrack (cilium_ct4_glob hoặc cilium_ct_tcp4)!"
+        echo "Danh sách 10 maps đầu tiên:"
+        $BPFTOOL map list | head -10
+      else
+        # Xem metadata của Map
+        $BPFTOOL map show id $MAP_ID
+        # Dump thử 10 dòng dữ liệu thực tế (hex key/value) trong kernel space
+        $BPFTOOL map dump id $MAP_ID | head -10
+      fi
     '
     # max_entries: 524288 — dù kích thước map lớn, lookup trong kernel vẫn là O(1).
     ```
