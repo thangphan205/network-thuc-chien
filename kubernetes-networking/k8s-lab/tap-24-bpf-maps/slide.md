@@ -31,10 +31,13 @@ style: |
 
 <!-- _class: ep -->
 
-# Tập 24
+# Tập 24 - BPF Maps
 ## BPF Maps: Hash, LRU, Array, Per-CPU — Vũ khí hiệu năng của Cilium
 
 **Phần 3 — Cilium** · `#ebpf` `#bpfmaps` `#kernel` `#hashmap` `#performance`
+
+![height:200px](https://cilium.io/static/full-logo-b987be9e2a68cb946cab55dea5518989.svg)
+
 
 ---
 
@@ -64,8 +67,42 @@ Ví dụ thực tế:
   → BPF program trong kernel đọc Map per-packet
   → Quyết định ALLOW/DROP trong nanoseconds
 
-Không cần syscall! Không cần context switch!
-→ Đây là bí mật của Cilium performance
+Không cần chuyển đổi ngữ cảnh (Context Switch):
+  - Thông thường: Kernel phải chuyển tiếp về User Space để hỏi Agent quyết định.
+  - Với BPF Maps: eBPF program tự đọc Map trực tiếp ngay trong Kernel.
+  → Tiết kiệm CPU tối đa, xử lý gói tin trong vài nanoseconds!
+```
+
+---
+
+## Tại sao eBPF cần BPF Maps?
+
+Do cơ chế an toàn của Linux Kernel, eBPF program bị giới hạn rất ngặt nghèo:
+
+- **Stateless (Không lưu trạng thái):** Mỗi khi một packet đi qua, eBPF program được gọi, chạy xong là kết thúc. Nó không thể tự lưu biến toàn cục để nhớ packet trước đó.
+- **Không truy cập trực tiếp bộ nhớ User Space:** Kernel space và User space tách biệt. Không thể dùng con trỏ (pointer) để đọc/ghi chép chung.
+
+👉 **BPF Maps giải quyết cả hai vấn đề:**
+1. Là **Stateful Storage** giúp eBPF program lưu trữ trạng thái (ví dụ: conntrack, metrics).
+2. Là kênh **IPC (Inter-Process Communication)** để Kernel và User space trao đổi thông tin cấu hình và dữ liệu cực nhanh.
+
+---
+
+## Cơ chế hoạt động & Vòng đời của BPF Maps
+
+```
+1. Khởi tạo (Cilium-Agent hoặc Loader tạo Map trong Kernel qua syscall bpf())
+                    │
+                    ▼
+2. Sử dụng (Helper functions trong Kernel Program / CLI ở User Space)
+   - bpf_map_lookup_elem(&map, &key)
+   - bpf_map_update_elem(&map, &key, &value, flags)
+   - bpf_map_delete_elem(&map, &key)
+                    │
+                    ▼
+3. Lưu giữ (Pinned vào Virtual Filesystem: /sys/fs/bpf/)
+   - Map KHÔNG mất đi khi eBPF program dừng hoặc Cilium Agent restart!
+   - Đảm bảo data / policy không bị gián đoạn (zero-downtime).
 ```
 
 ---
@@ -89,16 +126,16 @@ cilium_policy_<endpoint_id> (BPF_MAP_TYPE_HASH)
 Key: {src_ip, dst_ip, dst_port, protocol}
 Value: {verdict: ALLOW/DROP, action_flags}
 
-Lookup: O(1) — một hash function, một memory read
-vs iptables: traverse n rules linearly
+Lookup O(1) nghĩa là gì?
+  - Dù có 10 hay 100.000 luật policy, thời gian tìm kiếm vẫn không đổi
+    (chỉ mất 1 lần tính toán hash và 1 lần đọc bộ nhớ).
+  - Khác hoàn toàn với iptables phải duyệt tuyến tính O(N) từ trên xuống dưới.
 
 Khi packet đến:
-  1. BPF program extract 5-tuple từ packet header
-  2. bpf_map_lookup_elem(&cilium_policy, &key)
-  3. Return ALLOW → forward
-     Return NULL  → DROP (default deny)
-
-Với 100,000 policies: vẫn O(1)!
+  1. BPF program trích xuất thông tin (IP, Port, Protocol) từ packet header
+  2. bpf_map_lookup_elem(&cilium_policy, &key) (Tìm kiếm cực nhanh)
+  3. Trả về ALLOW → Chuyển tiếp gói tin
+     Trả về NULL  → DROP (Từ chối theo cơ chế default deny)
 ```
 
 ---
@@ -111,16 +148,37 @@ cilium_ct_tcp4 (BPF_MAP_TYPE_LRU_HASH)
 Key: {src_ip, src_port, dst_ip, dst_port, proto}
 Value: {state, last_seen, flags, rev_nat_index}
 
-LRU = Least Recently Used eviction:
-  - Max entries: 512K connections (default)
-  - Khi full: evict connection lâu nhất không dùng
-  - Không block! Không crash!
+Giải thích thuật ngữ:
+  - Conntrack (Connection Tracking): Theo dõi trạng thái kết nối TCP/UDP.
+  - LRU (Least Recently Used): Tự động xóa kết nối cũ nhất khi bảng đầy (512K kết nối).
+    → Không gây nghẽn mạng hay crash hệ thống.
 
-vs conntrack kernel (nf_conntrack):
-  - nf_conntrack: spinlock on update
-    → contention khi nhiều CPU
-  - BPF LRU: lockless per-CPU design
-    → scale tuyến tính với số CPU cores
+So sánh với cơ chế mặc định của Linux (nf_conntrack):
+  - nf_conntrack: Dùng khóa (spinlock) khi cập nhật → Gây tranh chấp (contention)
+    giữa các CPU core, làm nghẽn hệ thống khi lưu lượng traffic cực lớn.
+  - BPF LRU: Thiết kế lockless (per-CPU) giúp hệ thống scale tuyến tính với số CPU.
+```
+
+---
+
+## Array Map: Config & Tail Calls siêu tốc
+
+```
+cilium_runtime_config (BPF_MAP_TYPE_ARRAY)
+──────────────────────────────────────────
+Key: Index (chỉ số mảng: 0, 1, 2, ...)
+Value: Config value / state / program fd
+
+Đặc điểm:
+  - Cố định số phần tử (Fixed-size, pre-allocated)
+  - Không thể xóa phần tử (chỉ có thể ghi đè)
+  - Tốc độ lookup cực đại (chỉ là offset pointer arithmetic)
+
+Ứng dụng trong Cilium:
+  1. Lưu Config: eBPF program đọc nhanh trạng thái bật/tắt của tính năng 
+     (ví dụ: Enable IPsec?, NodePort?, MTU size).
+  2. BPF_MAP_TYPE_PROG_ARRAY (Tail Calls): Chứa danh sách eBPF programs.
+     → BPF program này nhảy sang BPF program khác không tốn overhead!
 ```
 
 ---
@@ -130,19 +188,16 @@ vs conntrack kernel (nf_conntrack):
 ```
 cilium_metrics (BPF_MAP_TYPE_PERCPU_HASH)
 ─────────────────────────────────────────
-Mỗi CPU core có bản copy riêng của counter!
-→ Không cần atomic operation
-→ Không cần lock
-→ Tốc độ cao nhất có thể
+Tại sao cần Per-CPU Map cho Metrics?
+  - Nếu tất cả CPU core cùng cộng dồn vào một biến đếm chung (global counter),
+    chúng sẽ phải tranh chấp khóa (lock) để ghi dữ liệu, làm chậm luồng mạng.
+  - Giải pháp Per-CPU: Mỗi CPU core sở hữu 1 bộ đếm riêng biệt trong bộ nhớ.
+    → Không cần lock, không cần atomic operation, tốc độ xử lý tối đa!
 
-Khi user space đọc:
-  bpf_map_lookup_elem() → [val_cpu0, val_cpu1, ...]
-  user space sum() → total
-
-Ứng dụng trong Cilium:
-  - Đếm bytes/packets forwarded per policy
-  - Đếm packets dropped per reason
-  - Không bao giờ slow down high-traffic path
+Cách hoạt động:
+  1. eBPF program chạy trên CPU 0 chỉ ghi vào bộ đếm của CPU 0.
+  2. Khi Cilium Agent (User Space) cần hiển thị tổng số gói tin:
+     Đọc bộ đếm từ tất cả các CPU core [val_cpu0, val_cpu1, ...] và cộng tổng lại.
 ```
 
 ---

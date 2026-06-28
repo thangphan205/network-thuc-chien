@@ -32,9 +32,16 @@ multipass shell controlplane
    #     key 24B  value 8B  max_entries 16384
    # 13: lru_hash  name cilium_ct_tcp4  flags 0x0
    #     key 24B  value 56B  max_entries 524288
-   # 14: array  name cilium_calls_00023  flags 0x0
    # ...
    ```
+
+   **💡 Giải thích các thông số trong output:**
+   - **`12:` / `13:`**: Map ID - Định danh duy nhất của Map trong kernel.
+   - **`hash` / `lru_hash` / `array`**: Kiểu dữ liệu cấu trúc của Map.
+   - **`name cilium_policy_...`**: Tên của Map, giúp lập trình viên và CLI dễ nhận diện.
+   - **`key 24B`**: Độ rộng của Key là 24 Bytes (chứa thông tin IP, port...).
+   - **`value 8B`**: Độ rộng của Value là 8 Bytes (chứa action ALLOW/DROP...).
+   - **`max_entries`**: Giới hạn số lượng bản ghi tối đa trong Map. Ví dụ `cilium_ct_tcp4` (bảng conntrack) có thể chứa tới 524.288 kết nối đồng thời.
 
 3. Đếm số maps Cilium đang dùng:
    ```bash
@@ -84,6 +91,12 @@ multipass shell controlplane
    #   TxPackets=38 TxBytes=7412 Flags=0x0
    ```
 
+   **💡 Giải thích dòng output:**
+   - **`TCP IN`**: Gói tin thuộc giao thức TCP đi vào (ingress).
+   - **`10.244.1.5:8080 -> 10.244.2.8:45123`**: Kết nối từ server nguồn tới client đích.
+   - **`expires=3720`**: Số giây còn lại trước khi connection entry này hết hạn và bị xóa khỏi bộ nhớ (nếu không có packet mới phát sinh).
+   - **`RxPackets/RxBytes` và `TxPackets/TxBytes`**: Thống kê số lượng gói tin/dung lượng byte đã trao đổi qua lại cho kết nối này.
+
 4. Đếm active connections:
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
@@ -91,7 +104,11 @@ multipass shell controlplane
    # Số entries trong LRU hash map
    ```
 
-   *Nhận xét:* Conntrack LRU không cần lock → scale tốt với nhiều CPU. Khi full (512K entries default), oldest entry tự bị evict.
+   **💡 Nhận xét cốt lõi về LRU:**
+   Trong hệ thống mạng truyền thống, nếu bị tấn công DDoS (tạo ra hàng triệu connection rác trong thời gian ngắn), bảng conntrack mặc định (`nf_conntrack`) sẽ bị tràn dẫn tới treo máy hoặc rớt gói tin. 
+   Với Cilium dùng **LRU (Least Recently Used) Hash Map**:
+   - Khi bảng đạt giới hạn (ví dụ 512K entries), các kết nối cũ nhất không có traffic sẽ tự động bị đẩy ra (evict) để nhường chỗ cho kết nối mới.
+   - Hoạt động lockless (per-CPU) giúp việc cập nhật bảng conntrack không bị nghẽn khóa (lock contention) trên các máy chủ nhiều CPU cores.
 
 ---
 
@@ -108,6 +125,12 @@ multipass shell controlplane
    # 1234      egress     0         ANY         ALLOW
    ```
 
+   **💡 Giải thích các cột trong Policy Map:**
+   - **`ENDPOINT`**: ID của container/pod nội bộ nằm trên node này.
+   - **`DIRECTION`**: Hướng traffic (`ingress`: đi vào pod, `egress`: đi ra khỏi pod).
+   - **`IDENTITY`**: Nhãn định danh bảo mật của Cilium (Cilium gom các Pod cùng labels thành một số Identity duy nhất thay vì dùng IP để tối ưu hóa lookup).
+   - **`ACTION`**: Hành vi thực thi (`ALLOW` hoặc `DROP`).
+
 2. Xem metrics map (Per-CPU Hash Map):
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
@@ -117,6 +140,10 @@ multipass shell controlplane
    # Policy denied         ingress     0         0
    # CT: New connection    ingress     142       89320
    ```
+
+   **💡 Giải thích về Metrics Map:**
+   - Map này lưu trữ thống kê số lượng packet/bytes tương ứng với từng sự kiện (Ví dụ: số packet được forward, số packet bị drop do policy).
+   - Do đây là **Per-CPU Hash Map**, mỗi CPU core tự ghi đếm độc lập mà không cần lock chung. Lệnh hiển thị trên đã tự động cộng gộp (sum) dữ liệu từ tất cả các CPU cores của node để trả về con số tổng thể.
 
 3. Deploy một NetworkPolicy để thấy denied metrics tăng:
    ```bash
@@ -143,6 +170,9 @@ multipass shell controlplane
    # Policy denied  ingress  5  3840  ← Tăng!
    ```
 
+   **💡 Cơ chế hoạt động:**
+   Khi áp dụng `NetworkPolicy`, Cilium Agent tính toán lại luật và ghi đè trực tiếp vào Map `cilium_policy_<endpoint_id>` trong Kernel. Khi `ct-client` gửi packet đến `ct-server`, eBPF program chạy ở tầng network nhận dạng packet -> đối chiếu Map thấy không được phép -> DROP gói tin ngay lập tức và tăng biến đếm drop trong Per-CPU metrics map. Tất cả diễn ra hoàn toàn trong kernel space mà không cần gọi tiến trình xử lý ở User Space.
+
 ---
 
 ## 💥 Thực nghiệm 4: Demo O(1) BPF vs O(n) iptables
@@ -166,6 +196,11 @@ multipass shell controlplane
     # Lưu ý: Nếu thêm `-n` (skip DNS) thì lệnh list sẽ nhanh, nhưng thời gian packet lookup thực tế trong kernel vẫn là O(n).
     ```
 
+    **💡 Phân tích sâu về iptables $O(n)$:**
+    - `iptables` lưu trữ các quy tắc (rules) dưới dạng **danh sách liên kết tuyến tính (linked list)**.
+    - Khi một gói tin đi qua, CPU phải kiểm tra lần lượt từng quy tắc từ trên xuống dưới.
+    - Nếu có 500 rules, gói tin cuối cùng phải chạy qua 500 phép so sánh trong Kernel. Với hàng triệu gói tin mỗi giây, việc này làm hao phí tài nguyên CPU nghiêm trọng.
+
 2. So sánh: BPF map lookup không đổi dù có nhiều entries:
     ```bash
     kubectl -n kube-system exec -it $CILIUM_POD -- bash -c "
@@ -180,15 +215,25 @@ multipass shell controlplane
     # max_entries: 524288 — dù kích thước map lớn, lookup trong kernel vẫn là O(1).
     ```
 
+    **💡 Phân tích sâu về BPF Map $O(1)$:**
+    - Lệnh `bpftool map dump` hiển thị dữ liệu dạng nhị phân/hex thực tế trong bộ nhớ Kernel.
+    - BPF Map tổ chức dữ liệu dưới dạng cấu trúc bảng băm (Hash Table) hoặc Mảng (Array).
+    - Khi gói tin đi qua, eBPF program chỉ cần tính toán hash của Key (IP/Port) rồi truy xuất trực tiếp ô nhớ chứa Value trong **đúng 1 lần tìm kiếm ($O(1)$)**.
+    - Thời gian tìm kiếm là không đổi dù bản đồ có 10 kết nối hay 500.000 kết nối.
+
 3. Verify cilium_lxc map (local endpoint map — quan trọng cho sockops):
-   ```bash
-   kubectl -n kube-system exec -it $CILIUM_POD -- \
-     cilium bpf endpoint list
-   # ENDPOINT  FLAGS  IPv4        MAC
-   # 1234      0x0    10.244.1.5  xx:xx:xx:xx:xx:xx
-   # 2345      0x0    10.244.1.8  yy:yy:yy:yy:yy:yy
-   # ← Chỉ Pods trên NODE NÀY → sockops lookup map này
-   ```
+    ```bash
+    kubectl -n kube-system exec -it $CILIUM_POD -- \
+      cilium bpf endpoint list
+    # ENDPOINT  FLAGS  IPv4        MAC
+    # 1234      0x0    10.244.1.5  xx:xx:xx:xx:xx:xx
+    # 2345      0x0    10.244.1.8  yy:yy:yy:yy:yy:yy
+    # ← Chỉ Pods trên NODE NÀY → sockops lookup map này
+    ```
+
+    **💡 Ý nghĩa của Endpoint Map:**
+    - Bản đồ này chỉ lưu danh sách các Pods chạy cục bộ trên **chính node đó**.
+    - Khi tính năng `sockops` (Socket Operations) của Cilium hoạt động, nó sẽ tra cứu bản đồ này. Nếu phát hiện thấy IP của Pod nguồn và Pod đích đều nằm trên cùng một Node, nó sẽ "nối tắt" trực tiếp hai socket TCP của hai container lại với nhau trong Kernel (bypass qua toàn bộ TCP/IP stack của OS).
 
 ---
 
