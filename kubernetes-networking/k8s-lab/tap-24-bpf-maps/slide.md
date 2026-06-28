@@ -111,10 +111,10 @@ Do cơ chế an toàn của Linux Kernel, eBPF program bị giới hạn rất n
 
 | Type | Use case | Đặc điểm |
 | :--- | :--- | :--- |
-| **BPF_MAP_TYPE_HASH** | Policy lookup: IP → rule | O(1) lookup, collision resistant |
-| **BPF_MAP_TYPE_LRU_HASH** | Conntrack: flow state | Auto-evict oldest entry, fixed size |
-| **BPF_MAP_TYPE_ARRAY** | Config, metrics counters | Index-based, always allocated |
-| **BPF_MAP_TYPE_PERCPU_HASH** | Per-CPU packet counters | No lock contention, sum when read |
+| **BPF_MAP_TYPE_HASH** | Policy lookup: IP → rule | Tìm kiếm O(1) siêu tốc, chống va chạm băm (collision), kích thước động |
+| **BPF_MAP_TYPE_LRU_HASH** | Conntrack: flow state | Kích thước cố định, tự động giải phóng kết nối cũ nhất khi đầy (tránh tràn/treo) |
+| **BPF_MAP_TYPE_ARRAY** | Config, metrics counters | Truy cập qua chỉ số (Index), bộ nhớ cấp phát cứng từ đầu, tốc độ cao nhất |
+| **BPF_MAP_TYPE_PERCPU_HASH** | Per-CPU packet counters | Mỗi CPU core một vùng nhớ riêng, không tranh chấp khóa (lock-free) |
 
 ---
 

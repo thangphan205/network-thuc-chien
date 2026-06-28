@@ -76,28 +76,42 @@ multipass shell controlplane
    ```
 
 2. Tạo vài connections:
-   ```bash
+    ```bash
     for i in $(seq 1 5); do
       kubectl exec ct-client -- curl -s -o /dev/null http://$SERVER_IP:8080
     done
     ```
 
-3. Xem conntrack table:
+3. Xác định Node và lấy đúng Cilium Pod tương ứng:
+   > **⚠️ Lưu ý cực kỳ quan trọng:** BPF Maps được lưu cục bộ (node-local) trong bộ nhớ của từng Node. Do đó, kết nối giữa `ct-client` và `ct-server` chỉ xuất hiện trên bảng Conntrack của Node mà chúng đang chạy (ở đây là Node của `ct-server`). Nếu bạn dùng Cilium Agent pod ở Node khác (như controlplane), bảng conntrack sẽ không có thông tin của 2 Pod này!
+
+   ```bash
+   # Lấy tên Node của ct-server
+   NODE_NAME=$(kubectl get pod ct-server -o jsonpath='{.spec.nodeName}')
+   echo "ct-server đang chạy ở node: $NODE_NAME"
+
+   # Lấy Cilium Agent pod tương ứng với Node đó
+   CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium \
+     --field-selector spec.nodeName=$NODE_NAME -o name)
+   echo "Cilium pod trên node $NODE_NAME: $CILIUM_POD"
+   ```
+
+4. Xem conntrack table trên đúng node đó:
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      cilium bpf ct list global | head -20
-   # TCP IN  10.244.1.5:8080 -> 10.244.2.8:45123
+   # TCP IN  10.244.2.9:45123 -> 10.244.2.3:8080
    #   expires=3720 RxPackets=42 RxBytes=8764
    #   TxPackets=38 TxBytes=7412 Flags=0x0
    ```
 
    **💡 Giải thích dòng output:**
    - **`TCP IN`**: Gói tin thuộc giao thức TCP đi vào (ingress).
-   - **`10.244.1.5:8080 -> 10.244.2.8:45123`**: Kết nối từ server nguồn tới client đích.
+   - **`10.244.2.9:45123 -> 10.244.2.3:8080`**: Kết nối từ client nguồn (`ct-client` IP: 10.244.2.9) tới server đích (`ct-server` IP: 10.244.2.3).
    - **`expires=3720`**: Số giây còn lại trước khi connection entry này hết hạn và bị xóa khỏi bộ nhớ (nếu không có packet mới phát sinh).
    - **`RxPackets/RxBytes` và `TxPackets/TxBytes`**: Thống kê số lượng gói tin/dung lượng byte đã trao đổi qua lại cho kết nối này.
 
-4. Đếm active connections:
+5. Đếm active connections:
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      cilium bpf ct list global | wc -l
