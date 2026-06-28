@@ -126,6 +126,16 @@ multipass shell controlplane
    - Khi bảng đạt giới hạn (ví dụ 512K entries), các kết nối cũ nhất không có traffic sẽ tự động bị đẩy ra (evict) để nhường chỗ cho kết nối mới.
    - Hoạt động lockless (per-CPU) giúp việc cập nhật bảng conntrack không bị nghẽn khóa (lock contention) trên các máy chủ nhiều CPU cores.
 
+6. Xem dữ liệu thô (raw hex) của bảng conntrack trong Kernel:
+   ```bash
+   kubectl -n kube-system exec -it $CILIUM_POD -- bash -c '
+     BPFTOOL=$(which bpftool 2>/dev/null || echo "/usr/sbin/bpftool")
+     MAP_ID=$($BPFTOOL map list | grep -E "cilium_ct4_glob|cilium_ct_tcp4" | cut -d: -f1 | head -1)
+     $BPFTOOL map dump id $MAP_ID | head -10
+   '
+   ```
+   **💡 Giải thích:** Lệnh `bpftool map dump` hiển thị trực tiếp dữ liệu nhị phân dưới dạng hex được lưu trữ trong bộ nhớ Kernel. BPF program sử dụng cấu trúc này để tra cứu kết nối siêu tốc $O(1)$ trong thời gian thực.
+
 ---
 
 ## 🔬 Thực nghiệm 3: Xem Policy Map và Metrics
@@ -177,10 +187,10 @@ multipass shell controlplane
      ingress: []
    EOF
 
-   # Generate denied traffic
+   # Tạo lưu lượng bị cấm (sẽ bị block)
    kubectl exec ct-client -- curl -s --max-time 2 http://$SERVER_IP:8080 || true
 
-   # Xem metrics tăng
+   # Kiểm tra số lượng packet bị từ chối tăng lên
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      cilium bpf metrics list | grep "denied\|Policy"
    # Policy denied  ingress  5  3840  ← Tăng!
@@ -189,77 +199,18 @@ multipass shell controlplane
    **💡 Cơ chế hoạt động:**
    Khi áp dụng `NetworkPolicy`, Cilium Agent tính toán lại luật và ghi đè trực tiếp vào Map `cilium_policy_<endpoint_id>` trong Kernel. Khi `ct-client` gửi packet đến `ct-server`, eBPF program chạy ở tầng network nhận dạng packet -> đối chiếu Map thấy không được phép -> DROP gói tin ngay lập tức và tăng biến đếm drop trong Per-CPU metrics map. Tất cả diễn ra hoàn toàn trong kernel space mà không cần gọi tiến trình xử lý ở User Space.
 
----
+4. Xem endpoint map cục bộ trên node (cilium_lxc map):
+   ```bash
+   kubectl -n kube-system exec -it $CILIUM_POD -- \
+     cilium bpf endpoint list
+   # ENDPOINT  FLAGS  IPv4        MAC
+   # 1234      0x0    10.244.2.9  xx:xx:xx:xx:xx:xx
+   # 2345      0x0    10.244.2.3  yy:yy:yy:yy:yy:yy
+   ```
 
-## 💥 Thực nghiệm 4: Demo O(1) BPF vs O(n) iptables
-
-**Trên `controlplane`:**
-
-1. Đo thời gian list rules iptables với nhiều rules (trên worker1):
-    ```bash
-    multipass exec worker1 -- bash -c "
-      # Thêm 500 rules tạm
-      for i in \$(seq 1 500); do
-        sudo iptables -A OUTPUT -d 203.0.113.\$((i % 254 + 1)) -j ACCEPT 2>/dev/null || true
-      done
-      echo 'Rules added'
-      # Đo thời gian list rules (không dùng `-n` để minh họa overhead DNS + user-space rebuild)
-      time sudo iptables -L OUTPUT --line-numbers > /dev/null
-      # Cleanup
-      sudo iptables -F OUTPUT
-    "
-    # real: 0m2-4s (do iptables -L mặc định thực hiện Reverse DNS lookup cho từng rule)
-    # Lưu ý: Nếu thêm `-n` (skip DNS) thì lệnh list sẽ nhanh, nhưng thời gian packet lookup thực tế trong kernel vẫn là O(n).
-    ```
-
-    **💡 Phân tích sâu về iptables $O(n)$:**
-    - `iptables` lưu trữ các quy tắc (rules) dưới dạng **danh sách liên kết tuyến tính (linked list)**.
-    - Khi một gói tin đi qua, CPU phải kiểm tra lần lượt từng quy tắc từ trên xuống dưới.
-    - Nếu có 500 rules, gói tin cuối cùng phải chạy qua 500 phép so sánh trong Kernel. Với hàng triệu gói tin mỗi giây, việc này làm hao phí tài nguyên CPU nghiêm trọng.
-
-2. So sánh: BPF map lookup không đổi dù có nhiều entries:
-    ```bash
-    kubectl -n kube-system exec -it $CILIUM_POD -- bash -c '
-      # Tìm đường dẫn chuẩn của bpftool (đề phòng PATH của non-interactive shell bị thiếu)
-      BPFTOOL=$(which bpftool 2>/dev/null || echo "/usr/sbin/bpftool")
-
-      # Tìm Map ID của conntrack map (tìm cả tên cilium_ct4_glob và cilium_ct_tcp4)
-      MAP_ID=$($BPFTOOL map list | grep -E "cilium_ct4_glob|cilium_ct_tcp4" | cut -d: -f1 | head -1)
-      echo "Map ID: $MAP_ID"
-
-      if [ -z "$MAP_ID" ]; then
-        echo "❌ Lỗi: Không tìm thấy Map conntrack (cilium_ct4_glob hoặc cilium_ct_tcp4)!"
-        echo "Danh sách 10 maps đầu tiên:"
-        $BPFTOOL map list | head -10
-      else
-        # Xem metadata của Map
-        $BPFTOOL map show id $MAP_ID
-        # Dump thử 10 dòng dữ liệu thực tế (hex key/value) trong kernel space
-        $BPFTOOL map dump id $MAP_ID | head -10
-      fi
-    '
-    # max_entries: 524288 — dù kích thước map lớn, lookup trong kernel vẫn là O(1).
-    ```
-
-    **💡 Phân tích sâu về BPF Map $O(1)$:**
-    - Lệnh `bpftool map dump` hiển thị dữ liệu dạng nhị phân/hex thực tế trong bộ nhớ Kernel.
-    - BPF Map tổ chức dữ liệu dưới dạng cấu trúc bảng băm (Hash Table) hoặc Mảng (Array).
-    - Khi gói tin đi qua, eBPF program chỉ cần tính toán hash của Key (IP/Port) rồi truy xuất trực tiếp ô nhớ chứa Value trong **đúng 1 lần tìm kiếm ($O(1)$)**.
-    - Thời gian tìm kiếm là không đổi dù bản đồ có 10 kết nối hay 500.000 kết nối.
-
-3. Verify cilium_lxc map (local endpoint map — quan trọng cho sockops):
-    ```bash
-    kubectl -n kube-system exec -it $CILIUM_POD -- \
-      cilium bpf endpoint list
-    # ENDPOINT  FLAGS  IPv4        MAC
-    # 1234      0x0    10.244.1.5  xx:xx:xx:xx:xx:xx
-    # 2345      0x0    10.244.1.8  yy:yy:yy:yy:yy:yy
-    # ← Chỉ Pods trên NODE NÀY → sockops lookup map này
-    ```
-
-    **💡 Ý nghĩa của Endpoint Map:**
-    - Bản đồ này chỉ lưu danh sách các Pods chạy cục bộ trên **chính node đó**.
-    - Khi tính năng `sockops` (Socket Operations) của Cilium hoạt động, nó sẽ tra cứu bản đồ này. Nếu phát hiện thấy IP của Pod nguồn và Pod đích đều nằm trên cùng một Node, nó sẽ "nối tắt" trực tiếp hai socket TCP của hai container lại với nhau trong Kernel (bypass qua toàn bộ TCP/IP stack của OS).
+   **💡 Ý nghĩa của Local Endpoint Map (cilium_lxc):**
+   - Bản đồ này chỉ lưu danh sách các Pods chạy cục bộ trên chính Node đó.
+   - Khi tính năng `sockops` (Socket Operations) hoạt động, nó sẽ tra cứu map này. Nếu phát hiện IP của Pod nguồn và Pod đích đều nằm trên cùng một Node, nó sẽ "nối tắt" trực tiếp hai socket TCP của hai container lại với nhau trong Kernel (bypass qua toàn bộ TCP/IP network stack của OS để tăng hiệu năng).
 
 ---
 

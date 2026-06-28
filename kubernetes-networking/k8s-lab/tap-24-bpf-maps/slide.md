@@ -210,10 +210,10 @@ Cách hoạt động:
 
 Chúng ta sẽ thực hành:
 
-1. **List BPF maps:** `bpftool map list` để thấy tất cả maps Cilium tạo.
-2. **Xem conntrack table:** `cilium bpf ct list global` — active connections.
-3. **Xem policy map:** `cilium bpf policy list` — rules đang enforce.
-4. **Demo O(1) vs O(n):** So sánh lookup time iptables vs BPF hash.
+1. **List BPF maps:** `bpftool map list` phân tích các loại map & cấu trúc trong kernel.
+2. **Xem conntrack & dump hex:** `cilium bpf ct` & `bpftool map dump` xem dữ liệu kết nối thô.
+3. **Kiểm tra policy & metrics:** Xem cách chính sách được thực thi tức thì trong kernel.
+4. **Bypass TCP stack:** Xem `cilium bpf endpoint list` (cơ chế sockops cùng Node).
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 
