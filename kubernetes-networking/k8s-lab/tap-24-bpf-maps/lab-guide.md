@@ -217,15 +217,15 @@ multipass shell controlplane
 
 2. So sánh: BPF map lookup không đổi dù có nhiều entries:
     ```bash
-    kubectl -n kube-system exec -it $CILIUM_POD -- bash -c "
+    kubectl -n kube-system exec -it $CILIUM_POD -- bash -c '
       # Tìm Map ID của conntrack map
-      MAP_ID=\$(bpftool map list | grep 'cilium_ct_tcp4' | awk '{print \$1}' | tr -d ':' | head -1)
-      echo 'Map ID: '\$MAP_ID
+      MAP_ID=$(bpftool map list | grep "cilium_ct_tcp4" | cut -d: -f1 | head -1)
+      echo "Map ID: $MAP_ID"
       # Xem metadata của Map
-      bpftool map show id \$MAP_ID
+      bpftool map show id $MAP_ID
       # Dump thử 10 dòng dữ liệu thực tế (hex key/value) trong kernel space
-      bpftool map dump id \$MAP_ID | head -10
-    "
+      bpftool map dump id $MAP_ID | head -10
+    '
     # max_entries: 524288 — dù kích thước map lớn, lookup trong kernel vẫn là O(1).
     ```
 
