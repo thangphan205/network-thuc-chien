@@ -61,18 +61,19 @@ multipass shell controlplane
 
 1. Deploy test pods để tạo traffic:
    ```bash
-   kubectl run ct-client --image=nicolaka/netshoot -- sleep infinity
-   kubectl run ct-server --image=nicolaka/netshoot -- nc -lk -p 8080
-   kubectl wait --for=condition=Ready pod/ct-client pod/ct-server --timeout=60s
-   SERVER_IP=$(kubectl get pod ct-server -o jsonpath='{.status.podIP}')
+    kubectl run ct-client --image=nicolaka/netshoot -- sleep infinity
+    # Dùng python3 HTTP server thay vì nc để curl không bị báo lỗi "Empty reply"
+    kubectl run ct-server --image=nicolaka/netshoot -- python3 -m http.server 8080
+    kubectl wait --for=condition=Ready pod/ct-client pod/ct-server --timeout=60s
+    SERVER_IP=$(kubectl get pod ct-server -o jsonpath='{.status.podIP}')
    ```
 
 2. Tạo vài connections:
    ```bash
-   for i in $(seq 1 5); do
-     kubectl exec ct-client -- curl -s -o /dev/null http://$SERVER_IP:8080 || true
-   done
-   ```
+    for i in $(seq 1 5); do
+      kubectl exec ct-client -- curl -s -o /dev/null http://$SERVER_IP:8080
+    done
+    ```
 
 3. Xem conntrack table:
    ```bash
@@ -148,33 +149,36 @@ multipass shell controlplane
 
 **Trên `controlplane`:**
 
-1. Đo thời gian lookup iptables với nhiều rules (trên worker1):
-   ```bash
-   multipass exec worker1 -- bash -c "
-     # Thêm 500 rules tạm
-     for i in \$(seq 1 500); do
-       sudo iptables -A OUTPUT -d 203.0.113.\$((i % 254 + 1)) -j ACCEPT 2>/dev/null || true
-     done
-     echo 'Rules added'
-     # Đo thời gian list rules
-     time sudo iptables -L OUTPUT --line-numbers > /dev/null
-     # Cleanup
-     sudo iptables -F OUTPUT
-   "
-   # real: 0m2-4s (linear với số rules)
-   ```
+1. Đo thời gian list rules iptables với nhiều rules (trên worker1):
+    ```bash
+    multipass exec worker1 -- bash -c "
+      # Thêm 500 rules tạm
+      for i in \$(seq 1 500); do
+        sudo iptables -A OUTPUT -d 203.0.113.\$((i % 254 + 1)) -j ACCEPT 2>/dev/null || true
+      done
+      echo 'Rules added'
+      # Đo thời gian list rules (không dùng `-n` để minh họa overhead DNS + user-space rebuild)
+      time sudo iptables -L OUTPUT --line-numbers > /dev/null
+      # Cleanup
+      sudo iptables -F OUTPUT
+    "
+    # real: 0m2-4s (do iptables -L mặc định thực hiện Reverse DNS lookup cho từng rule)
+    # Lưu ý: Nếu thêm `-n` (skip DNS) thì lệnh list sẽ nhanh, nhưng thời gian packet lookup thực tế trong kernel vẫn là O(n).
+    ```
 
-2. So sánh: BPF map lookup không thay đổi dù có nhiều entries:
-   ```bash
-   kubectl -n kube-system exec -it $CILIUM_POD -- bash -c "
-     # BPF map lookup O(1) — thời gian không đổi dù có 100K entries
-     MAP_ID=\$(bpftool map list | grep 'cilium_ct_tcp4' | awk '{print \$1}' | tr -d ':' | head -1)
-     echo 'Map ID: '\$MAP_ID
-     # Đây là illustration — actual lookup trong BPF program xảy ra trong nanoseconds
-     bpftool map show id \$MAP_ID
-   "
-   # max_entries: 524288 — dù có 500K entries, lookup vẫn O(1)
-   ```
+2. So sánh: BPF map lookup không đổi dù có nhiều entries:
+    ```bash
+    kubectl -n kube-system exec -it $CILIUM_POD -- bash -c "
+      # Tìm Map ID của conntrack map
+      MAP_ID=\$(bpftool map list | grep 'cilium_ct_tcp4' | awk '{print \$1}' | tr -d ':' | head -1)
+      echo 'Map ID: '\$MAP_ID
+      # Xem metadata của Map
+      bpftool map show id \$MAP_ID
+      # Dump thử 10 dòng dữ liệu thực tế (hex key/value) trong kernel space
+      bpftool map dump id \$MAP_ID | head -10
+    "
+    # max_entries: 524288 — dù kích thước map lớn, lookup trong kernel vẫn là O(1).
+    ```
 
 3. Verify cilium_lxc map (local endpoint map — quan trọng cho sockops):
    ```bash
