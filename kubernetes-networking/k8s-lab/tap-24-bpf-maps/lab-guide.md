@@ -45,6 +45,8 @@ multipass shell controlplane
    - **`value 8B`**: Độ rộng của Value là 8 Bytes (chứa action ALLOW/DROP...).
    - **`max_entries`**: Giới hạn số lượng bản ghi tối đa trong Map. Ví dụ `cilium_ct4_glob` (hoặc `cilium_ct_tcp4`) có thể chứa tới 524.288 kết nối đồng thời.
 
+   **🎯 Dùng khi nào trong thực tế:** Đây là lệnh đầu tiên chạy khi troubleshoot Cilium — kiểm tra agent sau khi restart/upgrade có tạo đủ map cần thiết chưa (map thiếu → tính năng liên quan không hoạt động, ví dụ thiếu `cilium_lb4_*` → LoadBalancer/NodePort không route được). Cũng dùng để phát hiện sớm rủi ro **hết dung lượng map** (map đầy khi số connection/policy vượt `max_entries` → BPF program không ghi được entry mới, silent drop khó phát hiện qua log K8s).
+
 3. Đếm số maps Cilium đang dùng:
    ```bash
    kubectl -n kube-system exec -i $CILIUM_POD -- \
@@ -61,6 +63,8 @@ multipass shell controlplane
    # array         20  ← Config/calls maps
    # percpu_hash    3  ← Metrics maps
    ```
+
+   **🎯 Dùng khi nào trong thực tế:** 2 lệnh đếm/phân loại này dùng cho **capacity planning** — theo dõi số map tăng tuyến tính theo số endpoint (pod) để ước lượng bộ nhớ kernel tiêu tốn (mỗi endpoint mới kéo theo vài map riêng). Cũng dùng để phát hiện **map leak**: nếu pod bị xoá liên tục nhưng tổng số map không giảm tương ứng, khả năng cilium-agent không dọn map khi endpoint bị xoá — dấu hiệu bug cần báo Cilium.
 
 ---
 
@@ -113,6 +117,8 @@ multipass shell controlplane
    - **`expires=3720`**: Số giây còn lại trước khi connection entry này hết hạn và bị xóa khỏi bộ nhớ (nếu không có packet mới phát sinh).
    - **`RxPackets/RxBytes` và `TxPackets/TxBytes`**: Thống kê số lượng gói tin/dung lượng byte đã trao đổi qua lại cho kết nối này.
 
+   **🎯 Dùng khi nào trong thực tế:** Đây là lệnh debug số 1 khi gặp connection bị treo/timeout giữa 2 pod. Nếu thấy entry trong `ct list` với `RxPackets`/`TxPackets` tăng bình thường nhưng app vẫn báo lỗi → vấn đề không nằm ở tầng network/conntrack (kernel đã forward đúng), cần soi tiếp ở tầng ứng dụng. Ngược lại nếu **không thấy entry nào** dù đã gửi traffic → gói tin bị chặn trước khi tới conntrack (thường do policy DROP hoặc sai node), nên check `cilium bpf policy list` tiếp.
+
 5. Đếm active connections:
    ```bash
    kubectl -n kube-system exec -i $CILIUM_POD -- \
@@ -142,6 +148,8 @@ multipass shell controlplane
 
    **💡 Giải thích:** Lệnh `bpftool map dump` hiển thị trực tiếp dữ liệu nhị phân dưới dạng hex được lưu trữ trong bộ nhớ Kernel — mỗi record gồm 1 dòng `key:` (struct tuple 4: src_ip, src_port, dst_ip, dst_port, proto...) và 1 dòng `value:` (state, timestamp, counters...). BPF program sử dụng cấu trúc này để tra cứu kết nối siêu tốc $O(1)$ trong thời gian thực.
 
+   **🎯 Dùng khi nào trong thực tế:** Chỉ cần khi `cilium bpf ct list`/CLI cấp cao không đủ chi tiết hoặc chính CLI đó lỗi/crash (parser bug) — lúc đó raw hex là nguồn dữ liệu duy nhất còn tin được. Cũng dùng khi report bug lên Cilium GitHub: kèm raw dump giúp maintainer verify đúng struct layout thay vì chỉ tin output đã được CLI diễn giải.
+
 ---
 
 ## 🔬 Thực nghiệm 3: Xem Policy Map và Metrics
@@ -150,12 +158,14 @@ multipass shell controlplane
 
 1. Xem policy map (Hash Map):
    ```bash
-   kubectl -n kube-system exec -it $CILIUM_POD -- \
+   kubectl -n kube-system exec -i $CILIUM_POD -- \
      cilium bpf policy list
    # ENDPOINT  DIRECTION  IDENTITY  PORT/PROTO  ACTION
    # 1234      ingress    0         ANY         ALLOW  (world)
    # 1234      egress     0         ANY         ALLOW
    ```
+
+   > ⚠️ **Lưu ý version (đã kiểm chứng trên Cilium v1.19.5):** `cilium bpf policy list` là CLI abstraction — không đọc trực tiếp 1 map hash tên `cilium_policy_<endpoint_id>` như bản Cilium cũ. Chạy `bpftool map list | grep -E "hash|cilium_policy"` sẽ **không** thấy map hash riêng cho từng endpoint; verdict L4 được compile thẳng vào BPF program của endpoint. Map thật liên quan policy: `cilium_policyst` (lru_percpu_hash, policy state/stats) và `cilium_policy_v4`/`v6` (lpm_trie, per-endpoint, cho CIDR selector — tên bị cắt còn `cilium_policy_v`).
 
    **💡 Giải thích các cột trong Policy Map:**
    - **`ENDPOINT`**: ID của container/pod nội bộ nằm trên node này.
@@ -163,9 +173,11 @@ multipass shell controlplane
    - **`IDENTITY`**: Nhãn định danh bảo mật của Cilium (Cilium gom các Pod cùng labels thành một số Identity duy nhất thay vì dùng IP để tối ưu hóa lookup).
    - **`ACTION`**: Hành vi thực thi (`ALLOW` hoặc `DROP`).
 
+   **🎯 Dùng khi nào trong thực tế:** Đây là **ground-truth thật sự** khi debug "traffic bị chặn không rõ lý do" — khác với check `NetworkPolicy` CRD trên K8s API (chỉ cho biết policy có tồn tại, không cho biết kernel có áp dụng đúng chưa). Nếu `kubectl get networkpolicy` cho thấy rule đúng nhưng packet vẫn drop, `cilium bpf policy list` cho biết chính xác kernel đang enforce gì cho endpoint đó — phát hiện lệch giữa control-plane (K8s) và data-plane (kernel), ví dụ do cilium-agent chưa sync policy kịp.
+
 2. Xem metrics map (Per-CPU Hash Map):
    ```bash
-   kubectl -n kube-system exec -it $CILIUM_POD -- \
+   kubectl -n kube-system exec -i $CILIUM_POD -- \
      cilium bpf metrics list
    # REASON                DIRECTION   PACKETS   BYTES
    # Forwarded             egress      8891      2.1MB
@@ -176,6 +188,8 @@ multipass shell controlplane
    **💡 Giải thích về Metrics Map:**
    - Map này lưu trữ thống kê số lượng packet/bytes tương ứng với từng sự kiện (Ví dụ: số packet được forward, số packet bị drop do policy).
    - Do đây là **Per-CPU Hash Map**, mỗi CPU core tự ghi đếm độc lập mà không cần lock chung. Lệnh hiển thị trên đã tự động cộng gộp (sum) dữ liệu từ tất cả các CPU cores của node để trả về con số tổng thể.
+
+   **🎯 Dùng khi nào trong thực tế:** Dùng cho monitoring/alerting production — theo dõi `Policy denied` tăng đột biến (dấu hiệu misconfigured NetworkPolicy chặn nhầm traffic hợp lệ, hoặc dấu hiệu bị scan/attack). So với đếm log ứng dụng, số liệu này lấy trực tiếp từ kernel nên không phụ thuộc app có log connection bị drop hay không (nhiều app im lặng khi connection bị reset ở tầng network).
 
 3. Deploy một NetworkPolicy để thấy denied metrics tăng:
    ```bash
@@ -197,17 +211,17 @@ multipass shell controlplane
    kubectl exec ct-client -- curl -s --max-time 2 http://$SERVER_IP:8080 || true
 
    # Kiểm tra số lượng packet bị từ chối tăng lên
-   kubectl -n kube-system exec -it $CILIUM_POD -- \
+   kubectl -n kube-system exec -i $CILIUM_POD -- \
      cilium bpf metrics list | grep "denied\|Policy"
    # Policy denied  ingress  5  3840  ← Tăng!
    ```
 
    **💡 Cơ chế hoạt động:**
-   Khi áp dụng `NetworkPolicy`, Cilium Agent tính toán lại luật và ghi đè trực tiếp vào Map `cilium_policy_<endpoint_id>` trong Kernel. Khi `ct-client` gửi packet đến `ct-server`, eBPF program chạy ở tầng network nhận dạng packet -> đối chiếu Map thấy không được phép -> DROP gói tin ngay lập tức và tăng biến đếm drop trong Per-CPU metrics map. Tất cả diễn ra hoàn toàn trong kernel space mà không cần gọi tiến trình xử lý ở User Space.
+   Khi áp dụng `NetworkPolicy`, Cilium Agent tính toán lại luật và cập nhật verdict enforcement cho endpoint tương ứng trong Kernel (bản cũ ghi đè vào map hash riêng `cilium_policy_<endpoint_id>`; bản v1.19.5 compile thẳng verdict L4 vào BPF program của endpoint — xem lưu ý version ở bước 1). Khi `ct-client` gửi packet đến `ct-server`, eBPF program chạy ở tầng network nhận dạng packet -> đối chiếu luật thấy không được phép -> DROP gói tin ngay lập tức và tăng biến đếm drop trong Per-CPU metrics map. Tất cả diễn ra hoàn toàn trong kernel space mà không cần gọi tiến trình xử lý ở User Space.
 
 4. Xem endpoint map cục bộ trên node (cilium_lxc map):
    ```bash
-   kubectl -n kube-system exec -it $CILIUM_POD -- \
+   kubectl -n kube-system exec -i $CILIUM_POD -- \
      cilium bpf endpoint list
    # ENDPOINT  FLAGS  IPv4        MAC
    # 1234      0x0    10.244.2.9  xx:xx:xx:xx:xx:xx
@@ -217,6 +231,8 @@ multipass shell controlplane
    **💡 Ý nghĩa của Local Endpoint Map (cilium_lxc):**
    - Bản đồ này chỉ lưu danh sách các Pods chạy cục bộ trên chính Node đó.
    - Khi tính năng `sockops` (Socket Operations) hoạt động, nó sẽ tra cứu map này. Nếu phát hiện IP của Pod nguồn và Pod đích đều nằm trên cùng một Node, nó sẽ "nối tắt" trực tiếp hai socket TCP của hai container lại với nhau trong Kernel (bypass qua toàn bộ TCP/IP network stack của OS để tăng hiệu năng).
+
+   **🎯 Dùng khi nào trong thực tế:** Dùng để debug khi nghi ngờ `sockops` same-node bypass không kích hoạt (traffic giữa 2 pod cùng node vẫn đi qua full TCP/IP stack thay vì bypass, gây latency cao hơn kỳ vọng) — verify cả 2 pod có xuất hiện đúng trong `cilium_lxc` với đúng IP/MAC trước khi soi tiếp cấu hình sockops. Cũng dùng để đối chiếu identity (`sec_id`) của endpoint khi debug policy bị áp sai do nhầm identity.
 
 ---
 

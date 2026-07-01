@@ -138,6 +138,8 @@ Khi packet đến:
      Trả về NULL  → DROP (Từ chối theo cơ chế default deny)
 ```
 
+> ⚠️ **Lưu ý version:** Mô hình trên là khái niệm đơn giản hoá. Từ Cilium ~1.11+ (đã kiểm chứng trên **v1.19.5**), verdict L4 (port/protocol) được **compile thẳng vào BPF program của endpoint** — không còn map hash riêng `cilium_policy_<endpoint_id>` cho từng packet. Map hash thật sự thấy trong `bpftool map list` (policy-related) là `cilium_policyst` (lru_percpu_hash, policy stats/state). Riêng selector theo **CIDR (L3)** vẫn cần lookup runtime, dùng map **`cilium_policy_v4`/`v6` (lpm_trie)** — per-endpoint, tên bị cắt còn `cilium_policy_v`. Nguyên lý O(1) hash lookup vẫn đúng về mặt khái niệm (xem ví dụ Conntrack/LB map ở các slide sau), chỉ tên map minh hoạ trên không còn khớp thực tế bản mới.
+
 ---
 
 ## LRU Hash Map: Conntrack không cần lock
