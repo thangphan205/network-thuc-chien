@@ -77,7 +77,10 @@ multipass purge
 
 ## Thực nghiệm 1: Provision VMs cho Cilium cluster
 
-**Hai cách:**
+> [!TIP]
+> **Nếu dựng cụm K8s trên Remote Servers (VPS/Dedicated Server, không dùng Multipass):** Xem hướng dẫn cài đặt và cấu hình chi tiết tại [remote-server-guide.md](file:///Users/thangpa/projects/9ping/network-thuc-chien/kubernetes-networking/k8s-lab/tap-23-cilium-why/remote-server-guide.md).
+
+Nếu chạy lab ở máy local bằng Multipass, chọn một trong hai cách dưới đây:
 - **Option A (Khuyên dùng):** Chạy script tự động — provision + kubeadm + Cilium một lệnh
 - **Option B:** Thủ công từng bước (dùng khi muốn hiểu chi tiết)
 
