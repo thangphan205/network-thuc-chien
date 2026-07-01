@@ -25,7 +25,7 @@ multipass shell controlplane
 
 2. List tất cả BPF maps:
    ```bash
-   kubectl -n kube-system exec -it $CILIUM_POD -- \
+   kubectl -n kube-system exec -i $CILIUM_POD -- \
      bpftool map list | head -40
     # Output dạng:
     # 12: hash  name cilium_policy_00023  flags 0x0
@@ -47,14 +47,14 @@ multipass shell controlplane
 
 3. Đếm số maps Cilium đang dùng:
    ```bash
-   kubectl -n kube-system exec -it $CILIUM_POD -- \
+   kubectl -n kube-system exec -i $CILIUM_POD -- \
      bpftool map list | grep -c "^[0-9]"
    # Thường 30-60 maps tùy số endpoints
    ```
 
 4. Phân loại theo type:
    ```bash
-   kubectl -n kube-system exec -it $CILIUM_POD -- \
+   kubectl -n kube-system exec -i $CILIUM_POD -- \
      bpftool map list | grep -E "^[0-9]+:" | awk '{print $2}' | sort | uniq -c | sort -rn
    # hash          15  ← Policy maps
    # lru_hash       4  ← Conntrack maps
@@ -100,7 +100,7 @@ multipass shell controlplane
 
 4. Xem conntrack table trên đúng node đó:
    ```bash
-   kubectl -n kube-system exec -it $CILIUM_POD -- \
+   kubectl -n kube-system exec -i $CILIUM_POD -- \
      cilium bpf ct list global | head -20
    # TCP IN  10.244.2.9:45123 -> 10.244.2.3:8080
    #   expires=3720 RxPackets=42 RxBytes=8764
@@ -115,7 +115,7 @@ multipass shell controlplane
 
 5. Đếm active connections:
    ```bash
-   kubectl -n kube-system exec -it $CILIUM_POD -- \
+   kubectl -n kube-system exec -i $CILIUM_POD -- \
      cilium bpf ct list global | wc -l
    # Số entries trong LRU hash map
    ```
@@ -128,13 +128,19 @@ multipass shell controlplane
 
 6. Xem dữ liệu thô (raw hex) của bảng conntrack trong Kernel:
    ```bash
-   kubectl -n kube-system exec -it $CILIUM_POD -- bash -c '
-     BPFTOOL=$(which bpftool 2>/dev/null || echo "/usr/sbin/bpftool")
-     MAP_ID=$($BPFTOOL map list | grep -E "cilium_ct4_glob|cilium_ct_tcp4" | cut -d: -f1 | head -1)
-     $BPFTOOL map dump id $MAP_ID | head -10
-   '
+   kubectl -n kube-system exec -i $CILIUM_POD -- bash -c '
+     bpftool map dump name cilium_ct4_glob 2>/dev/null || bpftool map dump name cilium_ct_tcp4
+   ' | head -10
+   # Output dạng:
+   # key:
+   # 0a f4 00 02 00 00 b0 1b 0a f4 00 03 00 00 1f 90 06 00 00 00 00 00 00 00
+   # value:
+   # 03 00 00 00 00 00 00 00 8c 8f 20 68 00 00 00 00 2a 00 00 00 00 00 00 00
    ```
-   **💡 Giải thích:** Lệnh `bpftool map dump` hiển thị trực tiếp dữ liệu nhị phân dưới dạng hex được lưu trữ trong bộ nhớ Kernel. BPF program sử dụng cấu trúc này để tra cứu kết nối siêu tốc $O(1)$ trong thời gian thực.
+
+   > **💡 Vì sao dùng `map dump name` thay vì `map dump id`?** `bpftool` cho phép chọn map trực tiếp bằng tên (`name <MAP_NAME>`) thay vì phải chạy `map list`, `grep` tên map rồi `cut` lấy ID ra trước — đỡ 1 bước trung gian, cũng tránh lỗi khi grep không match (ID rỗng → lệnh dump báo lỗi mơ hồ). Vì tên map thay đổi giữa các bản Cilium (`cilium_ct4_glob` cũ hơn là `cilium_ct_tcp4`), lệnh thử tên mới trước, lỗi thì fallback tên cũ.
+
+   **💡 Giải thích:** Lệnh `bpftool map dump` hiển thị trực tiếp dữ liệu nhị phân dưới dạng hex được lưu trữ trong bộ nhớ Kernel — mỗi record gồm 1 dòng `key:` (struct tuple 4: src_ip, src_port, dst_ip, dst_port, proto...) và 1 dòng `value:` (state, timestamp, counters...). BPF program sử dụng cấu trúc này để tra cứu kết nối siêu tốc $O(1)$ trong thời gian thực.
 
 ---
 
