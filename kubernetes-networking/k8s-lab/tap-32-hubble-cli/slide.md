@@ -97,6 +97,8 @@ Hubble record EVERY packet decision trong cluster!
 
 ## hubble observe: Syntax cơ bản
 
+> **Lưu ý:** Nếu kết nối qua Hubble Relay port-forward (`kubectl port-forward svc/hubble-relay 4245:80`), phải thêm `--server localhost:4245` vào mọi lệnh bên dưới — mặc định `hubble` CLI trỏ vào unix socket local (`/var/run/cilium/hubble.sock`), port-forward sẽ bị bỏ qua nếu thiếu flag này.
+
 ```bash
 # Tất cả flows
 hubble observe
@@ -132,10 +134,13 @@ hubble observe --protocol http
 ```
 $ hubble observe --namespace production --verdict DROPPED
 
-TIMESTAMP     SOURCE                 DEST                  VERDICT   REASON
-14:23:05.123  production/frontend    production/backend:8080  DROPPED   Policy denied
-14:23:07.891  production/attacker    production/backend:8080  DROPPED   Policy denied
+TIMESTAMP     SOURCE                 DESTINATION              TYPE  VERDICT   SUMMARY
+14:23:05.123  production/frontend    production/backend:8080  L3/4  DROPPED   Policy denied
+14:23:07.891  production/attacker    production/backend:8080  L3/4  DROPPED   Policy denied
+```
+> **💡 Lưu ý:** Cột thật là `TIMESTAMP SOURCE DESTINATION TYPE VERDICT SUMMARY` — không có cột `REASON` riêng, lý do drop nằm trong text của `SUMMARY`.
 
+```
 Với --output json:
 {
   "flow": {
@@ -144,10 +149,11 @@ Với --output json:
     "destination": {"namespace": "production", "pod_name": "backend"},
     "l4": {"TCP": {"destination_port": 8080}},
     "verdict": "DROPPED",
-    "drop_reason": "Policy denied"
+    "drop_reason_desc": "POLICY_DENIED"
   }
 }
 ```
+> **💡 Lưu ý:** Field JSON thật là `drop_reason_desc` (không phải `drop_reason`), giá trị dạng enum viết hoa như `POLICY_DENIED` (không phải chuỗi người-đọc `"Policy denied"`).
 
 ---
 

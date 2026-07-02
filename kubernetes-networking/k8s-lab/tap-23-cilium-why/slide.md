@@ -32,9 +32,9 @@ style: |
 <!-- _class: ep -->
 
 # Tập 23 - Cài đặt Cilium
-## Tại sao Cilium? Pain points của Calico & sockops bypass
+## Tại sao Cilium? Pain points của Calico & BPF host-routing
 
-**Phần 3 — Cilium** · `#cilium` `#ebpf` `#sockops` `#calico` `#painpoints`
+**Phần 3 — Cilium** · `#cilium` `#ebpf` `#bpf-host-routing` `#calico` `#painpoints`
 
 ![height:200px](https://cilium.io/static/full-logo-b987be9e2a68cb946cab55dea5518989.svg)
 
@@ -44,7 +44,7 @@ style: |
 
 - Hiểu pain points thực sự của Calico ở scale lớn
 - Tại sao iptables là bottleneck trong modern cloud-native
-- sockops bypass hoạt động ra sao — loại bỏ hoàn toàn iptables
+- BPF host-routing hoạt động ra sao — loại bỏ iptables/netfilter khỏi datapath
 - Cilium như "thế hệ tiếp theo" của CNI
 
 
@@ -111,20 +111,24 @@ Cilium Hubble = built-in distributed tracing cho network
 
 ---
 
-## sockops: Kernel shortcut cho same-node traffic
+## BPF Host-Routing: Kernel shortcut cho same-node traffic
+
+> **Lưu ý:** tính năng `sockops` (TCP socket-splice, prog type `sock_ops`/`sk_msg`) đã bị Cilium **loại bỏ từ v1.14**. Cơ chế same-node speedup thật sự hiện nay là **BPF host-routing** — vẫn qua veth + TC BPF, chỉ bỏ iptables/netfilter, không phải "socket-to-socket direct" bỏ qua toàn bộ path như sockops cũ.
 
 ```
 Normal path (Calico/Flannel):
   App A → socket → TCP stack → veth → iptables → cali bridge
        → iptables → veth → TCP stack → socket → App B
-  
+
   Total: 2x TCP stack + 2x iptables = ~30-40 microseconds
 
-sockops path (Cilium, same node):
-  App A → socket → BPF hook intercept
-       → redirect trực tiếp → socket → App B
-  
-  Total: socket-to-socket direct = ~3-5 microseconds
+BPF host-routing path (Cilium, same node):
+  App A → socket → veth → TC BPF (bpf_lxc.c) tra map cilium_lxc
+       → đích là pod local → bpf_redirect_peer() nhảy thẳng veth peer
+       → TC BPF → veth → socket → App B
+  (Vẫn qua veth + TC BPF, chỉ bỏ qua iptables/netfilter)
+
+  Total: ~3-5 microseconds (bỏ 2x iptables traversal)
 
 Gain: 6-10x faster cho same-node Pod-to-Pod!
 ```
@@ -138,7 +142,7 @@ Gain: 6-10x faster cho same-node Pod-to-Pod!
 | Rule scale | O(n) iptables | O(1) BPF maps |
 | L7 visibility | Không có | Native HTTP/gRPC |
 | Observability | Manual tcpdump | Hubble real-time |
-| Same-node latency | ~0.3ms | ~0.06ms (sockops) |
+| Same-node latency | ~0.3ms | ~0.06ms (BPF host-routing) |
 | Policy update time | Giây-phút | Milliseconds |
 
 ```
@@ -151,12 +155,12 @@ Packet filtering → Programmable kernel
 
 <!-- _class: lab -->
 
-## 🔬 Lab Time: Cài Cilium và đo latency sockops
+## 🔬 Lab Time: Cài Cilium và đo latency BPF host-routing
 
 Chúng ta sẽ thực hành:
 
 1. **Dựng fresh cluster** — kubeadm init không có kube-proxy, cài Cilium qua Helm.
-2. **Verify sockops active:** `cilium status`, `cilium bpf metrics list | grep -i sock`.
+2. **Verify BPF host-routing active:** `cilium status --verbose | grep Routing:`.
 3. **Deploy pods same-node** trên worker1, đo latency với iperf3.
 4. **So sánh** bandwidth và latency same-node vs cross-node.
 

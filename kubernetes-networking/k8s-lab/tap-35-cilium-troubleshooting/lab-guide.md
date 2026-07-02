@@ -29,15 +29,20 @@ multipass shell controlplane
    ```bash
    # Chạy và grep từng phần quan trọng:
    kubectl -n kube-system exec -it $CILIUM_POD -- \
-     cilium status | grep -E "Kubernetes:|Cilium:|IPAM:|Unreachable|BPF|Sockops"
+     cilium status | grep -E "Kubernetes:|Cilium:|IPAM:|Unreachable"
 
    # Expected output:
    # Kubernetes:         Ok   1.29+ (v1.29.x)
-   # Cilium:             Ok   1.15.x
+   # Cilium:             Ok   1.19.5 (v1.19.5-xxxxxxx)
    # IPAM:               IPv4: x/254 allocated
-   # BPF Maps:           dynamic sizing
-   # Sockops:            Enabled
    # Unreachable nodes:  0   ← QUAN TRỌNG: phải là 0
+   ```
+   > **💡 Lưu ý version (đã kiểm chứng trên Cilium v1.19.5):** không có field `BPF:`/`Sockops:` đứng riêng trong `cilium status` (không tồn tại trong formatter thật). Field `BPF Maps: dynamic sizing` chỉ hiện với `--verbose`/`--all-*`. Field thay `Sockops` cũ là `Socket LB` — cũng chỉ hiện với `--verbose`, trong khối `KubeProxyReplacement Details`:
+   ```bash
+   kubectl -n kube-system exec -it $CILIUM_POD -- \
+     cilium status --verbose | grep -E "BPF Maps:|Socket LB:"
+   # BPF Maps:    dynamic sizing: true
+   # Socket LB:   Enabled
    ```
 
 3. Xem tất cả Cilium agent pods health:
@@ -139,10 +144,11 @@ multipass shell controlplane
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      cilium endpoint list
-   # ENDPOINT  POLICY (ingress)  POLICY (egress)  IDENTITY  POD NAME
-   # 1234      Enabled           Enabled           7891      backend
-   # 5678      Enabled           Enabled           12345     frontend
+   # ENDPOINT  POLICY (ingress)  POLICY (egress)  IDENTITY  IPv6   IPv4         STATUS
+   # 1234      Enabled           Enabled           7891             10.244.1.5   ready
+   # 5678      Enabled           Enabled           12345            10.244.1.8   ready
    ```
+   > **💡 Lưu ý:** Cột thật không có "POD NAME" riêng — tên pod chỉ suy ra được gián tiếp qua nhãn trong cột `LABELS` (`k8s:app=backend`...) khi chạy full output không rút gọn, hoặc đối chiếu `IPv4` với `kubectl get pod -o wide`.
 
 2. Xem BPF policy map cho backend endpoint:
    ```bash
@@ -152,10 +158,10 @@ multipass shell controlplane
    echo "Backend endpoint ID: $BACKEND_EP"
 
    kubectl -n kube-system exec -it $CILIUM_POD -- \
-     cilium bpf policy list $BACKEND_EP
-   # DIRECTION  IDENTITY  PORT  PROTO  VERDICT
-   # ingress    ANY       ANY   ANY    Deny    ← Default deny, không có allow rule
+     cilium bpf policy get $BACKEND_EP
+   # (no entries)
    ```
+   > **💡 Lưu ý:** `cilium bpf policy list` KHÔNG nhận argument endpoint — subcommand đúng để xem policy map của 1 endpoint cụ thể là `cilium bpf policy get <endpoint-id>`. Map policy chỉ là **allow-list**: default-deny ngầm định (không có entry = drop), nên khi chưa có allow rule nào thì map **rỗng** — không có dòng "Deny" tường minh nào được ghi (`Deny` không phải verdict thật sự xuất hiện trong output).
 
 3. Add allow policy và verify policy map update:
    ```bash
@@ -181,10 +187,10 @@ multipass shell controlplane
    # Verify policy map updated (trong vòng vài giây):
    sleep 2
    kubectl -n kube-system exec -it $CILIUM_POD -- \
-     cilium bpf policy list $BACKEND_EP
-   # DIRECTION  IDENTITY  PORT  PROTO  VERDICT
-   # ingress    12345     8080  TCP    Allow   ← frontend identity được thêm!
-   # ingress    ANY       ANY   ANY    Deny
+     cilium bpf policy get $BACKEND_EP
+   # POLICY  DIRECTION  LABELS (source:key[=value])  PORT/PROTO  PROXY PORT  BYTES  PACKETS
+   # Allow   Ingress    k8s:app=frontend              8080/TCP    NONE        0      0
+   # ← frontend identity được thêm! Map chỉ liệt kê rule Allow (default-deny ngầm định, không có dòng Deny).
    ```
 
 ---
@@ -197,7 +203,7 @@ multipass shell controlplane
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      bpftool prog list | grep -E "^[0-9]+:" | head -10
-   # Xem có sched_cls (TC), sock_ops programs không
+   # Xem có sched_cls (TC), cgroup_sock_addr (Socket LB) programs không
 
    # Đếm TC programs (thường 2 per endpoint)
    kubectl -n kube-system exec -it $CILIUM_POD -- \
@@ -227,13 +233,14 @@ multipass shell controlplane
    ```
 
 3. Quick connectivity test (Cilium built-in):
-   ```bash
-   # Cilium connectivity test (subset — nhanh hơn full test)
-   kubectl -n kube-system exec -it $CILIUM_POD -- \
-     cilium connectivity test --test pod-to-pod 2>/dev/null || \
-     echo "Note: Full connectivity test cần thêm setup"
 
-   # Alternative — manual cross-node ping:
+   > **⚠️ Lưu ý:** `cilium connectivity test` là tính năng của `cilium-cli` — 1 binary chạy **ngoài cluster** (không nằm trong cilium-agent container, không tồn tại qua `kubectl exec` dù gọi tên `cilium` hay `cilium-dbg`). Nó tự deploy test pods/services riêng và chạy từ máy có kubeconfig, không phải lệnh debug nội bộ agent. Muốn dùng, cài `cilium-cli` trên `controlplane` (đã hướng dẫn ở Tập 23) rồi chạy trực tiếp, không qua `kubectl exec`:
+   ```bash
+   # Cài cilium-cli nếu chưa có (xem Tập 23), rồi chạy trực tiếp trên controlplane:
+   cilium connectivity test --test pod-to-pod || \
+     echo "Note: Full connectivity test cần thêm setup (image pull, RBAC...)"
+
+   # Alternative — manual cross-node ping (không cần cilium-cli):
    kubectl -n production exec frontend -- \
      ping -c 3 $BACKEND_IP
    # 3 packets transmitted, 3 received ← Cross-node connectivity OK
@@ -254,6 +261,6 @@ pkill -f "port-forward" 2>/dev/null || true
 ## ✅ Tổng kết
 
 1. **5-level hierarchy:** Start từ Level 1 (health) → move down chỉ khi cần. Hầu hết incidents resolve ở Level 2 (Hubble) hoặc Level 3 (policy map).
-2. **`cilium status` chỉ số quan trọng:** `Unreachable nodes: 0` (network OK), `BPF Maps: OK` (kernel BPF OK), `Sockops: Enabled` (performance optimization active).
+2. **`cilium status` chỉ số quan trọng:** `Unreachable nodes: 0` (network OK), `BPF Maps: dynamic sizing` (`--verbose`, kernel BPF OK), `Socket LB: Enabled` (`--verbose`, thay cho `Sockops` cũ — performance optimization active).
 3. **Hubble drop reasons:** `"Policy denied"` → Label/policy issue. `"MTU exceeded"` → MTU misconfiguration. `"No route"` → Routing issue. Không cần infer như Calico.
-4. **`cilium bpf policy list <endpoint-id>`:** Xem BPF policy map entries trực tiếp — verify policy đã converge chưa (quan trọng hơn kubectl get networkpolicy vì đó là desired state, không phải actual enforcement).
+4. **`cilium bpf policy get <endpoint-id>`:** Xem BPF policy map entries trực tiếp — verify policy đã converge chưa (quan trọng hơn kubectl get networkpolicy vì đó là desired state, không phải actual enforcement).

@@ -138,7 +138,7 @@ Khi packet đến:
      Trả về NULL  → DROP (Từ chối theo cơ chế default deny)
 ```
 
-> ⚠️ **Lưu ý version:** Mô hình trên là khái niệm đơn giản hoá. Từ Cilium ~1.11+ (đã kiểm chứng trên **v1.19.5**), verdict L4 (port/protocol) được **compile thẳng vào BPF program của endpoint** — không còn map hash riêng `cilium_policy_<endpoint_id>` cho từng packet. Map hash thật sự thấy trong `bpftool map list` (policy-related) là `cilium_policyst` (lru_percpu_hash, policy stats/state). Riêng selector theo **CIDR (L3)** vẫn cần lookup runtime, dùng map **`cilium_policy_v4`/`v6` (lpm_trie)** — per-endpoint, tên bị cắt còn `cilium_policy_v`. Nguyên lý O(1) hash lookup vẫn đúng về mặt khái niệm (xem ví dụ Conntrack/LB map ở các slide sau), chỉ tên map minh hoạ trên không còn khớp thực tế bản mới.
+> ⚠️ **Lưu ý version (đã kiểm chứng trên Cilium v1.19.5):** Mô hình trên là khái niệm đơn giản hoá. Map policy thật không phải `hash` mà là **`lpm_trie`**, tên `cilium_policy_v2_<endpoint_id>` (bị cắt còn `cilium_policy_v` do giới hạn 15 ký tự kernel) — verdict L4 (port/protocol) **có thật trong map này**, không phải compile cứng vào BPF program của endpoint như đồn đại. `bpftool map list | grep cilium_policy` sẽ thấy map này (type `lpm_trie`). Nguyên lý O(1) lookup vẫn đúng về mặt khái niệm (xem ví dụ Conntrack/LB map ở các slide sau), chỉ tên/loại map minh hoạ trên không khớp thực tế.
 
 ---
 
@@ -215,7 +215,7 @@ Chúng ta sẽ thực hành:
 1. **List BPF maps:** `bpftool map list` phân tích các loại map & cấu trúc trong kernel.
 2. **Xem conntrack & dump hex:** `cilium bpf ct` & `bpftool map dump` xem dữ liệu kết nối thô.
 3. **Kiểm tra policy & metrics:** Xem cách chính sách được thực thi tức thì trong kernel.
-4. **Bypass TCP stack:** Xem `cilium bpf endpoint list` (cơ chế sockops cùng Node).
+4. **Same-node fast path:** Xem `cilium bpf endpoint list` (cilium_lxc map, dùng cho BPF host-routing giữa các Pod cùng Node).
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 

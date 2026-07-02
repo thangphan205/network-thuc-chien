@@ -55,23 +55,35 @@ multipass shell controlplane
      -o name | head -1)
 
    kubectl -n kube-system exec -i $CILIUM_POD -- cilium status
-   # KVStore:     Ok   Disabled (Cilium dùng K8s CRDs, không cần etcd riêng)
-   # Kubernetes:  Ok   1.29 (v1.29.x)
-   # Cilium:      Ok   1.15.x
-   # NodeMonitor: Disabled
-   # Hubble:      Ok   Current/Max Flows: 4096/4096
-   # BPF:         Ok
-   # Sockops:     Enabled
+   # KVStore:               Ok      Disabled (Cilium dùng K8s CRDs, không cần etcd riêng)
+   # Kubernetes:            Ok      1.29 (v1.29.x)
+   # KubeProxyReplacement:  True    [eth0 (Direct Routing)]
+   # Cilium:                Ok      1.19.5 (v1.19.5-xxxxxxx)
+   # NodeMonitor:           Disabled
+   # Cilium health daemon:  Ok
+   # Controller Status:     24/24 healthy
+   # Proxy Status:          OK, ip 10.244.1.1, 0 redirects active on ports 10000-20000
+   # Hubble:                Ok      Current/Max Flows: 4096/4096
    ```
+   > **💡 Lưu ý version (đã kiểm chứng trên Cilium v1.19.5):** không có field `BPF:` hay `Sockops:` đứng riêng trong `cilium status` — 2 field này không tồn tại trong formatter thật (`pkg/client/client.go`). Field `Socket LB` (thay cho `Sockops` cũ, bị loại bỏ từ v1.14) chỉ hiện khi thêm `--verbose`, nằm trong khối `KubeProxyReplacement Details:` — xem bước tiếp theo.
 
    **💡 Giải thích từng dòng:**
    - **`KVStore`**: Backend lưu state phối hợp giữa các agent. `Disabled` = dùng K8s CRDs thay vì etcd riêng (khác Calico truyền thống).
    - **`Kubernetes`**: Version K8s API server mà agent đang kết nối tới — mismatch version quá xa có thể gây lỗi CRD watch.
+   - **`KubeProxyReplacement`**: `True` = Cilium đã thay hoàn toàn kube-proxy (eBPF service LB), kèm device dùng cho Direct Routing.
    - **`Cilium`**: Version agent đang chạy — so với version image (`cilium image (running)` từ `cilium-cli`) để phát hiện rollout dở dang (1 vài Node chưa lên version mới).
    - **`NodeMonitor`**: Cơ chế nhận event kernel qua perf ring buffer (debug packet trace) — `Disabled` là bình thường, chỉ cần bật khi debug sâu.
+   - **`Proxy Status`**: Số Envoy redirect đang active — liên quan L7 policy (xem Tập 29).
    - **`Hubble: Current/Max Flows`**: Số flow đang giữ trong ring buffer / giới hạn cấu hình. Gần chạm max → flow cũ bị đẩy ra nhanh, cửa sổ quan sát lịch sử bị thu hẹp (Hubble chỉ nhớ được ít giây gần nhất).
-   - **`BPF`**: Trạng thái tổng thể của datapath BPF — `Ok` nghĩa toàn bộ program/map đã load thành công.
-   - **`Sockops`**: Có bật tính năng bypass TCP stack cho traffic same-node hay không (xem lại Tập 24).
+
+   Muốn xem chi tiết Socket LB (service load-balancing tại `connect()`, thay cho kube-proxy), thêm `--verbose`:
+   ```bash
+   kubectl -n kube-system exec -i $CILIUM_POD -- cilium status --verbose | grep -A2 "KubeProxyReplacement Details"
+   # KubeProxyReplacement Details:
+   #   Status:                Strict
+   #   Socket LB:             Enabled
+   #   Socket LB Coverage:    Full
+   ```
 
    **🎯 Dùng khi nào trong thực tế:** Lệnh chẩn đoán tổng quát số 1 khi nghi ngờ agent "not healthy" nhưng Pod vẫn `Running` (K8s không detect được lỗi nội bộ Cilium). Bất kỳ dòng nào khác `Ok` (ví dụ `BPF: Failure`) là dấu hiệu rõ ràng cần xem `cilium-agent` logs ngay, trước khi tốn thời gian debug ở tầng ứng dụng.
 
@@ -137,16 +149,16 @@ multipass shell controlplane
 
    **🎯 Dùng khi nào trong thực tế:** Dùng để debug policy match sai đối tượng — nếu 2 Pod đáng lẽ thuộc 2 nhóm khác nhau (ví dụ `frontend` và `backend`) lại show cùng 1 `IDENTITY`, đó là dấu hiệu 2 Deployment vô tình share label khiến `NetworkPolicy` chọn nhầm cả 2. Cũng dùng để đếm nhanh có bao nhiêu "policy class" thực sự tồn tại trong cluster (số identity ≈ số tổ hợp label distinct, không phải số Pod).
 
-4. Xem BPF endpoint map (local endpoints — dùng cho sockops):
+4. Xem BPF endpoint map (local endpoints — dùng cho BPF host-routing same-node):
    ```bash
    kubectl -n kube-system exec -i $CILIUM_POD -- \
      cilium bpf endpoint list
-   # ENDPOINT  FLAGS  IPv4        MAC
-   # 1234      0x0    10.244.1.5  xx:xx:xx:xx:xx:xx
+   # IP ADDRESS          LOCAL ENDPOINT INFO
+   # 10.244.1.5          id=1234 ifindex=22 mac=xx:xx:xx:xx:xx:xx nodemac=yy:yy:yy:yy:yy:yy
    # ← Chỉ Pods trên node hiện tại — đây là cilium_lxc map
    ```
 
-   **💡 Giải thích:** Đây chính là map `cilium_lxc` đã xem ở Tập 24 — phiên bản kernel-level (raw) của `cilium endpoint list`, chỉ liệt kê Pod cục bộ trên Node đang exec vào, không thấy Pod ở Node khác.
+   **💡 Giải thích:** Đây chính là map `cilium_lxc` đã xem ở Tập 24 — phiên bản kernel-level (raw) của `cilium endpoint list`, chỉ liệt kê Pod cục bộ trên Node đang exec vào, không thấy Pod ở Node khác. Output thật chỉ có 2 cột `IP ADDRESS`/`LOCAL ENDPOINT INFO` (id/ifindex/mac gộp chung `key=value`).
 
    **🎯 Dùng khi nào trong thực tế:** Dùng khi nghi ngờ lệch giữa control-plane view (`cilium endpoint list`) và data-plane thật (map trong kernel) — nếu Pod xuất hiện ở `cilium endpoint list` nhưng không có trong `cilium bpf endpoint list` trên đúng Node, nghĩa là BPF program chưa sync xong xuống kernel dù agent đã "biết" Pod tồn tại (regenerate lỗi/chậm).
 

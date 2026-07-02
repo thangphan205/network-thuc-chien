@@ -30,12 +30,17 @@ multipass shell controlplane
    ```
 
 3. Nếu dùng Multipass — cần tunnel từ macOS:
+
+   > **⚠️ Lưu ý quan trọng:** Multipass **không** tự bật SSH key trực tiếp vào VM (chỉ `multipass shell` hoạt động, dùng kênh certificate riêng của Multipass, không phải `~/.ssh` key thông thường). Nếu `ssh -L` bên dưới chạy thẳng mà chưa từng add key, sẽ báo `Permission denied (publickey)`. Cần add public key của máy Mac vào VM 1 lần trước:
    ```bash
+   # Trên macOS, chạy 1 lần duy nhất (từ máy Mac, KHÔNG phải trong multipass shell):
+   # multipass exec controlplane -- bash -c "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys" < ~/.ssh/id_ed25519.pub
+
    # Lấy IP của controlplane
    MASTER_IP=$(multipass info controlplane | grep IPv4 | awk '{print $2}')
    echo "controlplane IP: $MASTER_IP"
 
-   # Trên macOS (terminal mới):
+   # Trên macOS (terminal mới), sau khi đã add key ở trên:
    # ssh -L 12000:localhost:12000 ubuntu@$MASTER_IP
    # Hoặc port-forward trực tiếp từ macOS nếu có kubeconfig setup
    ```

@@ -1,9 +1,11 @@
 # Lab Tập 27: Cùng Node vs Khác Node — Đo latency và trace packet paths
 
-Tập này deploy 4 pods để có 2 scenarios (same-node và cross-node), đo latency + bandwidth thực tế, và verify sockops counter tăng khi có same-node traffic.
+Tập này deploy 4 pods để có 2 scenarios (same-node và cross-node), đo latency + bandwidth thực tế, và verify cơ chế **BPF host-routing** (`bpf_redirect_peer()`) tăng tốc same-node traffic.
+
+> **💡 Lưu ý version (đã kiểm chứng trên Cilium v1.19.5):** tính năng `sockops` (TCP socket-splice bypass hoàn toàn network stack) đã bị **loại bỏ từ v1.14** — grep source v1.19.5 cho `sockops`/`sockmap` ra 0 kết quả. Cơ chế same-node speedup thật sự trong bản hiện tại là **BPF host-routing**: TC BPF program tra map `cilium_lxc` để biết đích có phải pod local không, nếu có thì gọi `bpf_redirect_peer()`/`bpf_redirect_neigh()` để nhảy thẳng sang veth peer — **vẫn đi qua veth và TC BPF**, chỉ bỏ qua iptables/netfilter (và với cross-node, bỏ luôn VXLAN encap + NIC vật lý). Field xác nhận cơ chế này đang bật: `Routing: ... Host: BPF` trong `cilium status --verbose`.
 
 ## 🛠 Yêu cầu chuẩn bị
-- Cilium đang chạy với sockops enabled (từ Tập 23).
+- Cilium đang chạy với BPF host-routing (mặc định từ v1.9+, verify qua `cilium status --verbose | grep Routing`).
 - Cluster có worker1 và worker2 đang sẵn sàng.
 - `iperf3` có sẵn trong image `nicolaka/netshoot`.
 
@@ -71,15 +73,15 @@ multipass shell controlplane
 
 **Trên `controlplane`:**
 
-1. **Latency — same-node (sockops bypass):**
+1. **Latency — same-node (BPF host-routing, `bpf_redirect_peer`):**
    ```bash
    kubectl exec same-client -- ping -c 50 $SAME_IP | tail -3
    # 50 packets transmitted, 50 received, 0% packet loss
    # rtt min/avg/max/mdev = 0.048/0.062/0.089/0.008 ms
-   # ← ~0.05-0.1ms: gần như loopback speed
+   # ← ~0.05-0.1ms: vẫn qua veth + TC BPF nhưng bỏ qua iptables/netfilter
    ```
 
-2. **Latency — cross-node (TC + VXLAN):**
+2. **Latency — cross-node (TC + VXLAN + physical NIC):**
    ```bash
    kubectl exec cross-client -- ping -c 50 $CROSS_IP | tail -3
    # 50 packets transmitted, 50 received, 0% packet loss
@@ -92,7 +94,7 @@ multipass shell controlplane
    echo "Latency ratio: 0.35ms / 0.06ms = ~6x slower cross-node"
    ```
 
-   *Nhận xét:* ICMP ping đi qua sockops redirect khi same-node → thời gian xử lý gần bằng loopback trong kernel.
+   *Nhận xét:* ICMP ping same-node đi qua `bpf_redirect_peer()` (BPF host-routing) — vẫn qua veth + TC BPF nhưng bỏ qua iptables/netfilter nên nhanh hơn đáng kể so với path cross-node phải qua thêm VXLAN encap + NIC vật lý.
 
 ---
 
@@ -100,11 +102,11 @@ multipass shell controlplane
 
 **Trên `controlplane`:**
 
-1. **Bandwidth — same-node (sockops):**
+1. **Bandwidth — same-node (BPF host-routing):**
    ```bash
    kubectl exec same-client -- iperf3 -c $SAME_IP -t 10 -P 4
    # [SUM] 0.00-10.00 sec  23.0 GBytes  18.4 Gbits/sec  sender
-   # ← Near-loopback speed: bypass TCP stack duplication
+   # ← Nhanh hơn nhiều: bỏ qua iptables/netfilter, vẫn qua veth + TC BPF
    ```
 
 2. **Bandwidth — cross-node (TC + physical NIC):**
@@ -127,9 +129,11 @@ multipass shell controlplane
 
 ---
 
-## 🔬 Thực nghiệm 4: Verify sockops counter tăng
+## 🔬 Thực nghiệm 4: Verify BPF host-routing đang active
 
 **Trên `controlplane`:**
+
+> **💡 Lưu ý:** `cilium bpf metrics list` chỉ có 2 nhóm REASON thật — `Success` (packet forward) và các mã DROP cụ thể (`Policy denied`...). Không có counter riêng phân biệt "forward qua same-node fast path" vs "forward qua path thường" — CLI không expose chi tiết đó. Bằng chứng thực nghiệm cho BPF host-routing là **latency/bandwidth đo được ở TN2/TN3**, kết hợp với 2 bước static-check dưới đây.
 
 1. Lấy cilium-agent pod trên worker1 (nơi same-client chạy):
    ```bash
@@ -140,39 +144,26 @@ multipass shell controlplane
    echo "Cilium pod trên worker1: $WORKER1_CILIUM"
    ```
 
-2. Ghi lại metrics trước khi test:
+2. Verify BPF host-routing đang bật cho same-node (field `Routing`):
    ```bash
    kubectl -n kube-system exec -it $WORKER1_CILIUM -- \
-     cilium bpf metrics list | grep -i "sock\|redirect\|forward"
-   # Ghi lại số Packets hiện tại
+     cilium status --verbose | grep "Routing:"
+   # Routing:   Network: native   Host: BPF
+   # ← "Host: BPF" nghĩa là bpf_redirect_peer()/bpf_redirect_neigh() đang active cho same-node.
+   # Nếu thấy "Host: Legacy" thì same-node traffic vẫn đi qua full netfilter stack (chậm hơn).
    ```
 
-3. Generate same-node traffic:
-   ```bash
-   kubectl exec same-client -- iperf3 -c $SAME_IP -t 5 &
-   IPERF_PID=$!
-   ```
-
-4. Xem counter tăng trong khi traffic chạy:
-   ```bash
-   sleep 2
-   kubectl -n kube-system exec -it $WORKER1_CILIUM -- \
-     cilium bpf metrics list | grep -i "sock\|redirect\|forward"
-   # Forwarded via sockops: XXXX packets  ← Tăng!
-   wait $IPERF_PID
-   ```
-
-5. Verify cilium_lxc map — chỉ chứa Pods trên worker1:
+3. Verify cilium_lxc map — chỉ chứa Pods trên worker1:
    ```bash
    kubectl -n kube-system exec -it $WORKER1_CILIUM -- \
      cilium bpf endpoint list
-   # ENDPOINT  FLAGS  IPv4        MAC
-   # 1234      0x0    10.244.1.5  xx:xx  ← same-server (worker1)
-   # 2345      0x0    10.244.1.8  yy:yy  ← same-client (worker1)
-   # ← cross-server (10.244.2.x) KHÔNG có ở đây → sockops không redirect
+   # IP ADDRESS           LOCAL ENDPOINT INFO
+   # 10.244.1.5           id=1234 ifindex=22 mac=xx:xx:xx:xx:xx:xx nodemac=yy:yy  ← same-server (worker1)
+   # 10.244.1.8           id=2345 ifindex=24 mac=yy:yy:yy:yy:yy:yy nodemac=zz:zz  ← same-client (worker1)
+   # ← cross-server (10.244.2.x) KHÔNG có ở đây → TC BPF không thể redirect trực tiếp
    ```
 
-   *Nhận xét:* `cilium_lxc` chỉ có Pods của node hiện tại → lookup miss với cross-server IP → sockops bỏ qua → TC path xử lý.
+   *Nhận xét:* `cilium_lxc` chỉ có Pods của node hiện tại → khi TC BPF program (`bpf_lxc.c`) tra map này với IP đích là `cross-server`, kết quả là lookup-miss → gói tin phải đi tiếp qua routing table bình thường → VXLAN encap → NIC vật lý, thay vì được `bpf_redirect_peer()` chuyển thẳng sang veth peer như trường hợp same-node.
 
 ---
 
@@ -186,7 +177,7 @@ kubectl delete pod same-server same-client cross-server cross-client
 
 ## ✅ Tổng kết
 
-1. **Same-node path (sockops):** BPF intercept `connect()` → lookup `cilium_lxc` map → found → `bpf_msg_redirect_hash()` → socket-to-socket redirect → ~0.05ms, ~18 Gbps. Bỏ qua hoàn toàn: veth, TC BPF, iptables, TCP stack duplication.
-2. **Cross-node path (TC):** Không có trong `cilium_lxc` → sockops bỏ qua → packet xuống TCP stack → veth → TC BPF (policy check) → VXLAN encap → physical NIC → ~0.35ms, ~2 Gbps (network-bound).
-3. **Tại sao sockops không thể cross-node:** sockops hoạt động ở socket buffer layer trong kernel — không có cơ chế gửi data qua physical NIC. Cross-node cần encapsulation và routing xảy ra dưới socket layer, ngoài tầm với của sockops.
-4. **Implication cho architecture:** Microservices giao tiếp nhiều → đặt cùng node → tự động hưởng sockops 6-10x speedup. Pod affinity rules + Cilium sockops = performance win không cần code thay đổi.
+1. **Same-node path (BPF host-routing):** Packet qua veth → TC BPF (`bpf_lxc.c`) tra map `cilium_lxc` → tìm thấy đích là pod local → gọi `bpf_redirect_peer()`/`bpf_redirect_neigh()` chuyển thẳng sang veth peer → ~0.05ms, ~18 Gbps. Vẫn qua veth + TC BPF, chỉ bỏ qua iptables/netfilter.
+2. **Cross-node path (TC + encap):** Lookup `cilium_lxc` miss (đích không phải pod local) → packet đi tiếp qua routing table → TC BPF (policy check) → VXLAN encap → physical NIC → ~0.35ms, ~2 Gbps (network-bound).
+3. **Tại sao same-node path không dùng được cho cross-node:** `bpf_redirect_peer()` chỉ hoạt động khi biết chính xác veth peer (ifindex) của đích — thông tin này chỉ có trong `cilium_lxc` cho pod local. Cross-node cần encapsulation (VXLAN) và định tuyến qua NIC vật lý, việc mà TC BPF layer không thể "redirect tắt" được.
+4. **Implication cho architecture:** Microservices giao tiếp nhiều → đặt cùng node (pod affinity) → tự động hưởng BPF host-routing fast path, thường nhanh hơn đáng kể so với cross-node — không cần code thay đổi, chỉ cần scheduling hint.

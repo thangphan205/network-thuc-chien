@@ -53,7 +53,7 @@ style: |
 
 ```
 Level 1: Cilium agent healthy?
-  cilium status → KVStore, Kubernetes, BPF, Unreachable nodes
+  cilium status → KVStore, Kubernetes, KubeProxyReplacement, Unreachable nodes
 
 Level 2: Connectivity issue?
   hubble observe → có flows không, verdict gì, reason gì
@@ -82,18 +82,18 @@ CILIUM_POD=$(kubectl -n kube-system get pod \
 kubectl -n kube-system exec -it $CILIUM_POD -- cilium status
 
 # Healthy:
-# Kubernetes:         Ok   1.29+
-# KubeProxyReplacement: True [eth0]
-# Cilium:             Ok   1.15.x
-# IPAM:               IPv4: 5/254 allocated
-# Unreachable nodes:  0    ← Phải là 0!
-# BPF Maps:           dynamic sizing OK
+# Kubernetes:            Ok    1.29+
+# KubeProxyReplacement:  True  [eth0 (Direct Routing)]
+# Cilium:                Ok    1.19.5
+# IPAM:                  IPv4: 5/254 allocated
+# Unreachable nodes:     0    ← Phải là 0!
 
 # Warning signs:
 # KVStore:          Failure → etcd problem
 # Kubernetes:       Failure → API server issue
 # Unreachable nodes: 2     → Network partition!
 ```
+> **💡 Lưu ý version (đã kiểm chứng trên Cilium v1.19.5):** không có field `BPF:`/`BPF Maps:` đứng riêng ở `cilium status` mặc định — field này chỉ hiện với `--verbose`. Course pin version `1.19.5`, không phải `1.15.x`.
 
 ---
 
@@ -131,16 +131,17 @@ hubble observe \
 # Xem endpoints và trạng thái policy enforcement
 kubectl -n kube-system exec -it $CILIUM_POD \
   -- cilium endpoint list
-# ENDPOINT  POLICY-INGRESS  POLICY-EGRESS  IDENTITY  POD
-# 1234      Enabled         Disabled       7891      backend
-# 5678      Disabled        Disabled       12345     frontend
+# ENDPOINT  POLICY (ingress)  POLICY (egress)  IDENTITY  IPv4         STATUS
+# 1234      Enabled           Disabled          7891      10.244.1.5   ready
+# 5678      Disabled          Disabled          12345     10.244.1.8   ready
+# (tên pod suy ra qua LABELS, không có cột "POD" riêng)
 
-# Xem BPF policy map cho endpoint 1234
+# Xem BPF policy map cho endpoint 1234 — dùng "get", KHÔNG phải "list <id>"
 kubectl -n kube-system exec -it $CILIUM_POD \
-  -- cilium bpf policy list 1234
-# DIRECTION  IDENTITY  PORT  PROTO  VERDICT
-# ingress    12345     8080  TCP    Allow   ← frontend OK
-# ingress    ANY       ANY   ANY    Deny    ← default deny
+  -- cilium bpf policy get 1234
+# POLICY  DIRECTION  LABELS (source:key[=value])  PORT/PROTO  PROXY PORT  BYTES  PACKETS
+# Allow   Ingress    k8s:app=frontend              8080/TCP    NONE        0      0
+# ← Map chỉ là allow-list; default-deny ngầm định (không có entry = drop), không có dòng "Deny" tường minh
 
 # Xem tất cả policy đang active
 kubectl -n kube-system exec -it $CILIUM_POD \
@@ -155,9 +156,9 @@ kubectl -n kube-system exec -it $CILIUM_POD \
 # BPF programs loaded?
 kubectl -n kube-system exec -it $CILIUM_POD \
   -- bpftool prog list | grep -E "name|type"
-# sched_cls  cil_from_container
-# sched_cls  cil_to_container
-# sock_ops   bpf_sockops
+# sched_cls         cil_from_container
+# sched_cls         cil_to_container
+# cgroup_sock_addr  cil_sock4_connect
 
 # Conntrack entries (có connections không?)
 kubectl -n kube-system exec -it $CILIUM_POD \
@@ -202,16 +203,16 @@ kubectl -n kube-system exec -it $CILIUM_POD \
 | :--- | :--- | :--- |
 | Health check | `calicoctl node status` | `cilium status` |
 | Flow visibility | tcpdump + iptables-save | `hubble observe` |
-| Drop reason | Infer từ iptables chains | Hubble `drop_reason` field |
-| Policy active? | `iptables -L cali-*` | `cilium bpf policy list` |
+| Drop reason | Infer từ iptables chains | Hubble `drop_reason_desc` field |
+| Policy active? | `iptables -L cali-*` | `cilium bpf policy get <endpoint-id>` |
 | Node connectivity | Ping + route check | `cilium-health status` |
 
 ```
 Key difference:
   Calico: manual correlation nhiều tools, infer root cause
-  Cilium: hubble observe → "drop_reason" nói thẳng
-  
-  "Policy denied" / "MTU exceeded" / "No route"
+  Cilium: hubble observe → "drop_reason_desc" nói thẳng
+
+  "POLICY_DENIED" / "MTU exceeded" / "No route"
   → Immediate action item, không cần guessing
 ```
 

@@ -113,16 +113,17 @@ Cả 2 cùng tồn tại, không conflict:
 
 ```
 Cilium 1.12+ có Cilium Service Mesh:
-  ✅ mTLS giữa services (WireGuard hoặc TLS)
-  ✅ Traffic management (header-based routing)
+  ✅ Traffic management (header-based routing, Ingress/Gateway API — mature)
   ✅ Load balancing algorithms
   ✅ Egress control
   ✅ Hubble observability
+  ⚠️  mTLS giữa services: tính năng RIÊNG (Mutual Authentication, SPIFFE-based),
+      không phải WireGuard — WireGuard chỉ mã hóa node-to-node, không phải
+      application-layer mTLS. Vẫn Beta ở v1.19.x, mesh-auth tắt mặc định.
 
-Không có (hoặc limited):
-  ⚠️  Circuit breaker (experimental)
-  ⚠️  Retry policies (limited)
-  ⚠️  Traffic mirroring
+Chưa xác nhận rõ (cần kiểm tra kỹ trước khi dùng production):
+  ⚠️  Circuit breaker, retry policies, traffic mirroring — chưa verify được
+      đây có phải tính năng Cilium đang ship hay không
 
 Verdict 2026:
   Cilium Service Mesh = "sidecar-less service mesh"

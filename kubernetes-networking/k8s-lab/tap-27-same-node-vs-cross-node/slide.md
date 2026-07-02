@@ -32,40 +32,43 @@ style: |
 <!-- _class: ep -->
 
 # Tập 27
-## Cùng Node vs Khác Node: Tại sao sockops bypass hoàn toàn XDP/TC?
+## Cùng Node vs Khác Node: BPF Host-Routing tăng tốc same-node ra sao?
 
-**Phần 3 — Cilium** · `#sockops` `#same-node` `#bypass` `#packet-flow` `#cilium`
+**Phần 3 — Cilium** · `#bpf-host-routing` `#same-node` `#packet-flow` `#cilium`
+
+> **Lưu ý version (đã kiểm chứng trên Cilium v1.19.5):** tính năng `sockops` (TCP socket-splice bypass hoàn toàn network stack) đã bị **loại bỏ từ v1.14**. Cơ chế same-node speedup thật sự là **BPF Host-Routing** (`bpf_redirect_peer()`/`bpf_redirect_neigh()` ở tầng TC) — vẫn qua veth + TC BPF, chỉ bỏ qua iptables/netfilter.
 
 ---
 
 ## Mục tiêu tập này
 
 - Trace packet path chi tiết: cùng node vs khác node
-- Tại sao sockops KHÔNG thể dùng cross-node
+- Tại sao BPF Host-Routing KHÔNG thể dùng cross-node
 - Cilium detect "cùng node" như thế nào (cilium_lxc map)
 - Lab đo latency để thấy sự khác biệt thực tế bằng số
 
-**Prerequisites:** Cilium đang chạy với sockops enabled (từ Tập 23)
+**Prerequisites:** Cilium đang chạy với BPF Host-Routing (mặc định từ v1.9+, từ Tập 23)
 
 ---
 
-## Same-Node Path — Với sockops bypass
+## Same-Node Path — Với BPF Host-Routing
 
 ```
 Pod A (10.244.1.5) → Pod B (10.244.1.8)  ← CÙNG NODE
 
-Không có sockops (Calico/Flannel):
+Không có BPF Host-Routing (Calico/Flannel, dùng iptables):
   App A → write socket → TCP stack → veth0 →
-  TC BPF → kernel routing →
-  TC BPF → veth1 → TCP stack → read socket → App B
-  Latency: ~0.3-0.5ms, CPU: 2x TCP stack
+  iptables (nhiều chain) → kernel routing →
+  iptables → veth1 → TCP stack → read socket → App B
+  Latency: ~0.3-0.5ms, CPU: 2x TCP stack + iptables traversal
 
-Với sockops (Cilium):
-  App A → connect() ← BPF sockops intercept!
+Với BPF Host-Routing (Cilium):
+  App A → write socket → TCP stack → veth0 (TC BPF: cil_from_container)
     → lookup cilium_lxc: "is 10.244.1.8 on this node?"
-    → YES → bpf_msg_redirect_map() redirect
-  App A → write socket → BPF redirect → read socket → App B
-  Latency: ~0.05ms, CPU: loopback only (6-10x faster!)
+    → YES → bpf_redirect_peer() nhảy thẳng sang veth1 (TC BPF: cil_to_container)
+  → TCP stack → read socket → App B
+  (Vẫn qua veth + TC BPF cả 2 đầu — chỉ bỏ qua iptables/netfilter)
+  Latency: ~0.05ms, CPU: thấp hơn nhiều (6-10x faster!)
 ```
 
 ---
@@ -82,14 +85,14 @@ Pod A (10.244.1.5, Node1) → Pod B (10.244.2.8, Node2)
     ↓
   veth (Pod A)
     ↓
-  TC egress (cil_to_container)
+  TC ingress (cil_from_container) ← packet RA khỏi Pod A
     ↓ policy check ALLOW
   kernel routing
     ↓ VXLAN encapsulation
   eth0 → physical network
                               eth0 → decapsulation
                                 ↓
-                              TC ingress (cil_from_container)
+                              TC egress (cil_to_container) ← packet VÀO Pod B
                                 ↓ policy check
                               veth (Pod B)
                                 ↓
@@ -99,64 +102,64 @@ Pod A (10.244.1.5, Node1) → Pod B (10.244.2.8, Node2)
 
 ---
 
-## sockops Detection: cilium_lxc map
+## BPF Host-Routing Detection: cilium_lxc map
 
 ```
-Khi App A gọi connect(dst_ip=10.244.1.8, dst_port=8080):
-  BPF sockops program intercept syscall
-  
+Khi packet từ Pod A đi tới TC ingress hook (cil_from_container):
+  TC BPF program (bpf_lxc.c) chạy trên veth của Pod A
+
   1. Lookup dst_ip trong cilium_lxc map:
      bpf_map_lookup_elem(&cilium_lxc, &dst_ip)
-  
-  2. Nếu FOUND → dst Pod trên cùng node này!
-     cilium_lxc chỉ chứa endpoints của NODE HIỆN TẠI
-     → redirect: bpf_sock_hash_update() + bpf_msg_redirect_hash()
-     → Kernel redirect write/read giữa 2 socket trực tiếp
-  
-  3. Nếu NOT FOUND → cross-node
-     → sockops không làm gì
-     → packet đi xuống TCP stack → TC path xử lý
 
-Key insight: cilium_lxc = "local endpoint map"
+  2. Nếu FOUND → dst Pod trên cùng node này!
+     cilium_lxc chỉ chứa endpoints của NODE HIỆN TẠI (id/ifindex/mac)
+     → gọi bpf_redirect_peer()/bpf_redirect_neigh() với ifindex lấy từ map
+     → Nhảy thẳng sang veth peer của Pod B, vẫn qua TC BPF (cil_to_container)
+
+  3. Nếu NOT FOUND → cross-node
+     → không redirect được (không biết ifindex đích)
+     → packet đi tiếp qua routing table bình thường → VXLAN → NIC
+
+Key insight: cilium_lxc = "local endpoint map" (id/ifindex/mac của Pod local)
 ```
 
 ---
 
-## Tại sao sockops KHÔNG dùng được cross-node?
+## Tại sao BPF Host-Routing KHÔNG dùng được cross-node?
 
 ```
-sockops hoạt động ở socket layer:
-  → Chỉ thấy: src socket ↔ dst socket (in-kernel)
-  → Không thể "redirect qua mạng vật lý"
+bpf_redirect_peer()/bpf_redirect_neigh() cần biết chính xác ifindex
+của veth đích để nhảy thẳng tới đó — thông tin này chỉ có trong
+cilium_lxc cho Pod chạy LOCAL trên cùng node.
 
 Cross-node PHẢI có:
-  - Encapsulation (thêm outer IP header)
-  - Routing (gửi đúng Node NIC)
+  - Encapsulation (thêm outer IP header — VXLAN/Geneve)
+  - Routing (gửi đúng Node qua NIC vật lý)
   - Physical Network I/O
-  → Tất cả xảy ra DƯỚI socket layer
+  → Không có "ifindex" nào để redirect trực tiếp tới node khác
 
-sockops → socket buffer redirect (in-kernel memory)
-TC → packet manipulation + routing (kernel network stack)
+TC + BPF host-routing → redirect trực tiếp trong node (biết ifindex đích)
+TC + routing thường   → encap + gửi qua NIC (không biết ifindex đích ở xa)
 
-sockops cross-node = loopback cho remote connection
-→ Impossible by design
+BPF Host-Routing cross-node = không có đích cụ thể để redirect tới
+→ Buộc phải đi qua path encapsulation/routing đầy đủ
 ```
 
 ---
 
 ## Kết quả đo thực tế
 
-| Metric | Same-node (sockops) | Cross-node (TC+VXLAN) |
+| Metric | Same-node (BPF Host-Routing) | Cross-node (TC+VXLAN) |
 | :--- | :--- | :--- |
 | **Latency (RTT)** | ~0.05ms | ~0.35ms |
 | **Bandwidth** | ~18 Gbps | ~2 Gbps |
-| **CPU overhead** | Minimal | 2x TCP stack + encap |
-| **Path** | Socket → redirect → Socket | Socket → veth → TC → NIC → NIC → TC → veth → Socket |
+| **CPU overhead** | Thấp (bỏ iptables/netfilter) | 2x TCP stack + iptables + encap |
+| **Path** | Socket → veth → TC (redirect_peer) → veth → Socket | Socket → veth → TC → NIC → NIC → TC → veth → Socket |
 
 ```
 Ý nghĩa cho application design:
   Microservices gọi nhau nhiều → schedule cùng node → 6-10x faster
-  Cilium topology-aware: pod affinity + sockops = best of both worlds
+  Cilium topology-aware: pod affinity + BPF host-routing = best of both worlds
 ```
 
 ---
@@ -170,7 +173,7 @@ Chúng ta sẽ thực hành:
 1. **Deploy 4 pods:** same-server/client (worker1), cross-server (worker2), cross-client (worker1).
 2. **Đo latency:** `ping -c 50` — same-node ~0.05ms vs cross-node ~0.35ms.
 3. **Đo bandwidth:** `iperf3` — same-node ~18 Gbps vs cross-node ~2 Gbps.
-4. **Verify sockops counter tăng** khi có same-node traffic.
+4. **Verify BPF Host-Routing active:** `cilium status --verbose | grep Routing:` → `Host: BPF`.
 
 👉 **Hãy làm theo các bước chi tiết trong file `lab-guide.md`**
 

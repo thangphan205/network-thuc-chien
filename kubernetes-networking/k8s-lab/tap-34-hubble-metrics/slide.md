@@ -129,7 +129,7 @@ rate(hubble_tcp_flags_total{flags="RST"}[5m])
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,http}"
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,httpV2}"
 
 # Verify metrics endpoint
 CILIUM_POD=$(kubectl -n kube-system get pod \
@@ -141,6 +141,7 @@ kubectl -n kube-system exec -it $CILIUM_POD -- \
 # hubble_flows_processed_total{...} 142
 # hubble_http_requests_total{...} 87
 ```
+> **💡 Lưu ý:** Dùng `httpV2` chứ không phải `http` (deprecated) — flag `http` cũ chỉ có label `method/protocol/reporter`, KHÔNG có `status`. Alert `HTTPErrorRateHigh` bên dưới query theo `status=~"5.."` nên bắt buộc phải bật `httpV2`, nếu không query sẽ luôn ra rỗng và alert không bao giờ fire.
 
 ---
 

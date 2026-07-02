@@ -6,6 +6,14 @@ Tập này phân tích decision matrix, verify Cilium và Istio không conflict,
 - Cilium đang chạy (từ Tập 23).
 - Ít nhất 6GB RAM cluster (Istio cần ~2GB thêm).
 - Internet access để pull Istio installer.
+- **metrics-server đã cài** (`kubectl top` cần API `metrics.k8s.io` — không có sẵn trong cluster nếu chưa cài, mọi lệnh `kubectl top` bên dưới sẽ báo lỗi `error: Metrics API not available`):
+  ```bash
+  kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+  # Nếu cluster dùng self-signed kubelet cert (thường gặp với kubeadm), thêm flag:
+  kubectl -n kube-system patch deployment metrics-server --type='json' \
+    -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+  kubectl -n kube-system wait --for=condition=Available deployment/metrics-server --timeout=90s
+  ```
 
 > **Lưu ý:** Istio install là optional nếu lab thiếu RAM. Phần 1-2 có thể thực hành mà không cần cài Istio.
 
@@ -25,9 +33,15 @@ multipass shell controlplane
      -o name | head -1)
 
    kubectl -n kube-system exec -it $CILIUM_POD -- cilium status
-   # Cilium:   OK
-   # BPF:      OK
-   # Sockops:  Enabled
+   # Cilium:                Ok      1.19.5 (v1.19.5-xxxxxxx)
+   # KubeProxyReplacement:  True    [eth0 (Direct Routing)]
+   ```
+   > **💡 Lưu ý version (đã kiểm chứng trên Cilium v1.19.5):** không có field `BPF:` hay `Sockops:` đứng riêng trong `cilium status` (không tồn tại trong formatter thật). Muốn xem chi tiết Socket LB (thay cho `Sockops` cũ, bị loại bỏ từ v1.14):
+   ```bash
+   kubectl -n kube-system exec -it $CILIUM_POD -- \
+     cilium status --verbose | grep -A1 "Socket LB"
+   # Socket LB:            Enabled
+   # Socket LB Coverage:   Full
    ```
 
 2. Kiểm tra RAM usage của pod không có sidecar:
@@ -61,6 +75,7 @@ multipass shell controlplane
 > Skip thực nghiệm này nếu cluster < 6GB RAM. Xem kết quả expected bên dưới.
 
 1. Download và cài Istio:
+   > **💡 Lưu ý:** Bản dưới đây minh hoạ Istio sidecar mode cổ điển (nơi phát sinh overhead per-pod đang so sánh trong lab). Từ Istio 1.24 (GA), **Ambient Mode** dùng 1 proxy `ztunnel` dùng chung mỗi node thay vì sidecar per-pod, giảm phần lớn overhead RAM này — luận điểm "+50-70MB/pod" ở Tổng kết chỉ đúng với sidecar mode, không áp dụng cho ambient mode. Cân nhắc dùng version Istio mới hơn nếu muốn so sánh cả 2 mode.
    ```bash
    curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
    cd istio-1.20.0/
@@ -219,5 +234,5 @@ kubectl delete namespace demo-mesh 2>/dev/null || true
 
 1. **Cilium và Istio không conflict:** Cilium handle L3/L4 network layer (CNI), Istio handle L7 application mesh layer (sidecar). Cả hai cùng tồn tại — Cilium evaluate policy trước khi packet đến Istio sidecar.
 2. **Overhead thực của Istio:** Mỗi pod với sidecar tốn thêm +50-70MB RAM cho `istio-proxy`. Cluster 100 pods = +5-7GB RAM overhead. Không trivial!
-3. **Cilium Service Mesh:** Từ Cilium 1.12+ có sidecar-less mesh mode (mTLS, traffic management) — 80% use cases không cần Istio. Dùng khi team nhỏ muốn simplicity.
+3. **Cilium Service Mesh:** Traffic management sidecar-less (Ingress/Gateway API) đã mature từ Cilium ~1.12-1.13 — 80% use cases không cần Istio. Riêng **mTLS** (mutual auth) mới ở giai đoạn Beta từ **1.14** (không phải 1.12), và theo upgrade guide chính thức, `mesh-auth-enabled` **tắt mặc định từ v1.19** (đang chờ feedback cộng đồng, tích hợp với ztunnel đang phát triển) — chưa nên xem là giải pháp mTLS "đã settled" để thay Istio ngay.
 4. **Decision rule:** Bắt đầu Cilium only. Thêm Istio khi cụ thể cần: canary deployment, automatic mTLS, circuit breaker, hay distributed tracing (Jaeger). Đừng add Istio "phòng khi cần" — overhead có thật.

@@ -209,14 +209,20 @@ multipass shell controlplane
    ```
 
 3. Verify CIDR hoạt động:
-   ```bash
-   # Lấy IP của controlplane (192.168.64.x)
-   HOST_IP=$(multipass info controlplane | grep IPv4 | awk '{print $2}')
-   echo "Host IP: $HOST_IP"
 
-   # Từ controlplane → backend: ALLOWED (CIDR match)
+   > ⚠️ **Lưu ý quan trọng:** Nếu chạy lệnh `nc` ngay trong `multipass shell controlplane` như bên dưới, kết quả "thành công" **không chứng minh CIDR match** — `controlplane` là 1 Node của cluster nên traffic từ nó mang identity đặc biệt `reserved:host` (nếu backend cùng node) hoặc `reserved:remote-node` (nếu khác node) trong ipcache, và identity đặc biệt này được ưu tiên hơn CIDR-derived identity. Vì `backend-entity-policy` (Thực nghiệm 2, `fromEntities: host`) vẫn còn áp dụng (union logic), traffic có thể "thành công" là do rule `host` cũ, không phải do `fromCIDR` mới. Muốn test CIDR sạch, xoá policy cũ trước và bắn traffic từ 1 máy **thực sự ngoài cluster** (không phải node k8s) nằm trong subnet `192.168.64.0/24`:
+   ```bash
+   kubectl -n production delete ciliumnetworkpolicy backend-entity-policy
+
+   # Lấy IP của controlplane chỉ để tham khảo subnet, KHÔNG dùng làm nguồn test
+   HOST_IP=$(multipass info controlplane | grep IPv4 | awk '{print $2}')
+   echo "Host IP (tham khảo subnet): $HOST_IP"
+
+   # Test CIDR đúng cách: chạy từ máy ngoài cluster (ví dụ máy host chạy multipass),
+   # với điều kiện máy đó có route L3 tới dải IP Pod — nếu không có route, dùng NodePort
+   # hoặc 1 VM multipass khác KHÔNG phải node k8s (không phải controlplane/worker1/worker2).
    nc -zv -w 3 $BACKEND_IP 8080
-   # Connection succeeded ✅ ← CIDR 192.168.64.0/24 match
+   # Connection succeeded ✅ ← CIDR 192.168.64.0/24 match (chỉ đúng khi nguồn test KHÔNG mang identity host/remote-node)
    ```
 
 ---
@@ -229,13 +235,13 @@ multipass shell controlplane
    ```bash
    kubectl -n kube-system port-forward svc/hubble-relay 4245:80 &
    sleep 2
-   hubble status
+   hubble status --server localhost:4245
    # Healthcheck: Ok
    ```
 
 2. Watch DROPPED flows:
    ```bash
-   hubble observe --namespace production \
+   hubble observe --server localhost:4245 --namespace production \
      --verdict DROPPED --follow &
    HUBBLE_PID=$!
    ```
@@ -255,7 +261,7 @@ multipass shell controlplane
 4. Watch FORWARDED flows:
    ```bash
    kill $HUBBLE_PID 2>/dev/null
-   hubble observe --namespace production \
+   hubble observe --server localhost:4245 --namespace production \
      --from-pod production/frontend \
      --to-pod production/backend \
      --verdict FORWARDED &
@@ -283,4 +289,4 @@ pkill -f "port-forward" 2>/dev/null || true
 1. **Backward compatible:** K8s NetworkPolicy chạy trên Cilium không cần sửa — Cilium compile sang BPF map, không dùng iptables. Verify bằng `iptables -L | grep backend` → 0 rules.
 2. **CiliumNetworkPolicy extensions:** `fromEntities` (cluster/host/world), `fromCIDR` (ingress và egress), `icmps` (ICMP type filtering) — features Calico/K8s NetworkPolicy không có.
 3. **Entity "host":** Allow traffic từ Node host network namespace — hữu ích cho health checks, monitoring agents chạy trên Node mà không phải trong Pod.
-4. **Union logic (giống Calico):** Nhiều CiliumNetworkPolicy trên cùng endpoint = additive (tất cả áp dụng). Hubble observe cho thấy ngay policy nào đang block.
+4. **Union logic (allow-OR, không tiered như Calico):** Nhiều CiliumNetworkPolicy trên cùng endpoint = additive, chỉ cần 1 rule allow là traffic được phép (khác Calico dùng tiered/ordered policy có thể explicit deny chặn ngang). Hubble observe cho thấy ngay policy nào đang block — và cũng chính vì additive nên 1 policy cũ còn sót lại (như ở Thực nghiệm 3) có thể làm sai lệch kết quả test của policy mới.

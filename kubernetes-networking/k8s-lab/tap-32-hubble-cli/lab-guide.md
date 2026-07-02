@@ -4,8 +4,15 @@ Tập này setup hubble CLI, dùng `hubble observe` để debug "pod không conn
 
 ## 🛠 Yêu cầu chuẩn bị
 - Cilium + Hubble Relay running (từ Tập 23).
-- `hubble` CLI cài trên máy local (macOS: `brew install hubble`).
-- Hoặc dùng `hubble` trong cilium-agent container trực tiếp.
+- `hubble` CLI cài trên `controlplane` (mọi thực nghiệm chạy trong `multipass shell controlplane`, không phải trên máy Mac host — `brew install hubble` không giúp được gì ở đây). Cài theo cách Linux thật (đã làm ở Tập 23):
+  ```bash
+  HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
+  curl -L --fail --remote-name-all \
+    "https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-linux-amd64.tar.gz"{,.sha256sum}
+  sha256sum --check "hubble-linux-amd64.tar.gz.sha256sum"
+  sudo tar xzvf hubble-linux-amd64.tar.gz --directory /usr/local/bin
+  ```
+- Hoặc dùng `hubble` trong cilium-agent container trực tiếp (xem bước 3 dưới, dùng `exec -i` không `-it` để không bị treo khi chạy `--follow &` nền).
 
 ---
 
@@ -43,7 +50,9 @@ multipass shell controlplane
    # Nếu chưa cài hubble CLI — dùng kubectl exec:
    CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium \
      -o name | head -1)
-   alias hubble="kubectl -n kube-system exec -it $CILIUM_POD -- hubble"
+   # Dùng "-i" (KHÔNG "-it"): "-t" alloc TTY, sẽ làm process bị SIGTTIN/treo
+   # khi chạy nền với "--follow &" ở các thực nghiệm sau.
+   alias hubble="kubectl -n kube-system exec -i $CILIUM_POD -- hubble"
    hubble observe --last 5
    ```
 

@@ -32,16 +32,16 @@ style: |
 <!-- _class: ep -->
 
 # Tập 26
-## 3 Hook Points của eBPF: XDP, TC và sockops — Mỗi cái làm gì?
+## 3 Hook Points của eBPF: XDP, TC và Cgroup/Socket hooks — Mỗi cái làm gì?
 
-**Phần 3 — Cilium** · `#ebpf` `#XDP` `#TC` `#sockops` `#hookpoints`
+**Phần 3 — Cilium** · `#ebpf` `#XDP` `#TC` `#cgroup-socket` `#hookpoints`
 
 ---
 
 ## Mục tiêu tập này
 
 - Packet journey qua Linux network stack
-- 3 điểm hook của eBPF: XDP, TC, sockops
+- 3 điểm hook của eBPF: XDP, TC, Cgroup/Socket hooks
 - Mỗi hook phù hợp với use case nào
 - Cilium tự động chọn hook nào cho từng scenario
 
@@ -70,7 +70,7 @@ style: |
   └────┬────────────┘
        │
   ┌────▼────┐
-  │  Socket │ ← Hook 3: sockops (application level)
+  │  Socket │ ← Hook 3: cgroup/socket hooks (connect/sendmsg/recvmsg)
   └─────────┘
        │
     Application
@@ -126,30 +126,29 @@ Cilium dùng TC cho:
 
 ---
 
-## Hook 3: sockops — Socket Operations
+## Hook 3: Cgroup/Socket hooks — Socket LB
+
+> **Lưu ý version (đã kiểm chứng trên Cilium v1.19.5):** `sockops` (prog type `sock_ops`/`sk_msg`, TCP socket-splice bypass hoàn toàn network stack) đã bị **loại bỏ từ v1.14**. Cơ chế socket-layer hiện tại dùng prog type **`cgroup_sock_addr`** (hàm `cil_sock4_connect`, `cil_sock4_sendmsg`...), gọi là **Socket LB**.
 
 ```
-Vị trí: Kernel socket layer
-Thời điểm: TCP connection establishment/teardown
+Vị trí: cgroup, hook connect()/sendmsg()/recvmsg() syscall
+Thời điểm: Trước khi socket gửi packet đi
 
-sockops intercept:
-  - TCP connect() syscall
-  - TCP accept() syscall
-  - Socket state changes
+Socket LB intercept:
+  - connect() syscall → rewrite IP:port đích (ClusterIP/NodePort → backend Pod)
+  - sendmsg()/recvmsg() → rewrite tương tự cho UDP
 
-Ưu điểm:
-  - BYPASS toàn bộ network stack cho same-node!
-  - Khi detect src/dst trên cùng node:
-    → redirect socket-to-socket trực tiếp
-    → không qua veth, không qua TC, không qua iptables
+Vai trò:
+  - Thay thế kube-proxy hoàn toàn cho service load-balancing
+  - Rewrite xảy ra 1 lần tại socket layer, không cần iptables DNAT mỗi packet
 
-Nhược điểm:
-  - CHỈ hoạt động same-node
-  - Cross-node traffic vẫn phải dùng XDP/TC
+Same-node speedup KHÔNG đến từ Socket LB — mà từ cơ chế khác ở tầng TC:
+  - BPF Host-Routing (bpf_lxc.c): TC BPF tra map cilium_lxc, nếu đích là
+    pod local → bpf_redirect_peer() nhảy thẳng veth peer
+  - Vẫn qua veth + TC BPF, chỉ bỏ qua iptables/netfilter (xem Tập 27)
 
-Cilium dùng sockops:
-  - Same-node Pod-to-Pod: 6-10x faster
-  - Same-node Pod-to-Service: bypass kube-proxy NAT
+Cilium dùng Socket LB:
+  - Mọi Pod-to-Service traffic: rewrite tại connect(), thay kube-proxy NAT
 ```
 
 ---
@@ -159,13 +158,14 @@ Cilium dùng sockops:
 | Hook | Vị trí | Speed | Use case chính |
 | :--- | :--- | :--- | :--- |
 | **XDP** | Trước SKB | ★★★★★ | DDoS drop, NodePort LB |
-| **TC** | Có SKB | ★★★★☆ | Policy, NAT, encap |
-| **sockops** | Socket layer | ★★★★★★ | Same-node bypass |
+| **TC** | Có SKB | ★★★★☆ | Policy, NAT, encap, BPF host-routing |
+| **Cgroup/Socket** | Socket layer | ★★★★★ | Socket LB — service rewrite tại connect() |
 
 ```
 Cilium tự động chọn đường tối ưu:
-  Same node?     → sockops path (fastest)
-  Cross node?    → TC path (full feature set)
+  Mọi Pod-to-Service? → Socket LB path (connect()-time rewrite)
+  Same node (sau rewrite)? → TC path + BPF host-routing (bpf_redirect_peer, nhanh nhất)
+  Cross node?    → TC path (full feature set, qua VXLAN nếu cần)
   NodePort/DDoS? → XDP path (maximum throughput)
 
 Không cần config thủ công:
@@ -180,7 +180,7 @@ Không cần config thủ công:
 
 Chúng ta sẽ thực hành:
 
-1. **List programs theo type:** `bpftool prog list | grep -E "name|type"` — thấy `sched_cls` (TC), `sock_ops`, `xdp`.
+1. **List programs theo type:** `bpftool prog list | grep -E "name|type"` — thấy `sched_cls` (TC), `cgroup_sock_addr` (Socket LB), `xdp`.
 2. **Xem TC programs trên veth:** `tc qdisc show` và `tc filter show dev veth ingress/egress`.
 3. **Verify hook points:** Thấy `cil_from_container` (TC ingress) và `cil_to_container` (TC egress) gắn trên từng Pod veth.
 4. **Demo hoạt động của TC:** Bắt packet qua veth và xem BPF program process.

@@ -65,8 +65,7 @@ Hubble UI = Giao diện web tự động generated từ traffic
   │  Detail: src/dst/verdict/timestamp/HTTP path   │
   └────────────────────────────────────────────────┘
 
-Không cần config! Hubble tự vẽ từ observed traffic.
-Edge thickness = traffic volume.
+Không cần config! Hubble tự vẽ từ observed traffic dựa trên verdict FORWARDED/DROPPED.
 ```
 
 ---
@@ -83,10 +82,8 @@ Hubble UI tự động:
   1. Observe tất cả flows
   2. Group theo Service/Pod label
   3. Draw edges với color:
-     GREEN  = Majority FORWARDED
-     YELLOW = Some DROPPED
-     RED    = Majority DROPPED
-  4. Edge thickness = traffic volume
+     GREEN = allowed (FORWARDED)
+     RED   = denied (DROPPED)
 
 Không cần:
   - Vẽ tay topology diagram

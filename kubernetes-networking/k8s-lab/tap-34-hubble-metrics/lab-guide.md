@@ -21,11 +21,12 @@ multipass shell controlplane
    helm upgrade cilium cilium/cilium \
      --namespace kube-system \
      --reuse-values \
-     --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,http}"
+     --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,httpV2}"
 
    # Chờ cilium-agent restart
    kubectl -n kube-system rollout status daemonset/cilium
    ```
+   > **💡 Lưu ý version:** Dùng `httpV2` chứ không phải `http` (đã deprecated). Khác biệt quan trọng: dưới flag `http` cũ, metric `http_requests_total` chỉ có label `method/protocol/reporter` — **không có `status`**. Alert rule `HTTPErrorRateHigh` ở Thực nghiệm 4 cần query theo `status=~"5.."`, nếu bật nhầm `http` thay vì `httpV2` thì label đó không tồn tại → query luôn ra rỗng → alert không bao giờ fire (silent fail, không báo lỗi rõ ràng).
 
 2. Verify metrics endpoint active:
    ```bash
@@ -34,10 +35,11 @@ multipass shell controlplane
 
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      curl -s localhost:9965/metrics | grep "^hubble_" | head -15
-   # hubble_drop_total{direction="ingress",reason="Policy denied",...} 0
+   # hubble_drop_total{reason="Policy denied",protocol="TCP"} 0
    # hubble_flows_processed_total{subtype="to-endpoint",...} 142
-   # hubble_http_requests_total{method="GET",protocol="HTTP/1.1",...} 0
+   # hubble_http_requests_total{method="GET",protocol="HTTP/1.1",status="200",...} 0
    ```
+   > **💡 Lưu ý label:** `hubble_drop_total` chỉ có label `reason`/`protocol` mặc định — không có label `direction` trừ khi cấu hình thêm `labelsContext=traffic_direction` (lab này không bật), và nếu bật thì tên label đúng là `traffic_direction`, không phải `direction`.
 
 3. Xem toàn bộ metric names:
    ```bash
@@ -257,6 +259,7 @@ multipass shell controlplane
    ```
 
 3. Generate traffic để trigger HighNetworkDropRate:
+   > **💡 Lưu ý timing:** Traffic bị policy DROP không có phản hồi (không RST) nên mỗi lần `nc -zv -w 1` phải đợi hết timeout 1s trước khi thử lại — vòng lặp 200 lần thực chất kéo dài **~3-4 phút** (200 × ~1.05s), đủ dài để giữ rate cao suốt cửa sổ `for: 1m` của rule. Nếu bạn rút ngắn số lần lặp hoặc bỏ `-w 1`, hãy đảm bảo traffic vẫn chạy liên tục ít nhất ~70-90s để alert có đủ thời gian chuyển từ PENDING sang FIRING.
    ```bash
    kubectl -n production exec attacker -- bash -c "
      for i in \$(seq 1 200); do
@@ -278,7 +281,7 @@ multipass shell controlplane
    ```bash
    kubectl -n monitoring port-forward svc/monitoring-grafana 3000:80 &
    # Browser: http://localhost:3000 (admin/admin123)
-   # Import Hubble dashboard ID: 16611 (từ grafana.com)
+   # Import Hubble dashboard ID: 16613 (từ grafana.com — 16611 là "Cilium Agent Metrics", khác dashboard)
    ```
 
 ---
@@ -299,6 +302,6 @@ pkill -f "port-forward" 2>/dev/null || true
 ## ✅ Tổng kết
 
 1. **Zero-code network telemetry:** Enable bằng Helm `hubble.metrics.enabled` → tự động có metrics cho toàn cluster — không cần instrument application code, không cần restart pods.
-2. **Top 4 metrics production:** `hubble_drop_total` (security violations), `hubble_http_requests_total` (error rate), `hubble_http_request_duration_seconds` (latency), `hubble_tcp_flags_total{flags="RST"}` (connection resets).
+2. **Top 4 metrics production:** `hubble_drop_total` (security violations), `hubble_http_requests_total` (error rate — cần bật `httpV2` để có label `status`), `hubble_http_request_duration_seconds` (latency), `hubble_tcp_flags_total{flag="RST"}` (connection resets — label số ít `flag`, không phải `flags`).
 3. **Hubble vs Calico metrics:** Calico chỉ có `felix_denied_packets_total` (L4 only). Hubble có L4 + HTTP level metrics (method, status code, latency) — không cần setup Jaeger hay application instrumentation.
 4. **3 tools = 3 vai trò:** CLI (`hubble observe`) → alert bạn "có vấn đề"; UI (Service Map) → locate "vấn đề ở đâu"; Metrics (Prometheus) → track trends và alert tự động khi vượt ngưỡng.

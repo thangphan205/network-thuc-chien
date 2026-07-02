@@ -27,7 +27,7 @@ graph TD
   subgraph dataplane ["eBPF replaces toàn bộ iptables"]
     LB["kube-proxy thay thế<br/>→ eBPF LB maps<br/>ClusterIP / NodePort / LoadBalancer"]
     MASQ["bpf.masquerade<br/>→ eBPF SNAT<br/>(không cần iptables MASQUERADE)"]
-    SOCK["socketLB<br/>→ socket-level redirect<br/>same-node: bypass network stack"]
+    SOCK["socketLB<br/>→ socket-level redirect<br/>service LB tại connect(), thay kube-proxy"]
   end
 
   subgraph observability ["Observability — Built-in"]
@@ -306,7 +306,7 @@ cilium version --client
    | `autoDirectNodeRoutes` | `true` | Tự thêm route `10.244.x.0/24 via <node-ip>` |
    | `ipam.mode=cluster-pool` | - | Cilium Operator phân phối Pod CIDR per-node |
    | `bpf.masquerade` | `true` | SNAT bằng eBPF thay iptables MASQUERADE |
-   | `socketLB.enabled` | `true` | LB ở socket level (same-node: bypass toàn bộ network stack) |
+   | `socketLB.enabled` | `true` | LB ở socket level tại `connect()` — rewrite ClusterIP/NodePort → backend Pod, thay kube-proxy |
    | `encryption.type=wireguard` | - | Mã hóa toàn bộ pod-to-pod traffic bằng WireGuard |
    | `hubble.metrics.*` | `{dns,drop,tcp,...}` | Export flow metrics → Prometheus |
 
@@ -421,9 +421,11 @@ cilium connectivity test 2>&1 | tail -20
 
 ---
 
-## Thực nghiệm 6: Sockops demo — So sánh latency same-node vs cross-node
+## Thực nghiệm 6: BPF Host-Routing demo — So sánh latency same-node vs cross-node
 
 Đây là lý do chính Cilium outperform Calico và Flannel với workload same-node.
+
+> **⚠️ Lưu ý version (đã kiểm chứng trên Cilium v1.19.5):** tính năng `sockops` (TCP socket-splice bypass hoàn toàn network stack, dùng prog type `sock_ops`/`sk_msg`) đã bị **loại bỏ từ v1.14** — grep source v1.19.5 cho `sockops`/`sockmap` ra 0 kết quả. Cơ chế same-node speedup thật sự là **BPF host-routing**: TC BPF program (`bpf_lxc.c`) tra map `cilium_lxc`, nếu đích là pod local thì gọi `bpf_redirect_peer()`/`bpf_redirect_neigh()` nhảy thẳng sang veth peer — **vẫn qua veth và TC BPF**, chỉ bỏ qua iptables/netfilter. Field xác nhận: `Routing: ... Host: BPF` trong `cilium status --verbose`.
 
 ### 6.1 — Deploy test pods
 
@@ -462,7 +464,7 @@ echo "Same-node IP: $SAME_IP  |  Cross-node IP: $CROSS_IP"
 ### 6.2 — Latency test
 
 ```bash
-# Same-node (sockops bypass — socket redirect, không qua network stack)
+# Same-node (BPF host-routing — bpf_redirect_peer, vẫn qua veth+TC nhưng bỏ iptables/netfilter)
 kubectl exec same-client -- ping -c 50 $SAME_IP | tail -2
 # rtt min/avg/max/mdev = 0.040/0.065/0.090/0.008 ms   ← ~loopback speed
 
@@ -478,14 +480,14 @@ kubectl exec cross-client -- ping -c 50 $CROSS_IP | tail -2
 ```bash
 # Same-node bandwidth
 kubectl exec same-client -- iperf3 -c $SAME_IP -t 10 -P 4
-# [SUM] 18.4 Gbits/sec   ← Near-loopback (sockops redirect, bare metal)
+# [SUM] 18.4 Gbits/sec   ← Near-loopback (BPF host-routing, bare metal)
 
 # Cross-node bandwidth (note: WireGuard overhead ~5%)
 kubectl exec cross-client -- iperf3 -c $CROSS_IP -t 10 -P 4
 # [SUM] 1.9 Gbits/sec    ← Network-bound + WireGuard overhead
 ```
 
-### 6.4 — Verify sockops counter tăng
+### 6.4 — Verify BPF host-routing active
 
 ```bash
 WORKER1_CILIUM=$(kubectl -n kube-system get pod \
@@ -493,17 +495,19 @@ WORKER1_CILIUM=$(kubectl -n kube-system get pod \
   -o name | head -1)
 
 kubectl -n kube-system exec -it $WORKER1_CILIUM -- \
-  cilium bpf metrics list | grep -iE "sock|redirect|bypass"
-# Bpf Sockops:   Forwarded    X packets   ← Tăng sau same-node test
+  cilium status --verbose | grep "Routing:"
+# Routing:   Network: native   Host: BPF
+# ← "Host: BPF" xác nhận bpf_redirect_peer()/bpf_redirect_neigh() đang active cho same-node.
 ```
+> **💡 Lưu ý:** `cilium bpf metrics list` chỉ có 2 nhóm REASON thật — `Success` (forward) và các mã DROP cụ thể (`Policy denied`...). Không có counter riêng tên "sockops"/"redirect" phân biệt same-node vs cross-node — bằng chứng thực nghiệm là latency/bandwidth đo được ở 6.2/6.3, kết hợp field `Routing: Host:` ở trên.
 
 **Kết quả kỳ vọng:**
 
 | Test | Latency | Bandwidth | Mechanism |
 | :--- | :--- | :--- | :--- |
-| Same-node (sockops) | ~0.06ms | ~18 Gbps | Socket redirect, bỏ qua toàn bộ TCP stack |
+| Same-node (BPF host-routing) | ~0.06ms | ~18 Gbps | `bpf_redirect_peer()` — vẫn qua veth+TC, bỏ iptables/netfilter |
 | Cross-node (WireGuard) | ~0.35ms | ~1.9 Gbps | Native routing + WireGuard encryption |
-| **Ratio** | **~6x** | **~9x** | sockops shortcut tại kernel socket layer |
+| **Ratio** | **~6x** | **~9x** | BPF host-routing shortcut tại TC layer |
 
 ---
 
@@ -526,6 +530,6 @@ kill $HUBBLE_PF_PID 2>/dev/null || pkill -f "port-forward.*hubble" 2>/dev/null |
 
 3. **WireGuard = zero-config mTLS thay thế:** Không cần cert management như Istio mTLS. Cilium tự quản lý keypair và key rotation. Overhead ~5% bandwidth, latency +0.05ms. Verify bằng `cilium encrypt status`.
 
-4. **socketLB = same-node shortcut tại kernel:** BPF sockops program intercept `connect()` syscall → nếu dst Pod cùng node → redirect socket-to-socket, bỏ qua veth + TC + XDP + network stack. Kết quả: ~0.06ms latency vs ~0.35ms cross-node.
+4. **socketLB = service LB tại socket layer, KHÔNG phải cơ chế same-node shortcut:** BPF cgroup hook (`cil_sock4_connect`, prog type `cgroup_sock_addr`) intercept `connect()` syscall → rewrite IP:port ClusterIP/NodePort → backend Pod thật, thay hoàn toàn kube-proxy. Same-node speedup (~0.06ms vs ~0.35ms cross-node) đến từ cơ chế khác: **BPF host-routing** (`bpf_redirect_peer()` ở TC layer, xem Thực nghiệm 6) — vẫn qua veth+TC, chỉ bỏ iptables/netfilter.
 
 5. **Hubble built-in = zero-setup observability:** `hubble observe --verdict DROPPED` cho ngay flow nào bị deny và tại sao — không cần tcpdump, không cần log parser. Dùng xuyên suốt Tập 32–40.

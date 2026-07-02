@@ -72,10 +72,11 @@ multipass shell controlplane
    kubectl exec api-client -- curl -s --max-time 5 http://httpbin.org/ip
    # curl: (28) Connection timed out  ← Blocked!
 
-   # DNS cũng bị block (vì DNS resolve qua world):
+   # DNS cũng bị block:
    kubectl exec api-client -- nslookup httpbin.org
    # ;; connection timed out  ← DNS cũng bị block
    ```
+   > **💡 Lý do DNS cũng bị block:** KHÔNG phải vì "DNS đi qua entity world" (kube-dns là Service/Pod trong cluster, không bao giờ mang identity `world`). Lý do thật: policy này có `egressDeny` (dù chỉ chọn `world`) nên endpoint tự động chuyển sang chế độ **default-deny-egress toàn bộ** — không có bất kỳ allow rule nào (kể cả cho kube-dns) nên mọi egress traffic, kể cả DNS, đều bị chặn.
 
 ---
 
@@ -134,8 +135,9 @@ multipass shell controlplane
 3. Test blocked domain:
    ```bash
    kubectl exec api-client -- curl -s --max-time 5 http://example.com
-   # curl: (28) Connection timed out  ✅ example.com blocked!
+   # curl: (6) Could not resolve host: example.com  ✅ example.com blocked!
    ```
+   > **💡 Vì sao lỗi (6) chứ không phải timeout:** `example.com` không nằm trong allow-list DNS (`rules.dns` chỉ cho `httpbin.org`/`*.httpbin.org`) nên Cilium DNS proxy trả **REFUSED** ngay ở bước resolve (mặc định `--tofqdns-dns-reject-response-code=refused`) — request bị chặn trước cả khi có IP để kết nối, nên curl báo lỗi resolve (exit code 6), không phải timeout kết nối TCP (exit code 28).
 
 4. Verify Cilium đã track IPs từ DNS:
    ```bash
@@ -164,9 +166,17 @@ multipass shell controlplane
 
 2. Verify BPF policy map có các IPs này:
    ```bash
+   # cilium bpf policy list chỉ hiện ID số, không có tên pod literal "api-client"
+   # → lấy endpoint ID của api-client trước
+   ENDPOINT_ID=$(kubectl -n kube-system exec -it $CILIUM_POD -- \
+     cilium endpoint list | grep api-client | awk '{print $1}')
+
    kubectl -n kube-system exec -it $CILIUM_POD -- \
-     cilium bpf policy list | grep -A2 "api-client"
-   # Thấy CIDR entries tương ứng với IPs đã resolve
+     cilium bpf policy get $ENDPOINT_ID
+   # Thấy rule Allow với PREFIX ứng với các IP đã resolve (CIDR /32 per IP)
+
+   # Muốn xem trực tiếp IP ↔ identity mapping:
+   kubectl -n kube-system exec -it $CILIUM_POD -- cilium ipcache list | grep -A1 -B1 "fqdn"
    ```
 
 3. Quan sát DNS proxy events qua Hubble:
@@ -175,7 +185,7 @@ multipass shell controlplane
    sleep 2
 
    # Watch DNS flows
-   hubble observe --pod api-client \
+   hubble observe --server localhost:4245 --pod api-client \
      --protocol dns --follow &
    HUBBLE_PID=$!
 
@@ -193,24 +203,43 @@ multipass shell controlplane
    ```
 
 4. Verify matchPattern wildcard — add subdomain allow:
+
+   > **⚠️ Lưu ý quan trọng:** `spec.egress` của CiliumNetworkPolicy là 1 array thường (không có merge-key) — `kubectl patch --type merge` sẽ **thay thế toàn bộ mảng `egress`**, không phải "thêm vào". Nếu chỉ patch mỗi `toFQDNs`, rule DNS-allow (`toEndpoints: kube-dns`) đã tạo ở Bước 1 (Thực nghiệm 3) sẽ **bị xoá mất**, kéo theo DNS bắt đầu bị REFUSED hoàn toàn — hỏng luôn kịch bản đang test. Cách đúng là áp lại **toàn bộ YAML gốc** kèm thêm entry mới, không dùng partial merge patch:
    ```bash
-   # Test: subdomain của httpbin.org (nếu matchPattern: "*.httpbin.org")
-   # Note: httpbin.org không có subdomain thực, nhưng pattern sẽ match
-   # Để demo: thêm google.com với wildcard
-   kubectl patch ciliumnetworkpolicies api-client-fqdn-policy \
-     --type merge --patch '
-   {
-     "spec": {
-       "egress": [
-         {
-           "toFQDNs": [
-             {"matchName": "httpbin.org"},
-             {"matchPattern": "*.httpbin.org"}
-           ]
-         }
-       ]
-     }
-   }' 2>/dev/null || echo "Note: patch syntax varies — manual edit if needed"
+   kubectl apply -f - <<'EOF'
+   apiVersion: cilium.io/v2
+   kind: CiliumNetworkPolicy
+   metadata:
+     name: api-client-fqdn-policy
+   spec:
+     endpointSelector:
+       matchLabels:
+         app: api-client
+     egress:
+     - toEndpoints:
+       - matchLabels:
+           k8s-app: kube-dns
+           k8s:io.kubernetes.pod.namespace: kube-system
+       toPorts:
+       - ports:
+         - port: "53"
+           protocol: UDP
+         - port: "53"
+           protocol: TCP
+         rules:
+           dns:
+           - matchPattern: "httpbin.org"
+           - matchPattern: "*.httpbin.org"
+     - toFQDNs:
+       - matchName: "httpbin.org"
+       - matchPattern: "*.httpbin.org"
+       toPorts:
+       - ports:
+         - port: "80"
+           protocol: TCP
+         - port: "443"
+           protocol: TCP
+   EOF
    ```
 
 ---
