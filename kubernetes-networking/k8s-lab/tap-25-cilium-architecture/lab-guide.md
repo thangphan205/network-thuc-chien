@@ -92,6 +92,15 @@ multipass shell controlplane
    kubectl wait --for=condition=Ready pod/frontend pod/backend --timeout=60s
    ```
 
+   **⚠️ Quan trọng:** `cilium-agent` chỉ biết endpoint **cục bộ trên Node nó đang chạy** — `cilium endpoint list` không phải view cluster-wide dù tên gọi nghe như vậy. Scheduler có thể đặt `frontend`/`backend` lên `worker1` hay `worker2` bất kỳ, khác Node với `$CILIUM_POD` đã chọn ở Thực nghiệm 1 (`head -1` — thường rơi vào `controlplane`). Phải re-select đúng agent trên Node chứa Pod:
+   ```bash
+   FRONTEND_NODE=$(kubectl get pod frontend -o jsonpath='{.spec.nodeName}')
+   CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium \
+     --field-selector spec.nodeName=$FRONTEND_NODE -o name)
+   echo "Node của frontend: $FRONTEND_NODE — Cilium agent tương ứng: $CILIUM_POD"
+   ```
+   Nếu bỏ qua bước này, `cilium endpoint list`/`cilium bpf endpoint list` chạy nhầm agent sẽ chỉ trả về endpoint nội bộ của Node đó (`reserved:health`, `reserved:host`...) — không thấy `frontend`/`backend` đâu cả, dễ tưởng nhầm Cilium chưa attach Pod.
+
 2. Xem endpoints Cilium đang manage:
    ```bash
    kubectl -n kube-system exec -i $CILIUM_POD -- \
@@ -172,6 +181,11 @@ multipass shell controlplane
    NEW_IP=$(kubectl get pod frontend -o jsonpath='{.status.podIP}')
    echo "Frontend IP sau restart: $NEW_IP"
    # ← IP thay đổi!
+
+   # ⚠️ Pod mới có thể bị scheduler đặt sang Node khác — re-select CILIUM_POD
+   FRONTEND_NODE=$(kubectl get pod frontend -o jsonpath='{.spec.nodeName}')
+   CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium \
+     --field-selector spec.nodeName=$FRONTEND_NODE -o name)
 
    kubectl -n kube-system exec -i $CILIUM_POD -- \
      cilium endpoint list | grep frontend
