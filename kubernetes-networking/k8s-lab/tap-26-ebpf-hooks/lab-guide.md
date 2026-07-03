@@ -4,24 +4,28 @@ Tập này quan sát BPF programs được Cilium attach tại từng hook point
 
 ### Sơ đồ: 3 hook point trên đường đi của packet
 
-```mermaid
-flowchart TB
-  subgraph out ["Chiều RA — Pod gửi đi (outbound)"]
-    A1["App trong Pod<br/>connect()/sendmsg()"] --> A2["🔌 cgroup/socket hook<br/>cil_sock4_connect<br/>chỉ kích hoạt khi gọi tới Service IP"]
-    A2 --> A3["Kernel tạo SKB → gửi qua veth"]
-    A3 --> A4["📡 TC hook — pref ingress (góc nhìn host)<br/>cil_from_container<br/>policy egress + NAT + encap"]
-    A4 --> A5["Rời node<br/>native routing / WireGuard"]
-  end
+**Chiều RA — Pod gửi đi (outbound):**
 
-  subgraph in ["Chiều VÀO — Pod nhận (inbound)"]
-    B1["Packet từ ngoài tới NIC"] --> B2["⚡ XDP hook<br/>driver level, TRƯỚC khi có SKB<br/>chỉ bật khi NodePort acceleration"]
-    B2 --> B3["Kernel tạo SKB"]
-    B3 --> B4["📡 TC hook — pref egress (góc nhìn host)<br/>cil_to_container<br/>policy ingress — DROP tại đây nếu bị deny"]
-    B4 --> B5["Vào Pod"]
-  end
+```mermaid
+flowchart LR
+  A1["App trong Pod<br/>connect()/sendmsg()"] --> A2["🔌 cgroup/socket hook<br/>cil_sock4_connect<br/>chỉ kích hoạt khi gọi tới Service IP"]
+  A2 --> A3["Kernel tạo SKB<br/>gửi qua veth"]
+  A3 --> A4["📡 TC hook — pref ingress (góc nhìn host)<br/>cil_from_container<br/>policy egress + NAT + encap"]
+  A4 --> A5["Rời node<br/>native routing / WireGuard"]
 
   style A2 fill:#1e1e38,stroke:#a78bfa,stroke-width:2px,color:#e2e8f0
   style A4 fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
+```
+
+**Chiều VÀO — Pod nhận (inbound):**
+
+```mermaid
+flowchart LR
+  B1["Packet từ ngoài<br/>tới NIC"] --> B2["⚡ XDP hook<br/>driver level, TRƯỚC khi có SKB<br/>chỉ bật khi NodePort acceleration"]
+  B2 --> B3["Kernel tạo SKB"]
+  B3 --> B4["📡 TC hook — pref egress (góc nhìn host)<br/>cil_to_container<br/>policy ingress — DROP tại đây nếu bị deny"]
+  B4 --> B5["Vào Pod"]
+
   style B2 fill:#2d1b69,stroke:#f59e0b,stroke-width:2px,color:#fde68a
   style B4 fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
 ```
