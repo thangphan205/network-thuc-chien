@@ -261,16 +261,18 @@ multipass shell controlplane
 4. Watch FORWARDED flows:
    ```bash
    kill $HUBBLE_PID 2>/dev/null
-   hubble observe --server localhost:4245 --namespace production \
+   hubble observe --server localhost:4245 \
      --from-pod production/frontend \
      --to-pod production/backend \
      --verdict FORWARDED &
 
    kubectl -n production exec frontend -- nc -zv -w 3 $BACKEND_IP 8080
 
-   # Hubble: production/frontend → production/backend:8080  FORWARDED ✅
+   # Hubble: production/frontend:xxxxx (ID:xxxx) -> production/backend:8080 (ID:xxxx) to-network FORWARDED (TCP Flags: SYN) ✅
+   # (nhiều dòng FORWARDED cho 1 connection — mỗi TCP flag/leg riêng 1 dòng, không chỉ 1 dòng gộp)
    kill %% 2>/dev/null
    ```
+   > **⚠️ Đã kiểm chứng thực tế:** Kết hợp `--namespace production` **cùng lúc** với `--from-pod`/`--to-pod` báo lỗi `filters --from-pod and --namespace cannot be combined` — 2 flag này xung đột trong hubble CLI. Vì `--from-pod`/`--to-pod` đã tự chứa namespace (`production/frontend`), phải **bỏ hẳn** `--namespace` khi dùng chung với 2 flag đó.
 
 ---
 

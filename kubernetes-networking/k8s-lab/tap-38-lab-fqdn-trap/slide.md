@@ -148,7 +148,7 @@ spec:
   # Fix: Allow DNS đến kube-dns
   - toEndpoints:
     - matchLabels:
-        k8s:io.kubernetes.pod.namespace: kube-system
+        io.kubernetes.pod.namespace: kube-system
         k8s-app: kube-dns
     toPorts:
     - ports:

@@ -29,28 +29,31 @@ multipass shell controlplane
    > **💡 Lưu ý version:** Dùng `httpV2` chứ không phải `http` (đã deprecated). Khác biệt quan trọng: dưới flag `http` cũ, metric `http_requests_total` chỉ có label `method/protocol/reporter` — **không có `status`**. Alert rule `HTTPErrorRateHigh` ở Thực nghiệm 4 cần query theo `status=~"5.."`, nếu bật nhầm `http` thay vì `httpV2` thì label đó không tồn tại → query luôn ra rỗng → alert không bao giờ fire (silent fail, không báo lỗi rõ ràng).
 
 2. Verify metrics endpoint active:
+   > **⚠️ Đã kiểm chứng thực tế:** image chính thức `quay.io/cilium/cilium:v1.19.5` **không có `curl` lẫn `wget`** cài sẵn — `kubectl exec $CILIUM_POD -- curl ...` báo lỗi `executable file not found in $PATH`. Cách đáng tin cậy: `port-forward` thẳng port metrics ra host rồi `curl` từ đó (host luôn có curl).
    ```bash
-   CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium \
-     -o name | head -1)
+   CILIUM_POD_NAME=$(kubectl -n kube-system get pod -l k8s-app=cilium \
+     -o jsonpath='{.items[0].metadata.name}')
+   kubectl -n kube-system port-forward pod/$CILIUM_POD_NAME 9965:9965 &
+   sleep 2
 
-   kubectl -n kube-system exec -it $CILIUM_POD -- \
-     curl -s localhost:9965/metrics | grep "^hubble_" | head -15
-   # hubble_drop_total{reason="Policy denied",protocol="TCP"} 0
-   # hubble_flows_processed_total{subtype="to-endpoint",...} 142
-   # hubble_http_requests_total{method="GET",protocol="HTTP/1.1",status="200",...} 0
+   curl -s localhost:9965/metrics | grep "^hubble_" | head -15
+   # hubble_flows_processed_total{protocol="TCP",subtype="to-endpoint",...} 39845
+   # hubble_icmp_total{family="IPv4",type="EchoRequest"} 11397
+   # (hubble_drop_total/hubble_http_requests_total CHƯA xuất hiện cho tới khi có ít
+   #  nhất 1 sự kiện thật — Prometheus counter không tạo series rỗng trước)
    ```
    > **💡 Lưu ý label:** `hubble_drop_total` chỉ có label `reason`/`protocol` mặc định — không có label `direction` trừ khi cấu hình thêm `labelsContext=traffic_direction` (lab này không bật), và nếu bật thì tên label đúng là `traffic_direction`, không phải `direction`.
 
 3. Xem toàn bộ metric names:
    ```bash
-   kubectl -n kube-system exec -it $CILIUM_POD -- \
-     curl -s localhost:9965/metrics | grep "^# HELP hubble_" | awk '{print $3}'
-   # hubble_drop_total
+   curl -s localhost:9965/metrics | grep "^# HELP hubble_" | awk '{print $3}'
+   kill %1 2>/dev/null   # đóng port-forward tạm đã mở ở bước 2
    # hubble_flows_processed_total
-   # hubble_http_requests_total
-   # hubble_http_request_duration_seconds
-   # hubble_tcp_flags_total
+   # hubble_icmp_total
+   # hubble_lost_events_total
    # hubble_dns_queries_total
+   # hubble_drop_total          ← xuất hiện sau khi có traffic bị drop (Thực nghiệm 3)
+   # hubble_http_requests_total ← xuất hiện sau khi có traffic HTTP
    # ...
    ```
 
@@ -228,8 +231,13 @@ multipass shell controlplane
      groups:
      - name: hubble.rules
        rules:
+       # ⚠️ Đã kiểm chứng thực tế: giá trị label `reason` là SCREAMING_SNAKE_CASE
+       # ("POLICY_DENIED", "DROP_REASON_UNKNOWN", "UNSUPPORTED_L3_PROTOCOL"...),
+       # KHÔNG phải "Policy denied" (title case) như bản CiliumNetworkPolicy/Hubble
+       # observe hiển thị. Query với "Policy denied" trả về rỗng — alert sẽ KHÔNG
+       # BAO GIỜ fire, silent fail y hệt kiểu lỗi httpV2/http đã cảnh báo ở trên.
        - alert: HighNetworkDropRate
-         expr: rate(hubble_drop_total{reason="Policy denied"}[5m]) > 5
+         expr: rate(hubble_drop_total{reason="POLICY_DENIED"}[5m]) > 5
          for: 1m
          labels:
            severity: warning
@@ -259,17 +267,20 @@ multipass shell controlplane
    ```
 
 3. Generate traffic để trigger HighNetworkDropRate:
-   > **💡 Lưu ý timing:** Traffic bị policy DROP không có phản hồi (không RST) nên mỗi lần `nc -zv -w 1` phải đợi hết timeout 1s trước khi thử lại — vòng lặp 200 lần thực chất kéo dài **~3-4 phút** (200 × ~1.05s), đủ dài để giữ rate cao suốt cửa sổ `for: 1m` của rule. Nếu bạn rút ngắn số lần lặp hoặc bỏ `-w 1`, hãy đảm bảo traffic vẫn chạy liên tục ít nhất ~70-90s để alert có đủ thời gian chuyển từ PENDING sang FIRING.
+   > **⚠️ Đã kiểm chứng thực tế — vòng lặp TUẦN TỰ không bao giờ đủ rate:** Traffic bị policy DROP không có phản hồi (không RST) nên mỗi lần `nc -zv -w 1` phải đợi hết timeout 1s trước khi thử lại. Một vòng `for` chạy tuần tự (1 lệnh `nc` tại 1 thời điểm) do đó bị **giới hạn cứng ở ~1 request/giây** bất kể lặp bao nhiêu lần hay sleep bao lâu — đo thực tế chỉ ra `rate() ≈ 0.87/s`, KHÔNG BAO GIỜ vượt ngưỡng `> 5` của rule dù chạy bao lâu. Phải chạy **nhiều tiến trình `nc` song song** (background subshells) để đẩy rate thật sự vượt 5/s — đã kiểm chứng: 10-15 vòng song song cho rate 10-18/s, đủ để alert chuyển PENDING → FIRING.
    ```bash
    kubectl -n production exec attacker -- bash -c "
-     for i in \$(seq 1 200); do
-       nc -zv -w 1 $TARGET_IP 8080 &>/dev/null
-       sleep 0.05
+     end=\$((SECONDS+90))
+     while [ \$SECONDS -lt \$end ]; do
+       for j in \$(seq 1 10); do
+         (for i in \$(seq 1 5); do nc -zv -w 1 $TARGET_IP 8080 &>/dev/null; done) &
+       done
+       wait
      done
    " &
 
-   echo "Chờ 60 giây để alert PENDING → FIRING..."
-   sleep 65
+   echo "Chờ 90 giây để alert PENDING → FIRING..."
+   sleep 90
 
    # Xem alert status:
    curl -s 'http://localhost:9090/api/v1/alerts' \

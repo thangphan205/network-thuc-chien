@@ -208,19 +208,23 @@ multipass shell controlplane
    sleep 3
    kill $HUBBLE_PID 2>/dev/null
 
-   # Hubble output:
-   # production/frontend → production/backend  HTTP GET /             200 FORWARDED
-   # production/frontend → production/backend  HTTP POST /api/users   501 FORWARDED  ← qua được Envoy, backend tự trả lỗi
-   # production/frontend → production/backend  HTTP POST /admin/users 403 DROPPED    ← Envoy chặn trước khi tới backend
+   # Hubble output thật (2 dòng/transaction: http-request rồi http-response, dùng "->"/"<-", không phải "→"):
+   # frontend:xxxxx -> backend:8080  http-request  FORWARDED  (GET /)
+   # frontend:xxxxx <- backend:8080  http-response FORWARDED  (HTTP/1.1 200 ... (GET /))
+   # frontend:xxxxx -> backend:8080  http-request  FORWARDED  (POST /api/users)
+   # frontend:xxxxx <- backend:8080  http-response FORWARDED  (HTTP/1.1 501 ... (POST /api/users))
+   # frontend:xxxxx -> backend:8080  http-request  DROPPED    (POST /admin/users)          ← request bị Envoy chặn
+   # frontend:xxxxx <- backend:8080  http-response FORWARDED  (HTTP/1.1 403 ... (POST /admin/users)) ← Envoy TỰ trả 403, dòng này verdict FORWARDED chứ không phải DROPPED!
    ```
+   > **⚠️ Đã kiểm chứng thực tế:** Mỗi request/response là 2 dòng Hubble riêng biệt, không gộp 1 dòng như bảng đơn giản hoá ở trên. Quan trọng hơn: dòng chứa mã `403` có verdict **FORWARDED** (đó là response Envoy tự sinh ra và forward về client), còn dòng có verdict **DROPPED** chỉ chứa `http-request ... (POST /admin/users)`, **không hề có mã 403** trong đó. Xem bằng chứng ở bước 4 dưới.
 
 4. Xem DROPPED HTTP flows riêng:
    ```bash
    hubble observe --server localhost:4245 --namespace production \
      --verdict DROPPED --protocol http
-   # production/frontend → production/backend:8080  HTTP POST /admin/users
-   # 403  DROPPED  Policy denied
+   # production/frontend:xxxxx -> production/backend:8080 (ID:xxxx) http-request DROPPED (HTTP/1.1 POST http://<ip>:8080/admin/users)
    ```
+   > **⚠️ Đã kiểm chứng thực tế — SỬA lại claim ở trên:** filter `--verdict DROPPED --protocol http` chỉ trả về đúng dòng `http-request DROPPED` (method + path), **không có mã `403`** trong dòng này (403 nằm ở dòng `http-response` riêng, verdict `FORWARDED`, bị filter `--verdict DROPPED` loại bỏ). Muốn thấy status `403` phải bỏ filter `--verdict` hoặc dùng `--verdict FORWARDED` để bắt dòng response.
 
 ---
 

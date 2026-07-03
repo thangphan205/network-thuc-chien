@@ -102,7 +102,7 @@ multipass shell controlplane
      - toEndpoints:
        - matchLabels:
            k8s-app: kube-dns
-           k8s:io.kubernetes.pod.namespace: kube-system
+           io.kubernetes.pod.namespace: kube-system
        toPorts:
        - ports:
          - port: "53"
@@ -128,9 +128,10 @@ multipass shell controlplane
 
 2. Test allowed domain:
    ```bash
-   kubectl exec api-client -- curl -s --max-time 10 http://httpbin.org/ip
+   kubectl exec api-client -- curl -s --max-time 10 "http://httpbin.org./ip"
    # {"origin": "x.x.x.x"}  ✅ httpbin.org accessible!
    ```
+   > **⚠️ Đã kiểm chứng thực tế — vì sao có dấu `.` cuối `httpbin.org.`:** Nếu gõ `http://httpbin.org/ip` (KHÔNG có dấu chấm cuối) như bản trước đây, lệnh sẽ **báo lỗi resolve** (`curl: (6) Could not resolve host`) dù policy hoàn toàn đúng! Lý do: `/etc/resolv.conf` trong pod có `options ndots:5` (chuẩn K8s) + `search default.svc.cluster.local ...`. Vì `httpbin.org` chỉ có 1 dấu chấm (< ndots 5), resolver thử ghép domain gợi ý TRƯỚC (`httpbin.org.default.svc.cluster.local`...) — tên ghép này không khớp `rules.dns.matchPattern` nên bị Cilium DNS proxy trả `REFUSED`. Resolver libc trong image `nicolaka/netshoot` (Alpine/musl) coi `REFUSED` là lỗi cứng và **dừng luôn**, không thử tiếp tên trần `httpbin.org` — khác hẳn hành vi với `NXDOMAIN`. Thêm dấu `.` cuối domain (FQDN tuyệt đối) bỏ qua hoàn toàn cơ chế `search`/`ndots`, query thẳng `httpbin.org` — đây là cách test đáng tin cậy duy nhất với setup mặc định này.
 
 3. Test blocked domain:
    ```bash
@@ -141,14 +142,21 @@ multipass shell controlplane
 
 4. Verify Cilium đã track IPs từ DNS:
    ```bash
+   # PHẢI lấy cilium-agent trên đúng node đang chạy api-client — fqdn cache là
+   # per-endpoint, per-node. Agent ở node khác sẽ trả bảng RỖNG dù DNS đã resolve OK.
+   NODE=$(kubectl get pod api-client -o jsonpath='{.spec.nodeName}')
    CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium \
-     -o name | head -1)
+     --field-selector spec.nodeName=$NODE -o name)
 
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      cilium fqdn cache list
-   # httpbin.org → [34.239.x.x, 54.175.x.x, 18.232.x.x]  TTL: 30s
-   # ← Nhiều IPs! CDN multi-IP được handle tự động
+   # Endpoint  Source  FQDN           TTL  ExpirationTime            IPs
+   # 109       lookup  httpbin.org.   25   2026-07-03T07:29:58.510Z  3.91.165.171,13.223.158.32,100.59.144.143,...
+   # ← Nhiều IPs! CDN multi-IP được handle tự động. Lưu ý: cột IPs nối bằng dấu phẩy
+   #   trên 1 dòng, không phải dạng "domain → [list]" như ví dụ minh hoạ; FQDN cũng
+   #   có dấu `.` cuối (`httpbin.org.`), khớp đúng tên tuyệt đối đã resolve.
    ```
+   > **⚠️ Đã kiểm chứng thực tế:** Dùng `$CILIUM_POD` kiểu cũ (`-o name | head -1`, không chỉ định node) sẽ trỏ nhầm agent (vd controlplane) trong khi `api-client` chạy ở worker — `cilium fqdn cache list` trên agent sai node trả về **bảng rỗng** dù DNS đã resolve thành công ở node đúng.
 
 ---
 
@@ -156,12 +164,12 @@ multipass shell controlplane
 
 **Trên `controlplane`:**
 
-1. Xem số IPs được track cho httpbin.org:
+1. Xem số IPs được track cho httpbin.org (dùng lại `$CILIUM_POD` đã trỏ đúng node ở Thực nghiệm 3.4):
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      cilium fqdn cache list | grep httpbin
-   # httpbin.org → [54.x.x.x, 34.x.x.x, 18.x.x.x, ...]
-   # ← Có thể 3-10 IPs tùy CDN rotation
+   # 109  lookup  httpbin.org.  25  2026-...  3.91.165.171,13.223.158.32,100.59.144.143,...
+   # ← Có thể 3-10 IPs tùy CDN rotation, nối bằng dấu phẩy trên 1 dòng
    ```
 
 2. Verify BPF policy map có các IPs này:
@@ -219,7 +227,7 @@ multipass shell controlplane
      - toEndpoints:
        - matchLabels:
            k8s-app: kube-dns
-           k8s:io.kubernetes.pod.namespace: kube-system
+           io.kubernetes.pod.namespace: kube-system
        toPorts:
        - ports:
          - port: "53"

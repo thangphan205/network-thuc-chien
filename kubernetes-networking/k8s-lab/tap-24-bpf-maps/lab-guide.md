@@ -80,7 +80,7 @@ multipass shell controlplane
    - **`name cilium_policy_v...`**: Tên của Map policy (bị cắt còn `cilium_policy_v`), giúp lập trình viên và CLI dễ nhận diện.
    - **`key`**: Cấu trúc key gồm security identity + port/proto + traffic direction + prefix length (cho LPM lookup).
    - **`value`**: Verdict (Allow/Deny) + thống kê packets/bytes cho rule đó.
-   - **`max_entries`**: Giới hạn số lượng bản ghi tối đa trong Map. Ví dụ `cilium_ct4_glob` (hoặc `cilium_ct_tcp4`) có thể chứa tới 524.288 kết nối đồng thời.
+   - **`max_entries`**: Giới hạn số lượng bản ghi tối đa trong Map. Ví dụ `cilium_ct4_glob` (hoặc `cilium_ct_tcp4`) mặc định thường ở mức 131.072 kết nối đồng thời (đã kiểm chứng thực tế; con số cụ thể phụ thuộc `conntrack-gc-max-interval`/cấu hình, có tài liệu ghi 524.288 cho cluster lớn hơn — đừng lấy số tuyệt đối, chỉ cần biết đây là giới hạn có thể chỉnh).
 
    **🎯 Dùng khi nào trong thực tế:** Đây là lệnh đầu tiên chạy khi troubleshoot Cilium — kiểm tra agent sau khi restart/upgrade có tạo đủ map cần thiết chưa (map thiếu → tính năng liên quan không hoạt động, ví dụ thiếu `cilium_lb4_*` → LoadBalancer/NodePort không route được). Cũng dùng để phát hiện sớm rủi ro **hết dung lượng map** (map đầy khi số connection/policy vượt `max_entries` → BPF program không ghi được entry mới, silent drop khó phát hiện qua log K8s).
 
@@ -95,11 +95,18 @@ multipass shell controlplane
    ```bash
    kubectl -n kube-system exec -i $CILIUM_POD -- \
      bpftool map list | grep -E "^[0-9]+:" | awk '{print $2}' | sort | uniq -c | sort -rn
-   # lpm_trie      15  ← Policy maps (per-endpoint)
-   # lru_hash       4  ← Conntrack maps
-   # array         20  ← Config/calls maps
-   # percpu_hash    3  ← Metrics maps
+   # 11 hash            ← ipcache lookup, ratelimit, node map...
+   #  8 prog_array      ← Tail-call tables (cilium_call_policy...) — xem Tập 26
+   #  8 lru_hash        ← Conntrack maps (ct4/ct6, cả TCP lẫn non-TCP)
+   #  8 array           ← Config/calls maps
+   #  4 lpm_trie        ← Policy maps (per-endpoint) + ipcache
+   #  3 percpu_array
+   #  2 perf_event_array
+   #  1 percpu_hash     ← Metrics map
+   #  1 lru_percpu_hash
+   #  1 hash_of_maps
    ```
+   > **💡 Đã kiểm chứng thực tế — mô hình "4 loại map" ở đầu bài chỉ là rút gọn để dễ hiểu:** Cilium thật dùng **hơn 10 loại map** khác nhau, không chỉ 4. Đáng chú ý nhất là `prog_array` (8 map) — đây là các bảng tail-call (`cilium_calls_*`, `cilium_call_policy`...) mà TC BPF program dùng để nhảy giữa các hàm `tail_*` đã thấy ở Tập 26, không nằm trong sơ đồ 4-map ở đầu bài. Số lượng cụ thể của từng loại thay đổi theo số pod/policy đang chạy trên node — đừng lấy con số tuyệt đối, chỉ dùng để nắm xu hướng tăng theo tải.
 
    **🎯 Dùng khi nào trong thực tế:** 2 lệnh đếm/phân loại này dùng cho **capacity planning** — theo dõi số map tăng tuyến tính theo số endpoint (pod) để ước lượng bộ nhớ kernel tiêu tốn (mỗi endpoint mới kéo theo vài map riêng). Cũng dùng để phát hiện **map leak**: nếu pod bị xoá liên tục nhưng tổng số map không giảm tương ứng, khả năng cilium-agent không dọn map khi endpoint bị xoá — dấu hiệu bug cần báo Cilium.
 
@@ -161,11 +168,9 @@ multipass shell controlplane
    ```bash
    kubectl -n kube-system exec -i $CILIUM_POD -- \
      cilium bpf ct list global | head -20
-   # TCP IN  10.244.2.9:45123 -> 10.244.2.3:8080
-   #   expires=3720 Packets=42 Bytes=8764 RxFlagsSeen=0x1e LastRxReport=1719900000
-   #   TxFlagsSeen=0x1e LastTxReport=1719900000 Flags=0x0010 RevNAT=0
-   #   SourceSecurityID=27890 BackendID=0 NatPort=0
+   # TCP IN 10.244.2.9:45123 -> 10.244.2.3:8080 expires=3720 Packets=42 Bytes=8764 RxFlagsSeen=0x1e LastRxReport=1719900000 TxFlagsSeen=0x1e LastTxReport=1719900000 Flags=0x0010 [ SeenNonSyn ] RevNAT=0 SourceSecurityID=27890 BackendID=0 NatPort=0
    ```
+   > **💡 Lưu ý format (đã kiểm chứng thực tế):** Toàn bộ 1 entry nằm trên **1 dòng duy nhất** rất dài (không xuống dòng thành 3-4 dòng như cách trình bày dễ đọc ở trên) — đừng ngạc nhiên khi thấy dòng tràn màn hình terminal. Có thể thấy thêm cụm `[ RxClosing TxClosing SeenNonSyn ]` (tên các cờ TCP đã set, diễn giải từ `RxFlagsSeen`/`TxFlagsSeen`, không phải field riêng).
 
    **💡 Giải thích dòng output:**
    - **`TCP IN`**: Gói tin thuộc giao thức TCP đi vào (ingress).

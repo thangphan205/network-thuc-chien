@@ -153,7 +153,7 @@ egress:
 - toEndpoints:
   - matchLabels:
       k8s-app: kube-dns
-      k8s:io.kubernetes.pod.namespace: kube-system
+      io.kubernetes.pod.namespace: kube-system
   toPorts:
   - ports:
     - port: "53"

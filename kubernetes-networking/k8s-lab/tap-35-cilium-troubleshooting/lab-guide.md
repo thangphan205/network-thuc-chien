@@ -29,21 +29,23 @@ multipass shell controlplane
    ```bash
    # Chạy và grep từng phần quan trọng:
    kubectl -n kube-system exec -it $CILIUM_POD -- \
-     cilium status | grep -E "Kubernetes:|Cilium:|IPAM:|Unreachable"
+     cilium status | grep -E "Kubernetes:|Cilium:|IPAM:|Cluster health"
 
-   # Expected output:
-   # Kubernetes:         Ok   1.29+ (v1.29.x)
+   # Expected output (đã kiểm chứng thực tế):
+   # Kubernetes:         Ok   1.36 (v1.36.2) [linux/amd64]
    # Cilium:             Ok   1.19.5 (v1.19.5-xxxxxxx)
-   # IPAM:               IPv4: x/254 allocated
-   # Unreachable nodes:  0   ← QUAN TRỌNG: phải là 0
+   # IPAM:               IPv4: 2/254 allocated from 10.244.0.0/24
+   # Cluster health:     3/3 reachable   ← QUAN TRỌNG: phải bằng tổng số node
    ```
+   > **⚠️ Đã kiểm chứng thực tế — KHÔNG có field `Unreachable nodes:`:** field thật để check node connectivity là **`Cluster health: X/Y reachable`** (kèm timestamp + probe interval), không phải dòng `Unreachable nodes: 0` như bản cũ mô tả. `grep -i "Unreachable"` sẽ ra **rỗng** trên Cilium v1.19.5 — phải grep `"Cluster health"` mới đúng.
    > **💡 Lưu ý version (đã kiểm chứng trên Cilium v1.19.5):** không có field `BPF:`/`Sockops:` đứng riêng trong `cilium status` (không tồn tại trong formatter thật). Field `BPF Maps: dynamic sizing` chỉ hiện với `--verbose`/`--all-*`. Field thay `Sockops` cũ là `Socket LB` — cũng chỉ hiện với `--verbose`, trong khối `KubeProxyReplacement Details`:
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      cilium status --verbose | grep -E "BPF Maps:|Socket LB:"
-   # BPF Maps:    dynamic sizing: true
+   # BPF Maps:    dynamic sizing: on (ratio: 0.002500)
    # Socket LB:   Enabled
    ```
+   > **⚠️ Đã kiểm chứng thực tế:** giá trị thật của `BPF Maps: dynamic sizing` là `on (ratio: 0.xxxxxx)`, không phải `true`/`false` như bản minh hoạ cũ.
 
 3. Xem tất cả Cilium agent pods health:
    ```bash
@@ -55,7 +57,7 @@ multipass shell controlplane
        -o name | head -1)
      echo "=== $NODE ($POD) ==="
      kubectl -n kube-system exec -it $POD -- \
-       cilium status 2>/dev/null | grep -E "Cilium:|Unreachable"
+       cilium status 2>/dev/null | grep -E "Cilium:|Cluster health"
    done
    ```
 
@@ -151,17 +153,20 @@ multipass shell controlplane
    > **💡 Lưu ý:** Cột thật không có "POD NAME" riêng — tên pod chỉ suy ra được gián tiếp qua nhãn trong cột `LABELS` (`k8s:app=backend`...) khi chạy full output không rút gọn, hoặc đối chiếu `IPv4` với `kubectl get pod -o wide`.
 
 2. Xem BPF policy map cho backend endpoint:
+   > **⚠️ Đã kiểm chứng thực tế — `grep "backend"` theo TÊN có thể lấy NHẦM endpoint:** trên cluster đã chạy lâu (không fresh), rất dễ có nhiều pod khác namespace cùng label `app=backend` còn sót lại từ lần lab trước (vd 1 pod `backend` ở namespace `default` tồn tại từ trước). `grep backend | head -1` không phân biệt namespace, có thể lấy nhầm ID của pod **hoàn toàn khác**, dẫn tới đọc sai policy map và kết luận debug sai. Cách chính xác là match theo **IP** của đúng pod đang cần debug:
    ```bash
-   # Lấy endpoint ID của backend
+   BACKEND_IP=$(kubectl -n production get pod backend -o jsonpath='{.status.podIP}')
    BACKEND_EP=$(kubectl -n kube-system exec -it $CILIUM_POD -- \
-     cilium endpoint list | grep "backend" | awk '{print $1}' | head -1)
+     cilium endpoint list | grep "$BACKEND_IP" | awk '{print $1}')
    echo "Backend endpoint ID: $BACKEND_EP"
 
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      cilium bpf policy get $BACKEND_EP
-   # (no entries)
+   # POLICY  DIRECTION  LABELS (source:key[=value])  PORT/PROTO  PROXY PORT  BYTES  PACKETS
+   # Allow   Ingress    reserved:host                 ANY         NONE        -      -
    ```
-   > **💡 Lưu ý:** `cilium bpf policy list` KHÔNG nhận argument endpoint — subcommand đúng để xem policy map của 1 endpoint cụ thể là `cilium bpf policy get <endpoint-id>`. Map policy chỉ là **allow-list**: default-deny ngầm định (không có entry = drop), nên khi chưa có allow rule nào thì map **rỗng** — không có dòng "Deny" tường minh nào được ghi (`Deny` không phải verdict thật sự xuất hiện trong output).
+   > **⚠️ Đã kiểm chứng thực tế — SỬA claim "(no entries)":** map **không hề rỗng hoàn toàn** ngay cả khi default-deny đang áp và chưa có allow rule nào cho traffic thường — luôn có sẵn 1 dòng `Allow Ingress reserved:host` mặc định (Cilium tự cho phép host/health-check access bất kể NetworkPolicy). "Rỗng" ở đây nghĩa là **không có entry nào khác ngoài `reserved:host`**, không phải bảng trống trơn.
+   > **💡 Lưu ý:** `cilium bpf policy list` KHÔNG nhận argument endpoint — subcommand đúng để xem policy map của 1 endpoint cụ thể là `cilium bpf policy get <endpoint-id>`. Map policy chỉ là **allow-list**: default-deny ngầm định (không có entry tương ứng = drop), nên khi chưa có allow rule nào thì map chỉ có `reserved:host` — không có dòng "Deny" tường minh nào được ghi (`Deny` không phải verdict thật sự xuất hiện trong output).
 
 3. Add allow policy và verify policy map update:
    ```bash
@@ -219,18 +224,14 @@ multipass shell controlplane
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      cilium-health status
-   # Nodes:
-   #   controlplane (localhost):
-   #     Host connectivity:     Ok   Xms
-   #     Endpoint connectivity: Ok   Xms
-   #   worker1:
-   #     Host connectivity:     Ok   Xms
-   #     Endpoint connectivity: Ok   Xms
-   #   worker2:
-   #     Host connectivity:     Ok   Xms
-   #     Endpoint connectivity: Ok   Xms
-   # ← Tất cả OK = cluster healthy
+   # Cluster health:              3/3 reachable    (2026-07-03T07:52:07Z)   (Probe interval: ~2m)
+   # Name                         IP               Node                     Endpoints
+   #   controlplane (localhost)   172.25.216.210   1/1                      1/1
+   #   worker1                    172.25.216.150   1/1                      1/1
+   #   worker2                    172.25.216.64    1/1                      1/1
+   # ← 3/3 reachable + mọi hàng Node/Endpoints đều x/x đầy đủ = cluster healthy
    ```
+   > **⚠️ Đã kiểm chứng thực tế — format khác hẳn bản minh hoạ cũ:** `cilium-health status` (Cilium v1.19.5) xuất ra 1 dòng tổng `Cluster health: X/Y reachable` + bảng cột `Name/IP/Node/Endpoints`, KHÔNG phải cấu trúc nested `Host connectivity:`/`Endpoint connectivity:` lồng theo từng node như tài liệu cũ mô tả.
 
 3. Quick connectivity test (Cilium built-in):
 
@@ -261,6 +262,6 @@ pkill -f "port-forward" 2>/dev/null || true
 ## ✅ Tổng kết
 
 1. **5-level hierarchy:** Start từ Level 1 (health) → move down chỉ khi cần. Hầu hết incidents resolve ở Level 2 (Hubble) hoặc Level 3 (policy map).
-2. **`cilium status` chỉ số quan trọng:** `Unreachable nodes: 0` (network OK), `BPF Maps: dynamic sizing` (`--verbose`, kernel BPF OK), `Socket LB: Enabled` (`--verbose`, thay cho `Sockops` cũ — performance optimization active).
+2. **`cilium status` chỉ số quan trọng:** `Cluster health: X/Y reachable` (network OK — không phải field `Unreachable nodes` như bản cũ), `BPF Maps: dynamic sizing` (`--verbose`, kernel BPF OK), `Socket LB: Enabled` (`--verbose`, thay cho `Sockops` cũ — performance optimization active).
 3. **Hubble drop reasons:** `"Policy denied"` → Label/policy issue. `"MTU exceeded"` → MTU misconfiguration. `"No route"` → Routing issue. Không cần infer như Calico.
 4. **`cilium bpf policy get <endpoint-id>`:** Xem BPF policy map entries trực tiếp — verify policy đã converge chưa (quan trọng hơn kubectl get networkpolicy vì đó là desired state, không phải actual enforcement).

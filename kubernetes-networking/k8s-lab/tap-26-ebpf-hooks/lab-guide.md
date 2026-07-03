@@ -17,20 +17,27 @@ flowchart LR
   style A4 fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
 ```
 
-**Chiều VÀO — Pod nhận (inbound):**
+**Chiều VÀO — Pod nhận (inbound, cross-node):**
 
 ```mermaid
 flowchart LR
-  B1["Packet từ ngoài<br/>tới NIC"] --> B2["⚡ XDP hook<br/>driver level, TRƯỚC khi có SKB<br/>chỉ bật khi NodePort acceleration"]
+  B1["Packet từ node khác<br/>tới NIC vật lý (ens3)"] --> B2["⚡ XDP hook<br/>driver level, TRƯỚC khi có SKB<br/>chỉ bật khi NodePort acceleration"]
   B2 --> B3["Kernel tạo SKB"]
-  B3 --> B4["📡 TC hook — pref egress (góc nhìn host)<br/>cil_to_container<br/>policy ingress — DROP tại đây nếu bị deny"]
-  B4 --> B5["Vào Pod"]
+  B3 --> B4["📡 TC hook — tcx/ingress trên ens3<br/>cil_from_netdev<br/>tra policy đích + tail-call → DROP tại đây nếu bị deny"]
+  B4 --> B5["bpf_redirect_peer()<br/>nhảy thẳng vào Pod (nếu Allow)"]
 
   style B2 fill:#2d1b69,stroke:#f59e0b,stroke-width:2px,color:#fde68a
   style B4 fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
 ```
 
-**Điểm dễ nhầm nhất:** tên `ingress`/`egress` của TC filter là theo **góc nhìn host/veth**, không phải góc nhìn Pod. Packet Pod gửi ra lại nằm ở filter `ingress` (`cil_from_container`); packet vào Pod nằm ở filter `egress` (`cil_to_container`). Cgroup/socket hook chỉ chạy phía **gửi** (trước khi packet tồn tại), không có hook tương ứng phía nhận.
+> **⚠️ Đã kiểm chứng thực tế trên kernel 6.8 (Ubuntu 26.04) + Cilium v1.19.5 — khác đáng kể so với mô hình cũ:** hook `cil_to_container` (packet đi VÀO pod) **không attach trực tiếp lên veth của pod đích** như tài liệu Cilium đời cũ mô tả. `sudo bpftool net show` trên node thật cho thấy mỗi `lxcXXXX` chỉ có **1** hook duy nhất: `tcx/ingress cil_from_container`. Policy cho packet đi vào 1 pod được enforce ngay tại hook **đầu tiên chạm packet**, rồi tail-call nội bộ + `bpf_redirect_peer()` thẳng vào pod đích — không có hook riêng chạy trên veth của pod nhận:
+> - **Same-node** (2 pod cùng node): hook đầu tiên chạm packet chính là `cil_from_container` của **pod nguồn** — nó tự tra cả 2 chiều policy (nguồn + đích) rồi mới quyết định redirect hay drop.
+> - **Cross-node** (như sơ đồ trên): hook đầu tiên là `cil_from_netdev` trên NIC vật lý (`ens3`) của node đích.
+> - **Traffic qua WireGuard**: hook đầu tiên là `cil_from_wireguard` trên `cilium_wg0`, sau khi gói đã được giải mã.
+>
+> **Đính chính:** `cil_to_container` **không xuất hiện** trong `bpftool prog list` (đã kiểm chứng thực tế — `grep cil_to_container` ra 0 kết quả trên cả 3 node). Logic của nó không tồn tại như 1 BPF program riêng biệt được tail-call — compiler của Cilium v1.19.5 đã inline logic này thẳng vào bên trong các hook `cil_from_container`/`cil_from_netdev`/`cil_from_wireguard`. Xem bằng chứng thực tế + chi tiết ở Thực nghiệm 2.
+
+**Điểm dễ nhầm nhất:** tên `ingress`/`egress` của TC filter là theo **góc nhìn host/veth**, không phải góc nhìn Pod. Cgroup/socket hook chỉ chạy phía **gửi** (trước khi packet tồn tại), không có hook tương ứng phía nhận. Và như lưu ý trên — "hook nhận" cho pod đích, về bản chất, thường không tồn tại như 1 điểm attach riêng.
 
 ## 🛠 Yêu cầu chuẩn bị
 - Cilium đang chạy trên cluster (từ Tập 23).
@@ -69,8 +76,10 @@ multipass shell controlplane
    # Xem TC programs (sched_cls):
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      bpftool prog list | grep -B1 "sched_cls" | grep "name"
-   # name cil_from_container  ← TC ingress (packet RA từ pod, từ pod ra ngoài)
-   # name cil_to_container    ← TC egress (packet VÀO pod, từ ngoài vào)
+   # name cil_from_container  ← attach trực tiếp trên veth mỗi pod (packet RA từ pod)
+   # (KHÔNG có name cil_to_container trong output thật — đã kiểm chứng, 0 kết quả.
+   #  Logic được inline thẳng vào cil_from_container/cil_from_netdev/cil_from_wireguard,
+   #  không tồn tại như 1 program riêng để tail-call — xem Thực nghiệm 2)
    # name cil_from_host       ← TC từ host network
    # name cil_to_host         ← TC lên host network
 
@@ -89,12 +98,16 @@ multipass shell controlplane
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      bpftool prog list | grep -E "^[0-9]+:" | awk '{print $2}' | sort | uniq -c | sort -rn
-   # 18 sched_cls          ← 1 TC ingress + 1 TC egress per endpoint/interface
+   # 18 sched_cls          ← đa số là 1 program/pod (mỗi lxcXXXX chỉ 1 hook
+   #                          cil_from_container) + vài program 2 chiều trên
+   #                          interface hạ tầng (ens3, cilium_wg0, cilium_host)
    # 12 cgroup_sock_addr   ← connect4/6, sendmsg4/6, recvmsg4/6, bind4/6, post_bind4/6...
    #  1 xdp
    ```
 
-   **🎯 Dùng khi nào trong thực tế:** `sched_cls` tăng tuyến tính theo số pod trên node (mỗi endpoint thêm ~2 program) — dùng con số này cho capacity estimate tương tự đếm BPF map ở Tập 24. Cũng dùng phát hiện **program leak**: pod bị xoá liên tục nhưng số `sched_cls` không giảm tương ứng → cilium-agent không dọn program khi endpoint mất, cần báo bug.
+   > **💡 Con số thật không còn "2× per endpoint" như bản cũ:** với kernel hỗ trợ tcx (≥6.6), mỗi pod chỉ cần **1** program netdev-attached (`cil_from_container`), không phải 2 — xem Thực nghiệm 2 để thấy bằng chứng `bpftool net show` thật. Công thức capacity ở mục dưới cần đọc lại theo hướng này.
+
+   **🎯 Dùng khi nào trong thực tế:** `sched_cls` tăng tuyến tính theo số pod trên node (mỗi endpoint thêm ~1 program trên kernel hỗ trợ tcx — xem lưu ý trên) — dùng con số này cho capacity estimate tương tự đếm BPF map ở Tập 24. Cũng dùng phát hiện **program leak**: pod bị xoá liên tục nhưng số `sched_cls` không giảm tương ứng → cilium-agent không dọn program khi endpoint mất, cần báo bug.
 
 ---
 
@@ -102,17 +115,28 @@ multipass shell controlplane
 
 **Bước 1 trên `controlplane`, bước 2 trở đi SSH sang node đang chạy pod:**
 
-1. Deploy một test pod và lấy Pod IP + tên Node:
+1. Deploy một test pod, lấy Pod IP + tên Node, rồi tra `ifindex` thật của veth qua chính map của Cilium (KHÔNG dùng kernel route — xem lý do ở lưu ý ngay dưới):
    ```bash
    kubectl run hook-test --image=nicolaka/netshoot -- sleep infinity
    kubectl wait --for=condition=Ready pod/hook-test --timeout=60s
 
    POD_IP=$(kubectl get pod hook-test -o jsonpath='{.status.podIP}')
    NODE=$(kubectl get pod hook-test -o jsonpath='{.spec.nodeName}')
-   echo "Pod IP: $POD_IP   |   Node: $NODE"
+
+   CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium \
+     --field-selector spec.nodeName=$NODE -o name)
+
+   IFINDEX=$(kubectl -n kube-system exec -i $CILIUM_POD -- \
+     cilium bpf endpoint list | awk -v ip="$POD_IP:0" '$1==ip' | grep -oP 'ifindex=\K[0-9]+')
+
+   echo "Pod IP: $POD_IP   |   Node: $NODE   |   ifindex: $IFINDEX"
    ```
 
-   > **Ghi lại 2 giá trị `$POD_IP` và `$NODE` này** — cần gõ tay ở các bước sau vì SSH sang node khác sẽ mở session mới, không giữ được biến môi trường của session hiện tại.
+   > **⚠️ Vì sao `awk` so `"$POD_IP:0"` chứ không phải `"$POD_IP"`:** Cột đầu của `cilium bpf endpoint list` có dạng `<IP>:<port>` (vd `10.244.2.112:0`), không phải IP trần. So trực tiếp `$1==ip` với `ip="$POD_IP"` (không `:0`) sẽ **không bao giờ khớp** — đã kiểm chứng thực tế, `$IFINDEX` ra rỗng nếu thiếu `:0`.
+
+   > **⚠️ Vì sao KHÔNG dùng `ip route get $POD_IP` hay `ip route show | grep`:** Cluster này chạy `routingMode=native` + BPF host-routing (Tập 23/24) — kernel route table **không có** route riêng cho từng pod IP, chỉ có 1 route cấp subnet `10.244.x.0/24 via ... dev cilium_host`. `ip route get <podIP>` luôn trả về `dev cilium_host`, không bao giờ ra đúng `lxcXXXX` — vì quyết định forward same-node nằm hoàn toàn trong eBPF (map `cilium_lxc`), kernel FIB bị bỏ qua. Muốn biết chính xác veth của 1 pod, phải hỏi thẳng `cilium_lxc` map qua `cilium bpf endpoint list` (đã dùng ở Tập 24 TN3.4) để lấy `ifindex`, rồi đối chiếu ifindex đó với `ip link` ngay trên node.
+
+   **Ghi lại 3 giá trị `$POD_IP`, `$NODE`, `$IFINDEX`** — cần gõ tay ở bước sau vì SSH sang node khác sẽ mở session mới, không giữ được biến môi trường của session hiện tại.
 
    **Gõ `exit`** để thoát về host machine.
 
@@ -121,61 +145,86 @@ multipass shell controlplane
    multipass shell <NODE>
    ```
 
-3. Trên chính node đó, tìm veth (thay `<POD_IP>` bằng giá trị đã ghi ở bước 1):
+3. Trên chính node đó, tìm veth bằng cách match đúng `ifindex` đã lấy ở bước 1 (thay `<IFINDEX>`):
    ```bash
    ip link show type veth
    # Host-side interface Cilium tạo có prefix "lxc", KHÔNG phải "veth":
-   # 8: lxc0a1b2c3d4e5f@if7: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 ...
+   # 16: lxcdf5aa5243d29@if17: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 ...
 
-   VETH=$(ip route get <POD_IP> | awk '{print $3}' | head -1)
+   VETH=$(ip -o link show | awk -F': ' -v idx="<IFINDEX>" '$1==idx {print $2}' | cut -d@ -f1)
    echo "Veth interface: $VETH"
    ```
 
-   > **💡 Vì sao dùng `ip route get` thay vì `ip route show | grep $POD_IP`:** `grep` match theo substring, không anchor — nếu node có pod IP `10.244.1.5` và một pod khác IP `10.244.1.50`, cả 2 dòng route đều match (vì `10.244.1.50` chứa chuỗi con `10.244.1.5`), `$VETH` nhận nhầm nhiều dòng và phá lệnh `tc` ở bước sau (chỉ nhận 1 dev). `ip route get <IP>` tra cứu route thật sự sẽ dùng cho IP đó — đích danh, không bị lỗi substring.
+   > **💡 Vì sao match theo số đứng đầu dòng (`$1`), không `grep`:** Số ifindex có thể là số 1-2 chữ số (vd `16`), nếu dùng `grep 16` sẽ match nhầm cả ifindex `160`, `216`... — lỗi substring y hệt lỗi IP đã sửa ở trên. `awk -F': ' '$1==idx'` so khớp chính xác toàn bộ token đầu dòng, không bị lẫn.
 
-4. Xem TC qdisc (Cilium thêm `clsact` qdisc):
+4. Thử cách cũ trước — `tc qdisc show` — để tự thấy vì sao nó KHÔNG dùng được trên kernel này:
    ```bash
    tc qdisc show dev $VETH
-   # qdisc clsact ffff: dev lxc0a1b2c3d4e5f parent ffff:fff1
-   # ← Cilium attach clsact qdisc để có thể gắn TC programs
+   # qdisc noqueue 0: root refcnt 2
    ```
 
-   **💡 Giải thích output:** `clsact` là qdisc đặc biệt — không có hàng đợi/shaping thật (khác `htb`/`tbf`), chỉ tồn tại để làm chỗ neo cho `tc filter` gắn BPF program vào cả 2 chiều ingress/egress trên cùng 1 interface. `ffff:` là handle của qdisc, `parent ffff:fff1` là giá trị cố định luôn đi kèm `clsact`.
+   > **⚠️ Đã kiểm chứng thực tế (kernel 6.8.0-124-generic, Ubuntu 26.04, Cilium v1.19.5):** Output ra `noqueue` — nghĩa là **không có `clsact` qdisc**, không có gì cho `tc filter show` bám vào cả. Đây KHÔNG phải lỗi cấu hình. Kernel ≥ 6.6 hỗ trợ **tcx** (`BPF_MPROG`, cơ chế attach BPF mới thay thế `tc`/`clsact` cổ điển), và Cilium tự động dùng tcx khi kernel hỗ trợ. tcx attach thẳng vào interface qua `bpf_link`, không cần qdisc trung gian — nên toàn bộ họ lệnh `tc qdisc`/`tc filter` cổ điển **mù hoàn toàn** với chương trình BPF thật đang chạy. Nếu chạy lab này trên kernel < 6.6, bạn vẫn sẽ thấy `clsact`/`tc filter` như tài liệu Cilium đời cũ mô tả — cách kiểm tra đúng cho cả 2 trường hợp là `bpftool net show` ở bước dưới.
 
-   **🎯 Dùng khi nào trong thực tế:** Bước xác nhận bắt buộc trước khi tin `tc filter show` — nếu `clsact` chưa attach (thường do race condition lúc pod vừa tạo, agent chưa kịp cấu hình), lệnh `tc filter show` ở bước sau trả về **rỗng**, dễ hiểu nhầm là "chưa có policy" trong khi thực chất là interface chưa kịp init.
-
-5. Xem TC filter (BPF programs) trên ingress và egress:
+5. Xem BPF program thật sự đang attach — dùng `bpftool net show` (nhận diện được cả tc cổ điển lẫn tcx):
    ```bash
-   # TC ingress: packet RA từ pod (từ pod ra ngoài)
-   tc filter show dev $VETH ingress
-   # filter protocol all pref 1 bpf chain 0
-   # filter protocol all pref 1 bpf ... handle 0x1 cil_from_container [...]
-
-   # TC egress: packet VÀO pod (từ ngoài vào)
-   tc filter show dev $VETH egress
-   # filter protocol all pref 1 bpf chain 0
-   # filter protocol all pref 1 bpf ... handle 0x1 cil_to_container [...]
+   sudo bpftool net show dev $VETH
+   # xdp:
+   #
+   # tc:
+   # lxcdf5aa5243d29(17) tcx/ingress cil_from_container prog_id 488 link_id 36
+   #
+   # flow_dissector:
+   #
+   # netfilter:
    ```
 
-   *Nhận xét:* `cil_from_container` chạy khi pod gửi packet ra (egress của pod = ingress của veth nhìn từ host). Đây là nơi policy enforcement xảy ra.
+   **💡 Giải thích output:** `lxcdf5aa5243d29(17)` = tên interface + ifindex trong ngoặc (khớp `$IFINDEX` đã tra ở bước 1). `tcx/ingress` = attach type thật (bpftool gộp hiển thị dưới heading `tc:` cho quen mắt, nhưng cơ chế bên dưới là tcx). Chỉ có **1 dòng** — mỗi pod chỉ có `cil_from_container` (packet Pod gửi ra) attach trực tiếp; **không có** dòng `cil_to_container` nào ở đây.
 
-   **💡 Giải thích output:** `pref 1` là độ ưu tiên filter (số nhỏ chạy trước — quan trọng nếu có nhiều tool cùng gắn filter trên 1 interface, vd Cilium + 1 CNI chain khác). `chain 0` là BPF filter chain mặc định. `handle 0x1` định danh riêng của instance filter này (khác Program ID ở `bpftool prog list`) — dùng để `tc filter del` đúng filter nếu cần gỡ thủ công.
+   **🎯 Dùng khi nào trong thực tế:** Đây là lệnh đáng tin cậy duy nhất để verify BPF program đang chạy trên 1 interface, bất kể kernel dùng tc cổ điển hay tcx — dùng thay hẳn `tc filter show` từ giờ. Nếu output rỗng ở cả 2 heading `xdp:`/`tc:` cho 1 pod đang chạy → dấu hiệu cilium-agent chưa attach xong (race condition lúc pod vừa tạo, giống lưu ý `clsact` ở bản cũ).
 
-   **🎯 Dùng khi nào trong thực tế:** So khớp `pref`/`handle` khi nghi ngờ có filter khác (không phải của Cilium) đang chạy trước và can thiệp traffic — tình huống gặp khi cluster có 2 CNI plugin cùng lúc hoặc service mesh gắn thêm TC hook riêng. Cũng dùng sau khi Cilium upgrade để xác nhận filter cũ đã được thay bằng filter mới (khác `handle`), không phải bị trùng/leftover.
+6. Xem toàn cảnh trên node — vì sao không có `cil_to_container` nào cả:
+   ```bash
+   sudo bpftool net show
+   # tc:
+   # ens3(2) tcx/ingress cil_from_netdev prog_id 442 link_id 24
+   # ens3(2) tcx/egress cil_to_netdev prog_id 445 link_id 25
+   # cilium_wg0(3) tcx/ingress cil_from_wireguard prog_id 365 link_id 15
+   # cilium_wg0(3) tcx/egress cil_to_wireguard prog_id 367 link_id 14
+   # cilium_net(4) tcx/ingress cil_to_host prog_id 431 link_id 23
+   # cilium_host(5) tcx/ingress cil_to_host prog_id 404 link_id 21
+   # cilium_host(5) tcx/egress cil_from_host prog_id 368 link_id 22
+   # lxc9c404ca58f44(9) tcx/ingress cil_from_container prog_id 409 link_id 16
+   # lxcdf5aa5243d29(17) tcx/ingress cil_from_container prog_id 488 link_id 36
+   # ... (mỗi lxcXXXX khác đều chỉ có đúng 1 dòng tcx/ingress cil_from_container)
+   ```
+
+   **💡 Giải thích kiến trúc thật:** `cil_to_container` **không tồn tại** như 1 program riêng (đã kiểm chứng — `bpftool prog list` không có tên này) và cũng **không attach netdev ở đâu cả** trong toàn bộ output trên. Logic của nó được compiler inline thẳng vào bên trong hook đầu tiên chạm packet, không phải gọi qua tail call tới 1 program riêng:
+   - Same-node: `cil_from_container` của **pod nguồn** tự tra policy cả 2 chiều rồi `bpf_redirect_peer()` thẳng vào pod đích — hook riêng trên veth pod đích không cần tồn tại.
+   - Cross-node inbound: `cil_from_netdev` (tcx/ingress trên `ens3`) — nơi packet từ node khác chạm vào đầu tiên.
+   - Qua WireGuard: `cil_from_wireguard` (tcx/ingress trên `cilium_wg0`) — sau khi giải mã.
+   - Traffic host ↔ pod: cặp `cil_to_host`/`cil_from_host` trên `cilium_host`/`cilium_net`.
+
+   **🎯 Dùng khi nào trong thực tế:** Khi debug "packet vào pod bị chặn ở đâu", đừng tìm hook trên veth của pod đích — tìm ở hook **đầu vào** tương ứng loại traffic (NIC vật lý cho cross-node, `cilium_wg0` cho traffic mã hoá, hoặc veth pod nguồn cho same-node). Xem minh hoạ cụ thể ở Thực nghiệm 4.
 
    ```mermaid
    graph LR
      POD["Pod<br/>(network namespace riêng)"]
-     subgraph veth ["veth phía host — vd lxc0a1b2c3d4e5f"]
-       ING["tc filter ingress<br/>= packet Pod GỬI RA<br/>program: cil_from_container"]
-       EGR["tc filter egress<br/>= packet VÀO Pod<br/>program: cil_to_container"]
-     end
+     LXC["lxcXXXX — veth phía host<br/>CHỈ có 1 hook: tcx/ingress<br/>cil_from_container"]
+     TAILCALL{{"tail-call nội bộ<br/>(policy 2 chiều + chọn hành động)"}}
 
-     POD -->|"Pod gửi packet"| ING --> HOST_OUT["Rời node"]
-     HOST_IN["Từ node khác / bên ngoài"] --> EGR -->|"Pod nhận packet"| POD
+     POD -->|"Pod gửi packet ra"| LXC --> TAILCALL
+     TAILCALL -->|"đích là pod local khác"| REDIRECT["bpf_redirect_peer()<br/>nhảy thẳng, KHÔNG qua hook riêng<br/>của pod đích"]
+     TAILCALL -->|"đích ở node khác"| OUT["Rời node qua ens3<br/>(cil_to_netdev)"]
+     TAILCALL -->|"Deny"| DROP["❌ DROP ngay tại đây"]
 
-     style ING fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
-     style EGR fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
+     NETDEV["ens3 — tcx/ingress<br/>cil_from_netdev"] -->|"packet từ node khác tới"| TAILCALL2{{"tail-call: policy đích + redirect"}}
+     TAILCALL2 -->|"Allow"| REDIRECT2["bpf_redirect_peer()<br/>vào đúng lxcXXXX của pod đích"]
+     TAILCALL2 -->|"Deny"| DROP2["❌ DROP tại ens3,<br/>chưa từng chạm tới lxcXXXX"]
+
+     style LXC fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
+     style NETDEV fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
+     style DROP fill:#3f1d1d,stroke:#f87171,stroke-width:2px,color:#fecaca
+     style DROP2 fill:#3f1d1d,stroke:#f87171,stroke-width:2px,color:#fecaca
    ```
 
 ---
@@ -207,14 +256,15 @@ CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium -o name | head -1)
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      bpftool cgroup show /run/cilium/cgroupv2
-   # ID  AttachType  AttachFlags  Name
-   # 45  connect4    multi        cil_sock4_connect
-   # 46  sendmsg4    multi        cil_sock4_sendmsg
-   # 47  recvmsg4    multi        cil_sock4_recvmsg
+   # ID   AttachType             AttachFlags  Name
+   # 332  cgroup_inet4_connect   multi        cil_sock4_connect
+   # 326  cgroup_udp4_sendmsg    multi        cil_sock4_sendmsg
+   # 328  cgroup_udp4_recvmsg    multi        cil_sock4_recvmsg
    # ← Attach vào root cgroup → áp dụng cho TẤT CẢ sockets trên node
    ```
+   > **💡 Lưu ý version bpftool (đã kiểm chứng bpftool v7.7.0):** tên `AttachType` hiển thị dạng dài `cgroup_inet4_connect`/`cgroup_udp4_sendmsg`/`cgroup_udp4_recvmsg`, không phải alias ngắn `connect4`/`sendmsg4`/`recvmsg4` như một số tài liệu/bản bpftool cũ. Cột `ID` cũng là Program ID thật (tăng dần theo lần load), không cố định `45`/`46`/`47`.
 
-   **💡 Giải thích output:** `AttachFlags: multi` nghĩa là nhiều program có thể cùng chain vào 1 attach type (`connect4`...) mà không ghi đè lẫn nhau — khác `override` (chỉ 1 program tồn tại, cái sau đè cái trước). `AttachType` (`connect4`/`sendmsg4`/`recvmsg4`) khớp đúng tên syscall/hook trong kernel, không phải tên tuỳ ý.
+   **💡 Giải thích output:** `AttachFlags: multi` nghĩa là nhiều program có thể cùng chain vào 1 attach type mà không ghi đè lẫn nhau — khác `override` (chỉ 1 program tồn tại, cái sau đè cái trước). `AttachType` khớp đúng tên syscall/hook trong kernel, không phải tên tuỳ ý.
 
    **🎯 Dùng khi nào trong thực tế:** Kiểm tra `multi` để xác nhận không bị tool khác (Istio CNI, Calico eBPF dataplane...) override mất program của Cilium — 2 dataplane cùng attach `override` vào cùng attach type là nguyên nhân kinh điển gây "Service LB chập chờn, lúc được lúc không" khi cluster chạy song song nhiều CNI/mesh.
 
@@ -280,9 +330,9 @@ CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium -o name | head -1)
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      cilium bpf metrics list | grep -E "Success|denied|Policy"
    # Success         EGRESS   XXX   → Tăng theo traffic được forward
-   # Policy denied   INGRESS  0     → 0 nếu chưa có policy chặn
+   # (chưa apply NetworkPolicy nên chưa có dòng "Policy denied" nào cả — xem lưu ý dưới)
    ```
-   > **💡 Lưu ý:** `REASON` chỉ có 2 nhóm giá trị thật — mã `0 = "Success"` cho packet forward thành công (không có text "Forwarded" riêng), và các mã ≥130 là lý do DROP cụ thể (`"Policy denied"`...). Không tồn tại reason `"CT: New connection"` — muốn xem connection mới dùng `cilium bpf ct list global` (Tập 24).
+   > **💡 Lưu ý:** `REASON` chỉ có 2 nhóm giá trị thật — mã `0 = "Success"` cho packet forward thành công (không có text "Forwarded" riêng), và các mã ≥130 là lý do DROP cụ thể (`"Policy denied"`...). Không tồn tại reason `"CT: New connection"` — muốn xem connection mới dùng `cilium bpf ct list global` (Tập 24). Khi chưa có packet nào bị drop, dòng `Policy denied` **không xuất hiện** trong output (không phải hiện ra với giá trị `0`) — đã kiểm chứng thực tế.
 
 4. So sánh path: apply NetworkPolicy để xem TC DROP:
    ```bash
@@ -300,43 +350,53 @@ CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium -o name | head -1)
      ingress: []
    EOF
 
-   # Test bị block — TC BPF program thực hiện DROP:
+   # Test bị block — cross-node nên DROP xảy ra ở cil_from_netdev trên ens3
+   # của worker2 (node đích), KHÔNG phải ở 1 hook riêng trên veth hook-server —
+   # hook đó không tồn tại, xem bằng chứng bpftool net show ở Thực nghiệm 2.
    kubectl exec hook-test -- nc -zv -w 2 $SERVER_IP 9090
-   # (timeout) ← TC cil_to_container (trên veth của hook-server) DROP trước khi vào pod
-   # Lưu ý: NetworkPolicy Ingress áp cho pod ĐÍCH (hook-server) → enforce ở hook
-   # "to-container" (packet VÀO pod), không phải "from-container" (packet RA pod nguồn).
+   # (timeout)
+   # Lưu ý: NetworkPolicy Ingress áp cho pod ĐÍCH (hook-server), nhưng nơi enforce
+   # thật sự là hook ĐẦU TIÊN chạm packet trên node đích — ở đây là cil_from_netdev
+   # trên NIC vật lý, tail-call vào policy check trước khi kịp redirect vào lxc.
    ```
 
    ```mermaid
    graph LR
      subgraph nodeA ["Node chạy hook-test (client)"]
-       CLIENT["hook-test"] --> TCFROM["TC cil_from_container<br/>(egress policy) — Allow,<br/>không có rule chặn chiều ra"]
+       CLIENT["hook-test"] --> TCFROM["tcx/ingress trên lxc client<br/>cil_from_container<br/>Allow — không có rule chặn chiều ra"]
      end
-     TCFROM -->|"native routing / WireGuard"| nodeB
+     TCFROM -->|"native routing qua ens3"| nodeB
 
      subgraph nodeB ["Node chạy hook-server = worker2"]
-       TCTO{"TC cil_to_container<br/>(ingress policy)<br/>tra cilium_policy map"}
-       TCTO -->|"Deny"| DROPPED["❌ DROP tại đây<br/>packet không tới process nc"]
-       TCTO -.->|"nếu Allow"| SERVER["hook-server<br/>nc -lk -p 9090"]
+       NETDEV{"tcx/ingress trên ens3<br/>cil_from_netdev<br/>tail-call tra policy của pod đích"}
+       NETDEV -->|"Deny"| DROPPED["❌ DROP ngay tại ens3<br/>chưa từng chạm lxc của hook-server"]
+       NETDEV -.->|"Allow"| REDIRECT["bpf_redirect_peer()<br/>vào lxc hook-server"] -.-> SERVER["hook-server<br/>nc -lk -p 9090"]
      end
 
-     style TCFROM fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
-     style TCTO fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
+     style TCFROM fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
+     style NETDEV fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
      style DROPPED fill:#3f1d1d,stroke:#f87171,stroke-width:2px,color:#fecaca
    ```
 
-   Client không hề hay biết gói tin đã đi trót lọt tới đúng node đích — chỉ bị chặn ở bước cuối cùng, ngay trước khi vào Pod. Đây là lý do `nc -zv` timeout thay vì báo connection refused ngay.
+   Client không hề hay biết gói tin đã đi trót lọt tới đúng node đích — chỉ bị chặn ở bước cuối cùng trên node đích, ngay tại cửa vào (`ens3`), trước khi kịp redirect vào pod. Đây là lý do `nc -zv` timeout thay vì báo connection refused ngay.
 
    **💡 Timeout vs Refused — phân biệt khi debug:** `Connection refused` nghĩa là packet **tới được** kernel đích và có TCP RST trả về (thường do không process nào lắng nghe port đó). `Timeout` (như ở đây) nghĩa là packet bị **DROP hoàn toàn**, không có bất kỳ phản hồi nào — đúng hành vi của TC BPF `DROP` (Cilium cố tình không trả RST để tránh lộ thông tin cho traffic bị chặn bởi policy). Thấy `refused` thay vì `timeout` khi test NetworkPolicy deny → dấu hiệu policy **chưa** thật sự áp dụng ở kernel, cần check lại `cilium bpf policy list` (Tập 24) thay vì tin `kubectl get networkpolicy`.
 
    ```bash
-   # Xem drop counter trong metrics:
-   kubectl -n kube-system exec -it $CILIUM_POD -- \
+   # Xem drop counter trong metrics — PHẢI check agent trên node ĐÍCH (worker2),
+   # không phải $CILIUM_POD cũ (agent controlplane) — vì drop enforce tại
+   # cil_from_netdev trên worker2, agent node khác không thấy counter này:
+   CILIUM_POD_W2=$(kubectl -n kube-system get pod -l k8s-app=cilium \
+     --field-selector spec.nodeName=worker2 -o name)
+
+   kubectl -n kube-system exec -it $CILIUM_POD_W2 -- \
      cilium bpf metrics list | grep -i "denied\|drop"
-   # Policy denied  ingress  X  ← Tăng
+   # Policy denied  EGRESS   X  ← Tăng (traffic ra khỏi hook-server tới hook-test bị drop 2 chiều)
+   # Policy denied  INGRESS  X  ← Tăng
 
    kubectl delete networkpolicy deny-hook-server
    ```
+   > **⚠️ Đã kiểm chứng thực tế:** chạy lệnh trên với `$CILIUM_POD` cũ (declare ở Thực nghiệm 3, trỏ agent controlplane) cho **output rỗng** dù NetworkPolicy đang chặn — dễ khiến hiểu nhầm là drop không xảy ra/counter không hoạt động. Metrics `cilium bpf metrics list` là **per-node** (đọc map cục bộ của từng agent), không tổng hợp toàn cluster — luôn phải trỏ đúng node nơi enforce xảy ra.
 
 ---
 
@@ -351,6 +411,6 @@ kubectl delete pod hook-test hook-server
 ## ✅ Tổng kết
 
 1. **3 hook points, 3 vai trò rõ ràng:** XDP (trước SKB — DDoS/NodePort, tốc độ tối đa), TC (có SKB — policy/NAT/encap, đầy đủ tính năng), cgroup/socket hooks (socket layer — Socket LB, rewrite IP đích tại `connect()` cho service).
-2. **TC dùng `clsact` qdisc:** Cilium thêm `clsact` qdisc vào mỗi veth → gắn `cil_from_container` (ingress, packet ra khỏi pod) và `cil_to_container` (egress, packet vào pod) → policy enforcement xảy ra ở đây cho cross-node traffic.
+2. **TC hook trên kernel mới dùng tcx, không phải `clsact` qdisc:** kernel ≥ 6.6 (đã kiểm chứng trên 6.8, Cilium v1.19.5) attach BPF qua **tcx/bpf_mprog**, `tc qdisc`/`tc filter` cổ điển không thấy được gì — phải dùng `bpftool net show`. Mỗi pod chỉ có **1** hook netdev-attached (`cil_from_container`, tcx/ingress trên chính veth pod đó); `cil_to_container` vẫn tồn tại như program nhưng chỉ chạy qua **tail call** từ hook đầu tiên chạm packet — same-node là veth pod nguồn, cross-node là `cil_from_netdev` trên NIC vật lý, qua WireGuard là `cil_from_wireguard` trên `cilium_wg0`. Policy cho pod đích vì vậy enforce ở cửa vào của node đích, không phải ở 1 hook riêng trên veth pod đích.
 3. **cgroup/socket hook gắn vào root cgroup:** Áp dụng cho tất cả sockets trên node → intercept `connect()`/`sendmsg()`/`recvmsg()` syscall → rewrite IP:port service→backend ngay tại socket layer (Socket LB, thay kube-proxy) — same-node fast path thật sự (bỏ iptables/netfilter, vẫn qua TC BPF) nằm ở cơ chế BPF host-routing (`bpf_redirect_peer()`), xem Tập 27.
 4. **Cilium auto-select:** Agent tự detect topology, tự attach đúng BPF program vào đúng hook — không cần config thủ công, không cần restart để apply thay đổi.

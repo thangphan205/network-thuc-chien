@@ -169,7 +169,10 @@ multipass shell controlplane
 
 4. Verify fix với Hubble:
    ```bash
-   hubble observe --namespace production \
+   # KHÔNG kèm --namespace khi đã dùng --from-pod/--to-pod (2 flag này tự chứa
+   # namespace, kết hợp với --namespace sẽ báo lỗi "filters --from-pod and
+   # --namespace cannot be combined" — đã kiểm chứng thực tế)
+   hubble observe \
      --from-pod production/frontend \
      --to-pod production/backend &
    HUBBLE_PID=$!
@@ -178,7 +181,7 @@ multipass shell controlplane
      nc -zv -w 3 $BACKEND_IP 8080
 
    sleep 2
-   # Hubble: production/frontend → production/backend:8080  FORWARDED ✅
+   # Hubble: production/frontend:xxxxx -> production/backend:8080  to-network FORWARDED ✅
    kill $HUBBLE_PID 2>/dev/null
    ```
 
