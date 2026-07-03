@@ -2,6 +2,32 @@
 
 Tập này quan sát BPF programs được Cilium attach tại từng hook point: XDP (trước SKB), TC (ingress/egress trên veth), và cgroup/socket hooks (socket layer — connect/sendmsg/recvmsg). Lưu ý: tính năng `sockops`/`sk_msg` (TCP splice cũ) đã bị Cilium loại bỏ từ v1.14 — cơ chế socket-layer hiện tại dùng `BPF_PROG_TYPE_CGROUP_SOCK_ADDR` (xem Thực nghiệm 3).
 
+### Sơ đồ: 3 hook point trên đường đi của packet
+
+```mermaid
+flowchart TB
+  subgraph out ["Chiều RA — Pod gửi đi (outbound)"]
+    A1["App trong Pod<br/>connect()/sendmsg()"] --> A2["🔌 cgroup/socket hook<br/>cil_sock4_connect<br/>chỉ kích hoạt khi gọi tới Service IP"]
+    A2 --> A3["Kernel tạo SKB → gửi qua veth"]
+    A3 --> A4["📡 TC hook — pref ingress (góc nhìn host)<br/>cil_from_container<br/>policy egress + NAT + encap"]
+    A4 --> A5["Rời node<br/>native routing / WireGuard"]
+  end
+
+  subgraph in ["Chiều VÀO — Pod nhận (inbound)"]
+    B1["Packet từ ngoài tới NIC"] --> B2["⚡ XDP hook<br/>driver level, TRƯỚC khi có SKB<br/>chỉ bật khi NodePort acceleration"]
+    B2 --> B3["Kernel tạo SKB"]
+    B3 --> B4["📡 TC hook — pref egress (góc nhìn host)<br/>cil_to_container<br/>policy ingress — DROP tại đây nếu bị deny"]
+    B4 --> B5["Vào Pod"]
+  end
+
+  style A2 fill:#1e1e38,stroke:#a78bfa,stroke-width:2px,color:#e2e8f0
+  style A4 fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
+  style B2 fill:#2d1b69,stroke:#f59e0b,stroke-width:2px,color:#fde68a
+  style B4 fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
+```
+
+**Điểm dễ nhầm nhất:** tên `ingress`/`egress` của TC filter là theo **góc nhìn host/veth**, không phải góc nhìn Pod. Packet Pod gửi ra lại nằm ở filter `ingress` (`cil_from_container`); packet vào Pod nằm ở filter `egress` (`cil_to_container`). Cgroup/socket hook chỉ chạy phía **gửi** (trước khi packet tồn tại), không có hook tương ứng phía nhận.
+
 ## 🛠 Yêu cầu chuẩn bị
 - Cilium đang chạy trên cluster (từ Tập 23).
 - `bpftool` và `tc` có sẵn (trong cilium-agent container và trên host).
@@ -111,6 +137,21 @@ multipass shell controlplane
 
    *Nhận xét:* `cil_from_container` chạy khi pod gửi packet ra (egress của pod = ingress của veth nhìn từ host). Đây là nơi policy enforcement xảy ra.
 
+   ```mermaid
+   graph LR
+     POD["Pod<br/>(network namespace riêng)"]
+     subgraph veth ["veth phía host — vd veth3a4b5c6d"]
+       ING["tc filter ingress<br/>= packet Pod GỬI RA<br/>program: cil_from_container"]
+       EGR["tc filter egress<br/>= packet VÀO Pod<br/>program: cil_to_container"]
+     end
+
+     POD -->|"Pod gửi packet"| ING --> HOST_OUT["Rời node"]
+     HOST_IN["Từ node khác / bên ngoài"] --> EGR -->|"Pod nhận packet"| POD
+
+     style ING fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
+     style EGR fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
+   ```
+
 ---
 
 ## 🔬 Thực nghiệm 3: Verify cgroup/socket hook active (Socket LB)
@@ -145,6 +186,23 @@ multipass shell controlplane
    # Socket LB Coverage:   Full  ← Active
    ```
    > ⚠️ **Lưu ý version (đã kiểm chứng trên Cilium v1.19.5):** field `Sockops: Enabled` chỉ có ở bản Cilium cũ (<1.11). Từ đó về sau, tính năng này gộp vào **`Socket LB`** trong mục `KubeProxyReplacement Details` — phải thêm `--verbose` mới thấy, `cilium status` (không verbose) chỉ show 1 dòng tổng `KubeProxyReplacement: True`.
+
+   ```mermaid
+   sequenceDiagram
+     participant App as App trong Pod
+     participant Hook as cgroup_sock_addr hook<br/>cil_sock4_connect
+     participant LBMap as eBPF LB Map<br/>ClusterIP → backend Pod IPs
+     participant Kernel as Kernel TCP stack
+
+     App->>Hook: connect(ClusterIP:Port)
+     Hook->>LBMap: lookup backend theo ClusterIP:Port
+     LBMap-->>Hook: chọn 1 backend Pod IP (load balance)
+     Hook->>Kernel: rewrite dest = backend Pod IP:Port
+     Kernel->>Kernel: 3-way handshake thẳng tới Pod backend
+     Note over App,Kernel: App tưởng đang connect tới ClusterIP —<br/>không hề biết bị rewrite, không cần iptables/kube-proxy
+   ```
+
+   **Vì sao attach ở root cgroup:** hook này áp cho **tất cả** sockets trên node ngay tại syscall `connect()`, trước khi packet đầu tiên tồn tại — khác hẳn TC hook chỉ thấy được packet sau khi SKB đã tạo xong.
 
 ---
 
@@ -203,7 +261,29 @@ multipass shell controlplane
    # (timeout) ← TC cil_to_container (trên veth của hook-server) DROP trước khi vào pod
    # Lưu ý: NetworkPolicy Ingress áp cho pod ĐÍCH (hook-server) → enforce ở hook
    # "to-container" (packet VÀO pod), không phải "from-container" (packet RA pod nguồn).
+   ```
 
+   ```mermaid
+   graph LR
+     subgraph nodeA ["Node chạy hook-test (client)"]
+       CLIENT["hook-test"] --> TCFROM["TC cil_from_container<br/>(egress policy) — Allow,<br/>không có rule chặn chiều ra"]
+     end
+     TCFROM -->|"native routing / WireGuard"| nodeB
+
+     subgraph nodeB ["Node chạy hook-server = worker2"]
+       TCTO{"TC cil_to_container<br/>(ingress policy)<br/>tra cilium_policy map"}
+       TCTO -->|"Deny"| DROPPED["❌ DROP tại đây<br/>packet không tới process nc"]
+       TCTO -.->|"nếu Allow"| SERVER["hook-server<br/>nc -lk -p 9090"]
+     end
+
+     style TCFROM fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
+     style TCTO fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
+     style DROPPED fill:#3f1d1d,stroke:#f87171,stroke-width:2px,color:#fecaca
+   ```
+
+   Client không hề hay biết gói tin đã đi trót lọt tới đúng node đích — chỉ bị chặn ở bước cuối cùng, ngay trước khi vào Pod. Đây là lý do `nc -zv` timeout thay vì báo connection refused ngay.
+
+   ```bash
    # Xem drop counter trong metrics:
    kubectl -n kube-system exec -it $CILIUM_POD -- \
      cilium bpf metrics list | grep -i "denied\|drop"
