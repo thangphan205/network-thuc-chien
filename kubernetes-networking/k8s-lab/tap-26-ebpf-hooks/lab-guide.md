@@ -100,37 +100,43 @@ multipass shell controlplane
 
 ## 🔬 Thực nghiệm 2: Xem TC programs gắn trên veth của Pod
 
-**Trên `controlplane`:**
+**Bước 1 trên `controlplane`, bước 2 trở đi SSH sang node đang chạy pod:**
 
-1. Deploy một test pod và tìm veth interface của nó:
+1. Deploy một test pod và lấy Pod IP + tên Node:
    ```bash
    kubectl run hook-test --image=nicolaka/netshoot -- sleep infinity
    kubectl wait --for=condition=Ready pod/hook-test --timeout=60s
 
-   # Lấy Pod IP để tìm veth tương ứng
    POD_IP=$(kubectl get pod hook-test -o jsonpath='{.status.podIP}')
-   echo "Pod IP: $POD_IP"
+   NODE=$(kubectl get pod hook-test -o jsonpath='{.spec.nodeName}')
+   echo "Pod IP: $POD_IP   |   Node: $NODE"
    ```
 
-2. Tìm veth trên worker node (pod chạy trên node nào):
-   ```bash
-   NODE=$(kubectl get pod hook-test -o jsonpath='{.spec.nodeName}')
-   echo "Pod running on: $NODE"
+   > **Ghi lại 2 giá trị `$POD_IP` và `$NODE` này** — cần gõ tay ở các bước sau vì SSH sang node khác sẽ mở session mới, không giữ được biến môi trường của session hiện tại.
 
-   # SSH vào node đó và tìm veth
-   multipass exec $NODE -- ip link show type veth
-   # Tìm veth có ifindex tương ứng với Pod
-   # hoặc:
-   multipass exec $NODE -- ip route show | grep $POD_IP
-   # 10.244.1.5 dev veth3a4b5c6d scope link
-   VETH=$(multipass exec $NODE -- ip route show | grep $POD_IP | awk '{print $3}')
+   **Gõ `exit`** để thoát về host machine.
+
+2. SSH trực tiếp vào node đang chạy pod (thay `<NODE>` bằng giá trị vừa ghi):
+   ```bash
+   multipass shell <NODE>
+   ```
+
+3. Trên chính node đó, tìm veth (thay `<POD_IP>` bằng giá trị đã ghi ở bước 1):
+   ```bash
+   ip link show type veth
+   # Host-side interface Cilium tạo có prefix "lxc", KHÔNG phải "veth":
+   # 8: lxc0a1b2c3d4e5f@if7: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 ...
+
+   VETH=$(ip route get <POD_IP> | awk '{print $3}' | head -1)
    echo "Veth interface: $VETH"
    ```
 
-3. Xem TC qdisc (Cilium thêm `clsact` qdisc):
+   > **💡 Vì sao dùng `ip route get` thay vì `ip route show | grep $POD_IP`:** `grep` match theo substring, không anchor — nếu node có pod IP `10.244.1.5` và một pod khác IP `10.244.1.50`, cả 2 dòng route đều match (vì `10.244.1.50` chứa chuỗi con `10.244.1.5`), `$VETH` nhận nhầm nhiều dòng và phá lệnh `tc` ở bước sau (chỉ nhận 1 dev). `ip route get <IP>` tra cứu route thật sự sẽ dùng cho IP đó — đích danh, không bị lỗi substring.
+
+4. Xem TC qdisc (Cilium thêm `clsact` qdisc):
    ```bash
-   multipass exec $NODE -- tc qdisc show dev $VETH
-   # qdisc clsact ffff: dev veth3a4b5c6d parent ffff:fff1
+   tc qdisc show dev $VETH
+   # qdisc clsact ffff: dev lxc0a1b2c3d4e5f parent ffff:fff1
    # ← Cilium attach clsact qdisc để có thể gắn TC programs
    ```
 
@@ -138,15 +144,15 @@ multipass shell controlplane
 
    **🎯 Dùng khi nào trong thực tế:** Bước xác nhận bắt buộc trước khi tin `tc filter show` — nếu `clsact` chưa attach (thường do race condition lúc pod vừa tạo, agent chưa kịp cấu hình), lệnh `tc filter show` ở bước sau trả về **rỗng**, dễ hiểu nhầm là "chưa có policy" trong khi thực chất là interface chưa kịp init.
 
-4. Xem TC filter (BPF programs) trên ingress và egress:
+5. Xem TC filter (BPF programs) trên ingress và egress:
    ```bash
    # TC ingress: packet RA từ pod (từ pod ra ngoài)
-   multipass exec $NODE -- tc filter show dev $VETH ingress
+   tc filter show dev $VETH ingress
    # filter protocol all pref 1 bpf chain 0
    # filter protocol all pref 1 bpf ... handle 0x1 cil_from_container [...]
 
    # TC egress: packet VÀO pod (từ ngoài vào)
-   multipass exec $NODE -- tc filter show dev $VETH egress
+   tc filter show dev $VETH egress
    # filter protocol all pref 1 bpf chain 0
    # filter protocol all pref 1 bpf ... handle 0x1 cil_to_container [...]
    ```
@@ -160,7 +166,7 @@ multipass shell controlplane
    ```mermaid
    graph LR
      POD["Pod<br/>(network namespace riêng)"]
-     subgraph veth ["veth phía host — vd veth3a4b5c6d"]
+     subgraph veth ["veth phía host — vd lxc0a1b2c3d4e5f"]
        ING["tc filter ingress<br/>= packet Pod GỬI RA<br/>program: cil_from_container"]
        EGR["tc filter egress<br/>= packet VÀO Pod<br/>program: cil_to_container"]
      end
@@ -175,6 +181,12 @@ multipass shell controlplane
 ---
 
 ## 🔬 Thực nghiệm 3: Verify cgroup/socket hook active (Socket LB)
+
+**Gõ `exit`** để rời node worker, quay lại host machine, rồi `multipass shell controlplane` để vào lại controlplane — các lệnh dưới đây cần `kubectl` và biến `$CILIUM_POD` (khai báo lại nếu session mới):
+
+```bash
+CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium -o name | head -1)
+```
 
 **Trên `controlplane`:**
 
