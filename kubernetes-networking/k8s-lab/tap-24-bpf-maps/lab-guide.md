@@ -2,6 +2,43 @@
 
 Tập này inspect BPF Maps trực tiếp qua `bpftool` và Cilium CLI để hiểu cách Cilium lưu policy, conntrack state, và metrics ở kernel level.
 
+### Sơ đồ: BPF Maps = shared memory giữa userspace và kernel
+
+```mermaid
+flowchart TD
+  subgraph userspace ["User Space"]
+    AGENT["cilium-agent<br/>(Go control plane)"]
+  end
+
+  subgraph kernel ["Kernel Space"]
+    subgraph maps ["BPF Maps — shared memory"]
+      POLICY["cilium_policy_v2_*<br/>LPM Trie"]
+      CT["cilium_ct4_global<br/>LRU Hash"]
+      CFG["cilium_calls_*<br/>Array"]
+      METRICS["cilium_metrics<br/>Per-CPU Hash"]
+    end
+    TC["TC BPF program (bpf_lxc.c)<br/>chạy tại ingress/egress hook trên veth"]
+  end
+
+  PKT["Packet đến/đi Pod"] --> TC
+  TC -->|"tra cứu Allow/Deny"| POLICY
+  TC -->|"lookup/update connection"| CT
+  TC -->|"đọc config/calls"| CFG
+  TC -->|"tăng counter"| METRICS
+  AGENT -->|"ghi policy khi NetworkPolicy đổi"| POLICY
+  AGENT -.->|"đọc để hiển thị CLI"| CT
+  AGENT -.->|"đọc để hiển thị CLI"| METRICS
+
+  style AGENT fill:#1e1e38,stroke:#a78bfa,stroke-width:2px,color:#e2e8f0
+  style TC fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
+  style POLICY fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
+  style CT fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
+  style CFG fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
+  style METRICS fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
+```
+
+**Điểm mấu chốt:** `cilium-agent` (userspace) chỉ ghi/đọc map để cấu hình và hiển thị CLI. Đường xử lý packet thật sự (`TC BPF program`) đọc thẳng map ngay trong kernel — không syscall, không context switch. Đây là lý do BPF map lookup nhanh hơn hẳn iptables O(n) truyền thống.
+
 ## 🛠 Yêu cầu chuẩn bị
 - Cilium đang chạy trên cluster (từ Tập 23).
 - `bpftool` có sẵn trong cilium-agent container.
@@ -90,6 +127,24 @@ multipass shell controlplane
 
 3. Xác định Node và lấy đúng Cilium Pod tương ứng:
    > **⚠️ Lưu ý cực kỳ quan trọng:** BPF Maps được lưu cục bộ (node-local) trong bộ nhớ của từng Node. Do đó, kết nối giữa `ct-client` và `ct-server` chỉ xuất hiện trên bảng Conntrack của Node mà chúng đang chạy (ở đây là Node của `ct-server`). Nếu bạn dùng Cilium Agent pod ở Node khác (như controlplane), bảng conntrack sẽ không có thông tin của 2 Pod này!
+
+   ```mermaid
+   graph LR
+     subgraph nodeCS ["Node chạy ct-server (vd worker1)"]
+       CS["ct-server<br/>10.244.2.3:8080"]
+       CTA["cilium_ct4_global<br/>(LRU Hash) — CÓ entry connection này"]
+     end
+     subgraph nodeOther ["controlplane (node khác)"]
+       CTB["cilium_ct4_global<br/>(LRU Hash) — KHÔNG CÓ entry"]
+     end
+     CC["ct-client<br/>(node bất kỳ)"] -->|"curl request"| CS
+     CS -.->|"packet in/out ghi vào map cục bộ của chính node này"| CTA
+
+     style CTA fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
+     style CTB fill:#3f1d1d,stroke:#f87171,stroke-width:2px,color:#fecaca
+   ```
+
+   **Ghi nhớ:** exec đúng `cilium-agent` pod trên node mà endpoint đích đang chạy — sai node là thấy map "rỗng" dù connection vẫn sống bình thường.
 
    ```bash
    # Lấy tên Node của ct-server
@@ -225,6 +280,29 @@ multipass shell controlplane
    **💡 Cơ chế hoạt động:**
    Khi áp dụng `NetworkPolicy`, Cilium Agent tính toán lại luật và ghi verdict enforcement mới vào map `cilium_policy_v2_<endpoint_id>` của endpoint tương ứng (xem lưu ý version ở bước 1). Khi `ct-client` gửi packet đến `ct-server`, eBPF program chạy ở tầng network nhận dạng packet -> tra cứu map policy này thấy không được phép -> DROP gói tin ngay lập tức và tăng biến đếm drop trong Per-CPU metrics map. Tất cả diễn ra hoàn toàn trong kernel space mà không cần gọi tiến trình xử lý ở User Space.
 
+   ```mermaid
+   sequenceDiagram
+     participant Client as ct-client
+     participant TC as TC BPF (bpf_lxc.c)
+     participant Policy as cilium_policy_v2_*<br/>(LPM Trie)
+     participant Metrics as cilium_metrics<br/>(Per-CPU Hash)
+     participant Server as ct-server
+
+     Client->>TC: packet tới ct-server:8080
+     TC->>Policy: lookup(identity, port, direction=Ingress)
+     alt Allow (mặc định, chưa có NetworkPolicy)
+       Policy-->>TC: verdict = Allow
+       TC->>Metrics: increment(Success, EGRESS)
+       TC->>Server: forward packet
+     else Deny (sau khi apply deny-ct-client)
+       Policy-->>TC: verdict = Deny
+       TC->>Metrics: increment(Policy denied, INGRESS)
+       TC--xClient: DROP — packet không tới Server
+     end
+   ```
+
+   Toàn bộ nhánh `alt/else` ở trên chạy trong kernel space, cùng 1 lượt xử lý packet — không có round-trip nào ra userspace hay gọi `cilium-agent`.
+
 4. Xem endpoint map cục bộ trên node (cilium_lxc map):
    ```bash
    kubectl -n kube-system exec -i $CILIUM_POD -- \
@@ -238,6 +316,21 @@ multipass shell controlplane
    **💡 Ý nghĩa của Local Endpoint Map (cilium_lxc):**
    - Bản đồ này chỉ lưu danh sách các Pods chạy cục bộ trên chính Node đó, kèm `ifindex` (interface index của veth) và MAC.
    - TC BPF program (`bpf_lxc.c`) tra map này để biết gói tin có nên đi tới 1 pod local hay không. Nếu đích là pod cùng node, nó lấy thẳng `ifindex` từ map và gọi `bpf_redirect_peer()`/`bpf_redirect_neigh()` để chuyển gói tin trực tiếp sang veth peer — vẫn qua TC BPF nhưng bỏ qua iptables/netfilter (đây là cơ chế **BPF host-routing** thật, xem chi tiết ở Tập 27, không phải "sockops splice" như tài liệu cũ từng mô tả — tính năng `sockops`/`sock_ops` đã bị Cilium loại bỏ từ v1.14).
+
+   ```mermaid
+   graph TD
+     PKT["Packet: ct-client → ct-server"] --> TC["TC BPF egress<br/>trên veth của ct-client"]
+     TC --> LXC{"tra cilium_lxc map:<br/>IP đích có phải pod local?"}
+     LXC -->|"Có — cùng node"| REDIRECT["bpf_redirect_peer() /<br/>bpf_redirect_neigh()<br/>nhảy thẳng sang veth peer"]
+     LXC -->|"Không — khác node"| NORMAL["Đi tiếp qua route bình thường"]
+     REDIRECT --> SKIP["Bỏ qua iptables/netfilter<br/>→ BPF host-routing (~0.06ms)"]
+     NORMAL --> ENCAP["Native routing + WireGuard<br/>(xem Tập 23)"]
+
+     style REDIRECT fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
+     style SKIP fill:#152a2a,stroke:#34d399,stroke-width:2px,color:#a7f3d0
+     style NORMAL fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
+     style ENCAP fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#bfdbfe
+   ```
 
    **🎯 Dùng khi nào trong thực tế:** Dùng để debug khi nghi ngờ BPF host-routing same-node không kích hoạt (traffic giữa 2 pod cùng node vẫn chậm bất thường) — verify cả 2 pod có xuất hiện đúng trong `cilium_lxc` với đúng `ifindex`/MAC, rồi check field `Routing: Host:` trong `cilium status --verbose` (`BPF` = fast path bật, `Legacy` = chưa bật). Cũng dùng để đối chiếu identity (`sec_id`) của endpoint khi debug policy bị áp sai do nhầm identity.
 

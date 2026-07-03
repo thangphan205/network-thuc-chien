@@ -274,3 +274,65 @@ kubectl delete pod frontend backend
 2. **Cilium Operator ≠ Tigera Operator:** Operator quản lý CRDs và IPAM allocation cluster-wide. Tigera Operator quản lý cài đặt/upgrade Calico stack — vai trò khác.
 3. **Identity model giải quyết IP churn problem:** Pod restart → IP mới nhưng labels giữ nguyên → identity (numeric hash) giữ nguyên → policy không bị "miss" trong khoảng thời gian converge.
 4. **K8s CRDs thay datastore:** `ciliumendpoints`, `ciliumidentities`, `ciliumnodes` — tất cả state trong K8s API, không cần etcd riêng hay Typha proxy.
+
+### 🗺️ Sơ đồ triển khai thực tế các cấu phần Cilium
+
+```mermaid
+flowchart TB
+    APISERVER["K8s API Server\n(CRD store: CiliumEndpoint, CiliumIdentity,\nCiliumNode, CiliumNetworkPolicy)\n← thay etcd riêng / Typha"]
+
+    OPERATOR["cilium-operator\n(1 leader active/cluster)\n- Cấp CIDR IPAM/Node\n- GC CiliumIdentity rác\n- KHÔNG forward packet"]
+
+    OPERATOR <-->|watch/write CRD| APISERVER
+
+    subgraph CP["Node: controlplane"]
+        AGENT_CP["cilium-agent (DaemonSet)\nPolicy engine + eBPF datapath\n+ GoBGP speaker + Hubble server local"]
+        BPF_CP["eBPF maps: cilium_lxc,\npolicy map, conntrack, service LB"]
+        AGENT_CP --> BPF_CP
+    end
+
+    subgraph W1["Node: worker1"]
+        AGENT_W1["cilium-agent (DaemonSet)"]
+        BPF_W1["eBPF maps (local only)"]
+        POD_FE["Pod: frontend\nIDENTITY=7891 (hash of labels)"]
+        AGENT_W1 --> BPF_W1
+        BPF_W1 -.->|attach| POD_FE
+    end
+
+    subgraph W2["Node: worker2"]
+        AGENT_W2["cilium-agent (DaemonSet)"]
+        BPF_W2["eBPF maps (local only)"]
+        POD_BE["Pod: backend\nIDENTITY=12345 (hash of labels)"]
+        AGENT_W2 --> BPF_W2
+        BPF_W2 -.->|attach| POD_BE
+    end
+
+    AGENT_CP <-->|sync state| APISERVER
+    AGENT_W1 <-->|sync state| APISERVER
+    AGENT_W2 <-->|sync state| APISERVER
+
+    RELAY["hubble-relay\n(gom flow-log toàn cluster)"]
+    AGENT_CP -.->|flow log| RELAY
+    AGENT_W1 -.->|flow log| RELAY
+    AGENT_W2 -.->|flow log| RELAY
+    RELAY --> UI["Hubble UI / CLI\n(observe traffic cluster-wide)"]
+
+    classDef operator fill:#7f1d1d,stroke:#ef4444,color:#fff;
+    classDef agent fill:#1e3a8a,stroke:#3b82f6,color:#fff;
+    classDef store fill:#14532d,stroke:#22c55e,color:#fff;
+    classDef obs fill:#4a148c,stroke:#ba68c8,color:#fff;
+    classDef pod fill:#374151,stroke:#9ca3af,color:#fff;
+
+    class OPERATOR operator;
+    class AGENT_CP,AGENT_W1,AGENT_W2,BPF_CP,BPF_W1,BPF_W2 agent;
+    class APISERVER store;
+    class RELAY,UI obs;
+    class POD_FE,POD_BE pod;
+```
+
+**Đọc sơ đồ:**
+- **Operator** (đỏ) chỉ nói chuyện với API Server, không đụng data-plane — down thì Pod cũ vẫn thông, chỉ Pod mới hết IP.
+- **Agent** (xanh dương) chạy trên từng Node, tự quản eBPF map cục bộ (`cilium_lxc`, policy map...) — không agent nào biết Pod ở Node khác ngoài qua state sync API Server.
+- **API Server/CRD** (xanh lá) là datastore chung duy nhất — thay etcd/Typha của Calico.
+- **Hubble Relay** (tím) chỉ gom log quan sát, không nằm trong đường đi packet thật.
+- **Identity gắn theo Pod** (xám) không đổi khi Pod restart dù đổi Node/IP — vì tính từ labels chứ không phải theo endpoint hay IP.

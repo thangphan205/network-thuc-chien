@@ -533,3 +533,26 @@ kill $HUBBLE_PF_PID 2>/dev/null || pkill -f "port-forward.*hubble" 2>/dev/null |
 4. **socketLB = service LB tại socket layer, KHÔNG phải cơ chế same-node shortcut:** BPF cgroup hook (`cil_sock4_connect`, prog type `cgroup_sock_addr`) intercept `connect()` syscall → rewrite IP:port ClusterIP/NodePort → backend Pod thật, thay hoàn toàn kube-proxy. Same-node speedup (~0.06ms vs ~0.35ms cross-node) đến từ cơ chế khác: **BPF host-routing** (`bpf_redirect_peer()` ở TC layer, xem Thực nghiệm 6) — vẫn qua veth+TC, chỉ bỏ iptables/netfilter.
 
 5. **Hubble built-in = zero-setup observability:** `hubble observe --verdict DROPPED` cho ngay flow nào bị deny và tại sao — không cần tcpdump, không cần log parser. Dùng xuyên suốt Tập 32–40.
+
+---
+
+## Đánh giá: Lab này so với triển khai Cilium thực tế trong production
+
+Lab dựng đúng data plane production (kube-proxy replacement + native routing + WireGuard + Hubble), nhưng vài chỗ đơn giản hóa vì chạy trên 3 VM Multipass cùng L2 subnet. Dưới đây là các khác biệt đáng chú ý khi so với cluster thật.
+
+| Khía cạnh | Lab (tập này) | Thực tế production |
+| :--- | :--- | :--- |
+| Cách deploy | `helm install` chạy tay trên controlplane | GitOps (ArgoCD/Flux) quản lý Helm values trong Git, hoặc Terraform/Cluster API; ít khi SSH vào node chạy helm trực tiếp |
+| Routing mode | `native` + `autoDirectNodeRoutes` — chạy được vì 3 VM cùng subnet, node tự thấy nhau qua route trực tiếp | Multi-AZ/multi-rack thường **không** có L2 adjacency giữa mọi node → phải dùng VXLAN/Geneve overlay, hoặc bật **Cilium BGP Control Plane** để advertise Pod CIDR lên router/switch. Native routing "trần" như lab chỉ ăn được trên flat network (bare-metal 1 rack, hoặc cloud VPC hỗ trợ alias IP như GKE) |
+| Control plane | 1 node `controlplane` duy nhất (kubeadm single-master) | HA control plane 3+ node (etcd quorum), Cilium Operator cũng chạy `replicas=2+` thay vì `1` như lab để tránh single point of failure |
+| IPAM | `cluster-pool` — Cilium tự cấp /24 mỗi node | Cloud managed cluster hay dùng ENI-based IPAM (AWS VPC CNI mode của Cilium, Azure IPAM) để Pod nhận IP thật trong VPC — tích hợp được security group/flow logs/VPC peering, đổi lại dễ cạn IP hơn cluster-pool |
+| Mã hóa | WireGuard toàn bộ pod-to-pod | Vẫn phổ biến nhất (thay IPsec cũ, CPU nhẹ hơn), nhưng nhiều tổ chức bỏ qua CNI-level encryption nếu cloud provider đã mã hóa link giữa instance (vd AWS Nitro), hoặc dùng mTLS ở tầng service mesh (Istio/Linkerd) thay vì trùng lặp 2 lớp mã hóa |
+| Managed K8s | Không áp dụng — kubeadm tự tay | GKE Dataplane V2, "Azure CNI powered by Cilium" (AKS), EKS Cilium add-on đều dựa trên Cilium nhưng cloud provider khoá bớt config (routing mode, IPAM) theo hạ tầng của họ — không tự do set flag như lab |
+| LoadBalancer Service | Chưa cover trong tập này | Bare-metal prod thường bật **Cilium BGP Control Plane** hoặc L2 announcement để thay MetalLB, advertise VIP cho `type: LoadBalancer` |
+| Network Policy | Chưa áp dụng CiliumNetworkPolicy nào ở tập này | Prod luôn layer zero-trust policy ngay sau khi CNI lên — default-deny + explicit allow, dùng `CiliumClusterwideNetworkPolicy` cho rule toàn cluster (L3/L4/L7 DNS-aware) |
+| Hubble | Port-forward tay, xem `hubble observe --follow` trực tiếp | Hubble UI expose qua Ingress có auth, Hubble metrics scrape bởi Prometheus có sẵn, flow log export qua Hubble Exporter ra S3/Kafka cho SIEM/audit — không ai port-forward tay trong prod |
+| Version pinning | Lab note rõ đã verify trên Cilium v1.19.5 (đúng cách — pin version, test trước khi lên prod) | Giống lab: prod luôn pin version cụ thể, chạy `cilium connectivity test` trong CI/staging trước khi rollout, upgrade theo kiểu canary từng node group |
+
+**Điểm lab làm đúng với prod:** kube-proxy replacement, bpf.masquerade, socketLB, WireGuard, Hubble metrics set — đây là baseline flag mà hầu hết production Cilium Helm values thật đều bật, không phải chỉ để demo lab.
+
+**Điểm cần thêm khi lên thật:** HA control plane, GitOps deploy thay vì helm tay, BGP hoặc overlay khi network không flat, network policy default-deny, và observability export ra ngoài cụm thay vì port-forward.
