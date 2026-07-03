@@ -60,6 +60,10 @@ multipass shell controlplane
    # 67: xdp              ← XDP program (nếu NodePort acceleration enabled)
    ```
 
+   **💡 Giải thích output:** Cột đầu (`23:`, `24:`...) là Program ID — định danh duy nhất trong kernel, tăng dần mỗi lần load program mới. Cột thứ hai là **prog type** — `sched_cls` (TC), `cgroup_sock_addr` (socket hook), `xdp` (XDP) — ánh xạ đúng 1-1 với 3 hook point đang học ở tập này.
+
+   **🎯 Dùng khi nào trong thực tế:** Lệnh đầu tiên chạy sau khi cilium-agent restart/upgrade để xác nhận đủ cả 3 loại program được load lại. Thiếu hẳn `sched_cls` → agent chưa attach TC, mọi pod trên node đó NotReady hoặc mất policy enforcement. Không thấy `xdp` là **bình thường** (chỉ bật khi cấu hình NodePort acceleration) — đừng nhầm với lỗi.
+
 2. Xem riêng từng loại:
    ```bash
    # Xem TC programs (sched_cls):
@@ -79,6 +83,8 @@ multipass shell controlplane
    ```
    > **💡 Lưu ý version (đã kiểm chứng trên Cilium v1.19.5):** tính năng `sockops`/`sk_msg` (prog type `sock_ops`/`sk_msg`, tên `bpf_sockops`/`bpf_redir_proxy`) đã bị **loại bỏ hoàn toàn từ v1.14** (grep source v1.19.5 cho `sockops`/`sockmap` ra 0 kết quả). Cơ chế socket-layer hiện tại nằm trong `bpf/bpf_sock.c`, attach ở `cgroup/connect4`, `cgroup/sendmsg4`, `cgroup/recvmsg4`... (prog type `cgroup_sock_addr`), tên hàm `cil_sock4_connect`/`cil_sock4_sendmsg`/`cil_sock4_recvmsg` (và bản `_sock6_` cho IPv6). Đây là cơ chế rewrite IP:port service→backend tại `connect()` (Socket LB / kube-proxy replacement), không phải "TCP splice bypass" như sockops cũ.
 
+   **🎯 Dùng khi nào trong thực tế:** Tra tên program cụ thể (`cil_from_container`, `cil_sock4_connect`...) khi cần đọc source code Cilium tương ứng để hiểu chính xác logic nào đang chạy — hữu ích khi báo bug hoặc đọc release note thấy đổi tên hàm giữa các version (như `sockops` → `cgroup_sock_addr` ở trên).
+
 3. Đếm tổng số BPF programs per type:
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
@@ -87,6 +93,8 @@ multipass shell controlplane
    # 12 cgroup_sock_addr   ← connect4/6, sendmsg4/6, recvmsg4/6, bind4/6, post_bind4/6...
    #  1 xdp
    ```
+
+   **🎯 Dùng khi nào trong thực tế:** `sched_cls` tăng tuyến tính theo số pod trên node (mỗi endpoint thêm ~2 program) — dùng con số này cho capacity estimate tương tự đếm BPF map ở Tập 24. Cũng dùng phát hiện **program leak**: pod bị xoá liên tục nhưng số `sched_cls` không giảm tương ứng → cilium-agent không dọn program khi endpoint mất, cần báo bug.
 
 ---
 
@@ -126,6 +134,10 @@ multipass shell controlplane
    # ← Cilium attach clsact qdisc để có thể gắn TC programs
    ```
 
+   **💡 Giải thích output:** `clsact` là qdisc đặc biệt — không có hàng đợi/shaping thật (khác `htb`/`tbf`), chỉ tồn tại để làm chỗ neo cho `tc filter` gắn BPF program vào cả 2 chiều ingress/egress trên cùng 1 interface. `ffff:` là handle của qdisc, `parent ffff:fff1` là giá trị cố định luôn đi kèm `clsact`.
+
+   **🎯 Dùng khi nào trong thực tế:** Bước xác nhận bắt buộc trước khi tin `tc filter show` — nếu `clsact` chưa attach (thường do race condition lúc pod vừa tạo, agent chưa kịp cấu hình), lệnh `tc filter show` ở bước sau trả về **rỗng**, dễ hiểu nhầm là "chưa có policy" trong khi thực chất là interface chưa kịp init.
+
 4. Xem TC filter (BPF programs) trên ingress và egress:
    ```bash
    # TC ingress: packet RA từ pod (từ pod ra ngoài)
@@ -140,6 +152,10 @@ multipass shell controlplane
    ```
 
    *Nhận xét:* `cil_from_container` chạy khi pod gửi packet ra (egress của pod = ingress của veth nhìn từ host). Đây là nơi policy enforcement xảy ra.
+
+   **💡 Giải thích output:** `pref 1` là độ ưu tiên filter (số nhỏ chạy trước — quan trọng nếu có nhiều tool cùng gắn filter trên 1 interface, vd Cilium + 1 CNI chain khác). `chain 0` là BPF filter chain mặc định. `handle 0x1` định danh riêng của instance filter này (khác Program ID ở `bpftool prog list`) — dùng để `tc filter del` đúng filter nếu cần gỡ thủ công.
+
+   **🎯 Dùng khi nào trong thực tế:** So khớp `pref`/`handle` khi nghi ngờ có filter khác (không phải của Cilium) đang chạy trước và can thiệp traffic — tình huống gặp khi cluster có 2 CNI plugin cùng lúc hoặc service mesh gắn thêm TC hook riêng. Cũng dùng sau khi Cilium upgrade để xác nhận filter cũ đã được thay bằng filter mới (khác `handle`), không phải bị trùng/leftover.
 
    ```mermaid
    graph LR
@@ -171,6 +187,10 @@ multipass shell controlplane
    #     xlated 2KB  jited 1KB  memlock 4KB
    ```
 
+   **💡 Giải thích output:** `tag` là hash của bytecode — 2 node chạy đúng cùng version Cilium với cùng config phải cho **cùng giá trị tag**. `loaded_at` là timestamp program được load (thường trùng lúc cilium-agent pod start). `xlated` là kích thước bytecode BPF gốc, `jited` là kích thước sau khi JIT-compile sang native machine code (luôn ≤ `xlated`).
+
+   **🎯 Dùng khi nào trong thực tế:** So `tag` giữa các node để phát hiện **rollout dở dang** — node nào có `tag` khác các node còn lại nghĩa là đang chạy version/config Cilium cũ, chưa được agent restart áp policy mới. Đối chiếu `loaded_at` với thời điểm sự cố network để xác nhận có phải do agent vừa restart (loaded lại toàn bộ program) gây gián đoạn hay không.
+
 2. Verify program attached vào cgroup (toàn bộ host):
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
@@ -182,6 +202,10 @@ multipass shell controlplane
    # ← Attach vào root cgroup → áp dụng cho TẤT CẢ sockets trên node
    ```
 
+   **💡 Giải thích output:** `AttachFlags: multi` nghĩa là nhiều program có thể cùng chain vào 1 attach type (`connect4`...) mà không ghi đè lẫn nhau — khác `override` (chỉ 1 program tồn tại, cái sau đè cái trước). `AttachType` (`connect4`/`sendmsg4`/`recvmsg4`) khớp đúng tên syscall/hook trong kernel, không phải tên tuỳ ý.
+
+   **🎯 Dùng khi nào trong thực tế:** Kiểm tra `multi` để xác nhận không bị tool khác (Istio CNI, Calico eBPF dataplane...) override mất program của Cilium — 2 dataplane cùng attach `override` vào cùng attach type là nguyên nhân kinh điển gây "Service LB chập chờn, lúc được lúc không" khi cluster chạy song song nhiều CNI/mesh.
+
 3. Xem cilium status để confirm Socket LB enabled:
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
@@ -190,6 +214,10 @@ multipass shell controlplane
    # Socket LB Coverage:   Full  ← Active
    ```
    > ⚠️ **Lưu ý version (đã kiểm chứng trên Cilium v1.19.5):** field `Sockops: Enabled` chỉ có ở bản Cilium cũ (<1.11). Từ đó về sau, tính năng này gộp vào **`Socket LB`** trong mục `KubeProxyReplacement Details` — phải thêm `--verbose` mới thấy, `cilium status` (không verbose) chỉ show 1 dòng tổng `KubeProxyReplacement: True`.
+
+   **💡 Giải thích output:** `Coverage: Full` nghĩa là socket hook xử lý được cả ClusterIP lẫn NodePort/ExternalIP tại tầng `connect()`. Giá trị khác (`Partial`) xảy ra khi kernel thiếu tính năng BPF cần thiết (kernel quá cũ, hoặc chạy trong môi trường ảo hoá giới hạn) — lúc đó một phần traffic phải rơi về path TC-only để load-balance, chậm hơn.
+
+   **🎯 Dùng khi nào trong thực tế:** Nếu Coverage chỉ `Partial` mà đang debug hiệu năng Service không như kỳ vọng — đây chính là nguyên nhân, không phải do NetworkPolicy hay routing sai. Kiểm tra kernel version của node trước khi nghi ngờ config Cilium.
 
    ```mermaid
    sequenceDiagram
@@ -286,6 +314,8 @@ multipass shell controlplane
    ```
 
    Client không hề hay biết gói tin đã đi trót lọt tới đúng node đích — chỉ bị chặn ở bước cuối cùng, ngay trước khi vào Pod. Đây là lý do `nc -zv` timeout thay vì báo connection refused ngay.
+
+   **💡 Timeout vs Refused — phân biệt khi debug:** `Connection refused` nghĩa là packet **tới được** kernel đích và có TCP RST trả về (thường do không process nào lắng nghe port đó). `Timeout` (như ở đây) nghĩa là packet bị **DROP hoàn toàn**, không có bất kỳ phản hồi nào — đúng hành vi của TC BPF `DROP` (Cilium cố tình không trả RST để tránh lộ thông tin cho traffic bị chặn bởi policy). Thấy `refused` thay vì `timeout` khi test NetworkPolicy deny → dấu hiệu policy **chưa** thật sự áp dụng ở kernel, cần check lại `cilium bpf policy list` (Tập 24) thay vì tin `kubectl get networkpolicy`.
 
    ```bash
    # Xem drop counter trong metrics:
