@@ -88,7 +88,7 @@ multipass shell controlplane
 3. Đếm tổng số BPF programs per type:
    ```bash
    kubectl -n kube-system exec -it $CILIUM_POD -- \
-     bpftool prog list | awk '{print $2}' | sort | uniq -c | sort -rn
+     bpftool prog list | grep -E "^[0-9]+:" | awk '{print $2}' | sort | uniq -c | sort -rn
    # 18 sched_cls          ← 1 TC ingress + 1 TC egress per endpoint/interface
    # 12 cgroup_sock_addr   ← connect4/6, sendmsg4/6, recvmsg4/6, bind4/6, post_bind4/6...
    #  1 xdp
