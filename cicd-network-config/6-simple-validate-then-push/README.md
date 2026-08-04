@@ -191,20 +191,13 @@ Repo → **Settings → Branches → Add branch protection rule**, branch patter
 
 Không có bước này thì ai đó vẫn có thể `git push` thẳng vào `main` mà bỏ qua Batfish gate — job `batfish-gate` vẫn chạy lại trên sự kiện `push` (xem mục "Luồng vận hành" ở trên) nhưng chỉ *chặn được job `push` chạy tiếp*, không chặn được việc code sai đã nằm trên `main`. Branch protection mới thật sự ngăn được merge khi CI đỏ.
 
-### 5. Test luồng thật
+### 5. Kịch bản Demo thực hành chi tiết
 
-```bash
-git checkout -b test/pr-flow
-# sửa 1 dòng trong configs/proposed/configs/fw-edge.cfg
-git add configs/proposed/configs/fw-edge.cfg
-git commit -m "test: trigger validate-then-push pipeline"
-git push -u origin test/pr-flow
-gh pr create --fill
-```
-
-Vào tab **Actions** trên GitHub xem `lint` → `batfish-gate` chạy, đọc comment `gate_report.md` tự động post trên PR. Merge PR → xem workflow trigger lại lần 2 (event `push`), job `push` chạy trên self-hosted runner vừa cài ở bước 2.
+Chi tiết từng bước cấu hình Runner, thử nghiệm PR gây lỗi (Batfish FAIL), sửa lỗi (Batfish PASS), và xem kết quả đẩy cấu hình tự động xuống `cisco1` được tách riêng tại file **[DEMO.md](./DEMO.md)**.
 
 ---
+
+
 
 ## Đã verify thật trên server (không chỉ đọc code)
 
