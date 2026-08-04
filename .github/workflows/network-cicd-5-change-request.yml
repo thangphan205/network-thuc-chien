@@ -1,0 +1,68 @@
+name: "[Network CI/CD] 5 - Change Request Gate"
+
+# Minh hoạ Mô hình 5 (Change Request Gate) mô tả tại
+# `cicd-network-config/5-change-request-gate/README.md`.
+# Khác Mô hình 3: Batfish pass KHÔNG tự động rollout - phải qua job
+# "await-human-approval" (GitHub Environment protection rule) trước khi
+# netadmin được phép tự thực thi CR trên thiết bị (ngoài phạm vi workflow này).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - "cicd-network-config/5-change-request-gate/**"
+
+defaults:
+  run:
+    working-directory: "cicd-network-config/5-change-request-gate"
+
+jobs:
+  batfish-cr-gate:
+    if: contains(github.event.pull_request.labels.*.name, 'change-request')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pybatfish
+      - run: docker run -d --name batfish -p 9997:9997 -p 9996:9996 batfish/allinone
+      - name: Chờ Batfish server sẵn sàng
+        run: |
+          for i in $(seq 1 30); do
+            nc -z localhost 9996 && exit 0
+            sleep 2
+          done
+          echo "Batfish server không khởi động kịp" && exit 1
+      - name: Chạy Batfish CR gate
+        run: python cr_gate.py
+      - name: Post báo cáo lên PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'cicd-network-config/5-change-request-gate/cr_report.md';
+            if (!fs.existsSync(path)) return;
+            const body = fs.readFileSync(path, 'utf8');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+  await-human-approval:
+    needs: batfish-cr-gate
+    runs-on: ubuntu-latest
+    environment: cr-approval
+    steps:
+      - name: Thông báo CR đã được duyệt
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "✅ CR đã được duyệt — netadmin có thể tiến hành thực thi thay đổi trên thiết bị (ngoài phạm vi pipeline này).",
+            });

@@ -1,0 +1,30 @@
+---
+# Template: doi BGP policy (neighbor + route-map).
+# Netadmin chi can sua `bgp_as_number`, `bgp_neighbor_address`, va ten route-map
+# duoi day. Luu y: route-map (FILTER-IN) phai da ton tai san tren thiet bi (vd
+# duoc quan ly boi template rieng hoac cau hinh nen) - module nay chi gan
+# route-map vao neighbor, khong tao noi dung route-map.
+- name: Push intended BGP neighbor policy to network devices
+  hosts: all
+  gather_facts: false
+  vars:
+    bgp_as_number: 65001
+    bgp_neighbor_address: 10.0.0.2
+    bgp_route_map_in: FILTER-IN
+
+  tasks:
+    - name: Apply BGP neighbor + route-map policy
+      cisco.ios.ios_bgp_global:
+        config:
+          as_number: "{{ bgp_as_number }}"
+          neighbors:
+            - address: "{{ bgp_neighbor_address }}"
+              route_maps:
+                - name: "{{ bgp_route_map_in }}"
+                  direction: in
+        state: merged
+      register: push_result
+
+    - name: Show what changed
+      debug:
+        msg: "Changed: {{ push_result.changed }}"

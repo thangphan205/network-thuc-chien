@@ -1,0 +1,28 @@
+name: cicd_simple_validate_push_lab
+
+mgmt:
+  network: cicd_simple_validate_push_mgmt
+  ipv4-subnet: 192.168.26.0/24
+
+topology:
+  nodes:
+    fw-edge:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.26.11
+      startup-config: ./config/cisco.config.partial
+    r1-core:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.26.12
+      startup-config: ./config/cisco.config.partial
+    r2-core:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.26.13
+      startup-config: ./config/cisco.config.partial
+    sw-dist1:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.26.14
+      startup-config: ./config/cisco.config.partial

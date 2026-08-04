@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  batfish:
+    image: batfish/allinone
+    container_name: batfish
+    restart: always
+    ports:
+      - "9997:9997"
+      - "9996:9996"
+    environment:
+      - BATFISH_LOG_LEVEL=WARN

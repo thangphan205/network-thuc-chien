@@ -1,0 +1,4 @@
+{# Golden config: "intended" duoc sinh tu template + du lieu, khong hardcode #}
+{% for server in dns_servers %}
+ip name-server {{ server }}
+{% endfor %}

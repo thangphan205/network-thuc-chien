@@ -1,0 +1,26 @@
+services:
+  lint:
+    build: .
+    profiles: ["lint"]
+    volumes:
+      - ../ansible:/workspace
+    command: sh -c "yamllint . && ansible-lint push_config.yml"
+
+  dry-run:
+    build: .
+    profiles: ["dry-run"]
+    env_file: .env
+    volumes:
+      - ../ansible:/workspace
+      - ./netbox_inventory.yml:/workspace/netbox_inventory.yml:ro
+    network_mode: host
+    command: ansible-playbook -i ${INVENTORY:-inventory.yml} push_config.yml --check --diff
+
+  push:
+    build: .
+    env_file: .env
+    volumes:
+      - ../ansible:/workspace
+      - ./netbox_inventory.yml:/workspace/netbox_inventory.yml:ro
+    network_mode: host
+    command: ansible-playbook -i ${INVENTORY:-inventory.yml} push_config.yml

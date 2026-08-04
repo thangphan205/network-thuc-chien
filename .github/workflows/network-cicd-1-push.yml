@@ -1,0 +1,44 @@
+name: "[Network CI/CD] 1 - GitOps Push"
+
+# Minh hoạ Mô hình 1 (GitOps Push) mô tả tại `cicd-network-config/README.md`.
+# Yêu cầu self-hosted runner có network reach tới containerlab topology
+# (`cicd-network-config/1-gitops-push-ansible-github-actions/topology.clab.yml`).
+on:
+  pull_request:
+    paths:
+      - "cicd-network-config/1-gitops-push-ansible-github-actions/**"
+  push:
+    branches: [main]
+    paths:
+      - "cicd-network-config/1-gitops-push-ansible-github-actions/**"
+
+defaults:
+  run:
+    working-directory: "cicd-network-config/1-gitops-push-ansible-github-actions/ansible"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install yamllint ansible-lint ansible
+      - run: yamllint .
+      - run: ansible-lint playbooks/
+
+  push:
+    needs: lint
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: self-hosted # cần runner có mgmt-network reach tới containerlab lab
+    env:
+      LAB_DEVICE_PASSWORD: ${{ secrets.LAB_DEVICE_PASSWORD }}
+      LAB_ENABLE_PASSWORD: ${{ secrets.LAB_ENABLE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: ansible-galaxy collection install cisco.ios
+      # Ap dung toan bo template - moi playbook idempotent nen file khong doi
+      # se khong tao thay doi gi tren thiet bi (no-op), chi playbook lien quan
+      # den PR moi thuc su push config.
+      - run: ansible-playbook -i inventory.yml playbooks/push_dns.yml playbooks/push_acl.yml playbooks/push_bgp.yml

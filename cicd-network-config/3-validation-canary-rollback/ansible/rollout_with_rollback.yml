@@ -1,0 +1,54 @@
+---
+# Mô hình Validation-first: các stage lint (ansible-lint) + Batfish pre-check
+# (xem batfish_check.py) đã chạy TRƯỚC khi tới playbook này. Playbook này thực
+# hiện 2 stage cuối: canary rollout + health-check + auto-rollback.
+#
+# hosts: canary:rest -> canary1 luôn chạy trước (group "canary"), rồi mới tới
+# node2/node3 (group "rest"). serial: 1 + any_errors_fatal: true -> nếu canary
+# fail, KHÔNG có host nào khác bị đụng tới.
+- name: Canary rollout with automatic rollback
+  hosts: canary:rest
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  vars:
+    dns_servers:
+      - 192.168.1.10
+
+  tasks:
+    - name: Backup running-config truoc khi doi (dung de rollback)
+      cisco.ios.ios_config:
+        backup: yes
+        backup_options:
+          dir_path: ./backup
+          filename: "{{ inventory_hostname }}.cfg"
+
+    - block:
+        - name: Apply intended DNS config
+          cisco.ios.ios_system:
+            name_servers: "{{ dns_servers }}"
+            lookup_enabled: true
+
+        - name: Health-check - DNS server phai co trong running-config
+          cisco.ios.ios_command:
+            commands:
+              - show running-config | include name-server
+          register: health_check
+
+        - name: Health-check phai PASS moi duoc di tiep sang host ke tiep
+          ansible.builtin.assert:
+            that: "'192.168.1.10' in health_check.stdout[0]"
+            fail_msg: "Health-check FAILED tren {{ inventory_hostname }}"
+
+      rescue:
+        - name: Rollback - restore config backup vua luu o buoc tren
+          cisco.ios.ios_config:
+            src: "./backup/{{ inventory_hostname }}.cfg"
+            replace: config
+
+        - name: Dung pipeline - khong rollout tiep sang host con lai
+          ansible.builtin.fail:
+            msg: >-
+              Rollback hoan tat tren {{ inventory_hostname }}.
+              any_errors_fatal=true nen cac host con lai trong rollout
+              KHONG bi thay doi.

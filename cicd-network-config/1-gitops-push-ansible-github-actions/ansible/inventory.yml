@@ -1,0 +1,14 @@
+all:
+  hosts:
+    cisco1:
+      ansible_host: 192.168.21.11
+    cisco2:
+      ansible_host: 192.168.21.12
+  vars:
+    ansible_network_os: ios
+    ansible_connection: network_cli
+    ansible_user: backup_user
+    ansible_password: "{{ lookup('env', 'LAB_DEVICE_PASSWORD') }}"
+    ansible_become: yes
+    ansible_become_method: enable
+    ansible_become_password: "{{ lookup('env', 'LAB_ENABLE_PASSWORD') }}"

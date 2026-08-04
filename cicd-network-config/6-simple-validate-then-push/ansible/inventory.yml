@@ -1,0 +1,18 @@
+all:
+  hosts:
+    fw-edge:
+      ansible_host: 192.168.26.11
+    r1-core:
+      ansible_host: 192.168.26.12
+    r2-core:
+      ansible_host: 192.168.26.13
+    sw-dist1:
+      ansible_host: 192.168.26.14
+  vars:
+    ansible_network_os: ios
+    ansible_connection: network_cli
+    ansible_user: backup_user
+    ansible_password: "{{ lookup('env', 'LAB_DEVICE_PASSWORD') }}"
+    ansible_become: yes
+    ansible_become_method: enable
+    ansible_become_password: "{{ lookup('env', 'LAB_ENABLE_PASSWORD') }}"

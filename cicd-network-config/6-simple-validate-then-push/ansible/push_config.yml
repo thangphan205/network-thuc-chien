@@ -1,0 +1,19 @@
+---
+# Push nguyen ban file cau hinh da duoc Batfish gate xac nhan PASS
+# (configs/proposed/{{ inventory_hostname }}.cfg) xuong thiet bi that.
+# Khac Mo hinh 1 (module co cau truc nhu ios_acls/ios_bgp_global): lab nay
+# push RAW config vi file .cfg dung chung voi Batfish snapshot, khong tien
+# xu ly lai thanh YAML structured.
+- name: Push validated proposed config to network devices
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Apply raw config tu configs/proposed/{{ inventory_hostname }}.cfg
+      cisco.ios.ios_config:
+        src: "{{ playbook_dir }}/../configs/proposed/{{ inventory_hostname }}.cfg"
+        save_when: modified
+      register: push_result
+
+    - name: Show what changed
+      debug:
+        msg: "Changed: {{ push_result.changed }}"

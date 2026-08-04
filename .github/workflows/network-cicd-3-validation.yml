@@ -1,0 +1,50 @@
+name: "[Network CI/CD] 3 - Validation & Canary/Rollback"
+
+# Minh hoạ Mô hình 3 mô tả tại `cicd-network-config/README.md`.
+# Job "rollout" cần self-hosted runner có network reach tới containerlab topology
+# và Batfish service (xem README của lab).
+on:
+  pull_request:
+    paths:
+      - "cicd-network-config/3-validation-canary-rollback/**"
+  push:
+    branches: [main]
+    paths:
+      - "cicd-network-config/3-validation-canary-rollback/**"
+
+defaults:
+  run:
+    working-directory: "cicd-network-config/3-validation-canary-rollback"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install yamllint ansible-lint ansible
+      - run: yamllint ansible/
+      - run: ansible-lint ansible/rollout_with_rollback.yml
+
+  batfish-precheck:
+    needs: lint
+    runs-on: self-hosted # cần Batfish service + config export sẵn trong configs/
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install pybatfish
+      - run: python batfish_check.py
+
+  canary-rollout:
+    needs: batfish-precheck
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: self-hosted # cần network reach tới containerlab lab
+    env:
+      LAB_DEVICE_PASSWORD: ${{ secrets.LAB_DEVICE_PASSWORD }}
+      LAB_ENABLE_PASSWORD: ${{ secrets.LAB_ENABLE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: ansible-galaxy collection install cisco.ios
+      - working-directory: "cicd-network-config/3-validation-canary-rollback/ansible"
+        run: ansible-playbook -i inventory.yml rollout_with_rollback.yml

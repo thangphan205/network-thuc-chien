@@ -1,0 +1,49 @@
+---
+# Mô hình Golden-config / Drift-detection: KHÔNG trigger bởi commit, mà chạy
+# theo lịch (xem workflow "schedule" tương ứng) để phát hiện khi running-config
+# lệch khỏi intended config - kể cả khi lệch đó không đến từ pipeline CI (ai
+# đó SSH tay sửa trực tiếp).
+- name: Golden-config drift check (+ remediate tuỳ chọn)
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Render intended config tu template (golden config)
+      ansible.builtin.template:
+        src: templates/dns_intended.j2
+        dest: "intended_configs/{{ inventory_hostname }}.cfg"
+      delegate_to: localhost
+
+    - name: Lay DNS name-server hien tai tren thiet bi
+      cisco.ios.ios_command:
+        commands:
+          - show running-config | include name-server
+      register: dns_check
+
+    - name: Parse DNS servers tu running-config
+      ansible.builtin.set_fact:
+        running_dns_servers: "{{ dns_check.stdout[0] | regex_findall('name-server (\\S+)') }}"
+
+    - name: Xac dinh co drift hay khong
+      ansible.builtin.set_fact:
+        is_drifted: "{{ (dns_servers | difference(running_dns_servers)) | length > 0 }}"
+
+    - name: Bao cao trang thai compliance
+      ansible.builtin.debug:
+        msg: >-
+          {{ ('DRIFT tren ' ~ inventory_hostname ~ ' - intended=' ~ dns_servers ~ ' running=' ~ running_dns_servers)
+          if is_drifted else ('Compliant: ' ~ inventory_hostname) }}
+
+    - name: Remediate (chi khi co drift VA chay voi -e remediate=true)
+      cisco.ios.ios_system:
+        name_servers: "{{ dns_servers }}"
+        lookup_enabled: true
+      when: is_drifted and (remediate | default(false) | bool)
+
+    - name: Bao fail cho CI neu co drift va khong remediate
+      ansible.builtin.fail:
+        msg: >-
+          Drift detected tren {{ inventory_hostname }}.
+          Chay lai voi "-e remediate=true" de tu dong sua (goi lai co che
+          giong Mo hinh 1 - Push), hoac xu ly thu cong.
+      when: is_drifted and not (remediate | default(false) | bool)

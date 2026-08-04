@@ -1,0 +1,18 @@
+name: cicd_pull_lab
+
+mgmt:
+  network: cicd_pull_mgmt
+  ipv4-subnet: 192.168.22.0/24
+
+topology:
+  nodes:
+    cisco1:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.22.11
+      startup-config: ../../network-automation/containerlab/config/cisco.config.partial
+    cisco2:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.22.12
+      startup-config: ../../network-automation/containerlab/config/cisco.config.partial

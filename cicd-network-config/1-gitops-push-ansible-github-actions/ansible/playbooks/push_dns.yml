@@ -1,0 +1,20 @@
+---
+# Template: doi DNS name-server.
+# Netadmin chi can sua list `dns_servers` ben duoi, mo PR, merge vao main.
+- name: Push intended DNS config to network devices
+  hosts: all
+  gather_facts: false
+  vars:
+    dns_servers:
+      - 192.168.1.10
+
+  tasks:
+    - name: Apply DNS name-server configuration
+      cisco.ios.ios_system:
+        name_servers: "{{ dns_servers }}"
+        lookup_enabled: true
+      register: push_result
+
+    - name: Show what changed
+      debug:
+        msg: "Changed: {{ push_result.changed }}"

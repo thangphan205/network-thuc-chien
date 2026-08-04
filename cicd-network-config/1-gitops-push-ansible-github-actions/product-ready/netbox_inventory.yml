@@ -1,0 +1,22 @@
+plugin: netbox.netbox.nb_inventory
+# api_endpoint / token đọc tự động từ biến môi trường NETBOX_API / NETBOX_TOKEN
+validate_certs: true
+
+# TODO: chỉnh filter theo NetBox thật của bạn, vd chỉ lấy router đang active tại 1 site
+query_filters:
+  - status: active
+  # - site: hn-dc1
+  # - role: router
+
+group_by:
+  - device_roles
+
+compose:
+  ansible_host: primary_ip4.address.split('/')[0]
+  ansible_network_os: "'ios'"
+  ansible_connection: "'network_cli'"
+  ansible_user: "'backup_user'"
+  ansible_password: "lookup('env', 'LAB_DEVICE_PASSWORD')"
+  ansible_become: "true"
+  ansible_become_method: "'enable'"
+  ansible_become_password: "lookup('env', 'LAB_ENABLE_PASSWORD')"

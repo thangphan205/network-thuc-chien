@@ -1,0 +1,26 @@
+name: "[Network CI/CD] 4 - Golden-config Drift Detection"
+
+# Minh hoạ Mô hình 4 mô tả tại `cicd-network-config/README.md`.
+# Khác 3 workflow kia: KHÔNG trigger bởi push/PR, mà chạy định kỳ (schedule)
+# để phát hiện drift kể cả khi thay đổi không đến từ pipeline CI.
+on:
+  schedule:
+    - cron: "0 * * * *" # mỗi giờ - demo; thực tế có thể dày hơn
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    working-directory: "cicd-network-config/4-golden-config-drift-detection/ansible"
+
+jobs:
+  drift-check:
+    runs-on: self-hosted # cần network reach tới containerlab lab
+    env:
+      LAB_DEVICE_PASSWORD: ${{ secrets.LAB_DEVICE_PASSWORD }}
+      LAB_ENABLE_PASSWORD: ${{ secrets.LAB_ENABLE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: ansible-galaxy collection install cisco.ios
+      # Job này KHÔNG remediate - chỉ báo đỏ (fail) khi có drift để người vận
+      # hành biết. Muốn tự sửa, chạy thủ công / job riêng với -e remediate=true.
+      - run: ansible-playbook -i inventory.yml golden_config_check.yml

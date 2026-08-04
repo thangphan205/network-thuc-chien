@@ -1,0 +1,79 @@
+name: "[Network CI/CD] 6 - Simple Validate-then-Push"
+
+# Minh hoa ket hop Mo hinh 1 (GitOps Push) + Batfish gate, mo ta tai
+# `cicd-network-config/6-simple-validate-then-push/README.md`.
+# Khac Mo hinh 3: khong canary/rollback. Khac Mo hinh 5: khong co buoc cho
+# con nguoi approve - Batfish PASS la dieu kien DUY NHAT de CI tu dong day
+# config that ra thiet bi, ngay trong cung workflow run (job "batfish-gate"
+# chay lai tren ca su kien push vao main, khong chi tren pull_request).
+on:
+  pull_request:
+    paths:
+      - "cicd-network-config/6-simple-validate-then-push/**"
+  push:
+    branches: [main]
+    paths:
+      - "cicd-network-config/6-simple-validate-then-push/**"
+
+defaults:
+  run:
+    working-directory: "cicd-network-config/6-simple-validate-then-push"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install yamllint ansible-lint ansible
+      - run: yamllint ansible/ topology.clab.yml docker-compose.yml
+      - run: ansible-lint ansible/push_config.yml
+
+  batfish-gate:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: docker compose up -d
+      - name: Chờ Batfish server sẵn sàng
+        run: |
+          for i in $(seq 1 30); do
+            nc -z localhost 9996 && exit 0
+            sleep 2
+          done
+          echo "Batfish server không khởi động kịp" && exit 1
+      - name: Chạy Batfish gate
+        run: python batfish_gate.py
+      - name: Post báo cáo lên PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'cicd-network-config/6-simple-validate-then-push/gate_report.md';
+            if (!fs.existsSync(path)) return;
+            const body = fs.readFileSync(path, 'utf8');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+  push:
+    needs: batfish-gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: self-hosted # cần runner có network reach tới containerlab lab
+    env:
+      LAB_DEVICE_PASSWORD: ${{ secrets.LAB_DEVICE_PASSWORD }}
+      LAB_ENABLE_PASSWORD: ${{ secrets.LAB_ENABLE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: ansible-galaxy collection install -r ansible/requirements.yml
+      - run: ansible-playbook -i ansible/inventory.yml ansible/push_config.yml

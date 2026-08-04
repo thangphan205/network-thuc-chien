@@ -1,0 +1,12 @@
+# "Config as code" mà poller kéo về mỗi vòng lặp.
+# Trong triển khai thật, file này nằm ở một Git repo RIÊNG (config repo),
+# tách biệt khỏi repo chứa logic poller - xem README.md mục "Git repo riêng cho state".
+devices:
+  cisco1:
+    host: 192.168.22.11
+    dns_servers:
+      - 192.168.1.10
+  cisco2:
+    host: 192.168.22.12
+    dns_servers:
+      - 192.168.1.10

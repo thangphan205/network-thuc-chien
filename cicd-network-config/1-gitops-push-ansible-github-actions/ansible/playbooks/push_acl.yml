@@ -1,0 +1,36 @@
+---
+# Template: doi ACL (firewall rule).
+# Netadmin chi can sua list `aces` ben duoi (giu nguyen cau truc grant/protocol/
+# source/destination) - tuong duong sua tung dong "permit/deny" tren CLI that,
+# nhung khai bao duoi dang YAML de CI diff + lint truoc khi cham thiet bi.
+- name: Push intended ACL config to network devices
+  hosts: all
+  gather_facts: false
+  vars:
+    acl_name: "101"
+    acl_aces:
+      - grant: permit
+        protocol: tcp
+        source: { any: true }
+        destination: { any: true, port_protocol: { eq: 443 } }
+      - grant: deny
+        protocol: ip
+        source: { any: true }
+        destination: { any: true }
+        log: { set: true }
+
+  tasks:
+    - name: Apply ACL (extended, IPv4)
+      cisco.ios.ios_acls:
+        config:
+          - afi: ipv4
+            acls:
+              - name: "{{ acl_name }}"
+                acl_type: extended
+                aces: "{{ acl_aces }}"
+        state: merged
+      register: push_result
+
+    - name: Show what changed
+      debug:
+        msg: "Changed: {{ push_result.changed }}"

@@ -1,0 +1,23 @@
+name: cicd_validation_lab
+
+mgmt:
+  network: cicd_validation_mgmt
+  ipv4-subnet: 192.168.23.0/24
+
+topology:
+  nodes:
+    canary1:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.23.11
+      startup-config: ../../network-automation/containerlab/config/cisco.config.partial
+    node2:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.23.12
+      startup-config: ../../network-automation/containerlab/config/cisco.config.partial
+    node3:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.23.13
+      startup-config: ../../network-automation/containerlab/config/cisco.config.partial
