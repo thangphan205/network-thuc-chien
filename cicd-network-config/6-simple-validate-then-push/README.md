@@ -217,9 +217,32 @@ Vào tab **Actions** trên GitHub xem `lint` → `batfish-gate` chạy, đọc c
   2. Batfish snapshot bắt buộc có subfolder `configs/` lồng bên trong — cấu trúc thư mục ban đầu (`configs/base/*.cfg` phẳng) bị Batfish từ chối với lỗi 400. Đã restructure thành `configs/base/configs/*.cfg`.
 - Bước push thật (Ansible `ios_config` xuống `cisco1`) **chưa verify được** — cần `LAB_DEVICE_PASSWORD` thật (hash type-9 trong `config/cisco.config.partial` không đảo ngược được) mà chưa có trong lần test này. Cấu hình push (`ansible/push_config.yml`, path `configs/proposed/configs/{{ config_name }}.cfg`) đã đúng theo cấu trúc thư mục hiện tại nhưng còn 1 bước cuối cần test khi có credential.
 
+## Triển khai với GitLab (GitLab CI/CD & GitLab Backup Option)
+
+Ngoài GitHub Actions, bài 6 hỗ trợ sẵn 2 tùy chọn triển khai trên GitLab:
+
+### 1. GitLab CI/CD Pipeline (`.gitlab-ci.yml`)
+
+File `.gitlab-ci.yml` có sẵn tại thư mục gốc với 3 stage tương đương:
+- `lint-job`: Chạy `yamllint` và `ansible-lint`.
+- `batfish-gate-job`: Dùng `docker:dind` để spin-up Batfish server và chạy `python3 batfish_gate.py`.
+- `push-to-devices-job`: Chạy Ansible playbook push cấu hình xuống thiết bị trên GitLab Self-hosted Runner (`tags: [self-hosted, server-lab]`).
+
+### 2. Tùy chọn tự động đẩy cấu hình lên repo GitLab (`push_config.yml`)
+
+Khi Ansible push thành công cấu hình xuống thiết bị thật, bạn có thể tự động đẩy lại bản backup/proposed config lên repo GitLab bằng cách set biến môi trường `GITLAB_REPO_URL` (ví dụ `https://oauth2:YOUR_GITLAB_TOKEN@gitlab.com/username/network-configs.git`):
+
+```bash
+export GITLAB_REPO_URL="https://oauth2:<TOKEN>@gitlab.com/<username>/<repo>.git"
+ansible-playbook -i ansible/inventory.yml ansible/push_config.yml
+```
+
+---
+
 ## Dọn lab
 
 ```bash
 sudo containerlab destroy -t topology.clab.yml
 docker compose down
 ```
+

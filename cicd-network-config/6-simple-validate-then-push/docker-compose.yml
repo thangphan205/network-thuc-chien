@@ -1,6 +1,8 @@
+---
 version: '3.8'
 
 services:
+
   batfish:
     image: batfish/allinone
     container_name: batfish

@@ -15,12 +15,27 @@
   hosts: all
   gather_facts: false
   tasks:
-    - name: Apply raw config tu configs/proposed/configs/{{ config_name }}.cfg
+    - name: Apply raw config for proposed config {{ config_name }}
       cisco.ios.ios_config:
-        src: "{{ playbook_dir }}/../configs/proposed/configs/{{ config_name }}.cfg"
+        src:
+          "{{ playbook_dir }}/../configs/proposed/configs/{{ config_name
+          }}.cfg"
         save_when: modified
       register: push_result
 
     - name: Show what changed
-      debug:
+      ansible.builtin.debug:
         msg: "Changed: {{ push_result.changed }}"
+
+    - name: Push applied config to GitLab  # noqa command-instead-of-module
+      when: lookup('env', 'GITLAB_REPO_URL') != ""
+      ansible.builtin.shell: |
+        git config user.name "NetDevOps Bot"
+        git config user.email "netdevops@9ping.cloud"
+        git add configs/
+        git commit -m \
+          "auto: applied config for {{ config_name }} via CI/CD" || true
+        git push "${GITLAB_REPO_URL}" main || true
+      changed_when: false
+      environment:
+        GITLAB_REPO_URL: "{{ lookup('env', 'GITLAB_REPO_URL') }}"
