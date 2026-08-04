@@ -1,13 +1,12 @@
 all:
   hosts:
-    fw-edge:
+    # Container ten "cisco1" trong topology.clab.yml (lab rut gon con 1 node
+    # de demo). config_name tro toi file cau hinh no dong vai - fw-edge la
+    # thiet bi co san bug ACL shadow trong configs/proposed/, phu hop nhat
+    # de demo push mot dong bo voi Batfish gate.
+    cisco1:
       ansible_host: 192.168.26.11
-    r1-core:
-      ansible_host: 192.168.26.12
-    r2-core:
-      ansible_host: 192.168.26.13
-    sw-dist1:
-      ansible_host: 192.168.26.14
+      config_name: fw-edge
   vars:
     ansible_network_os: ios
     ansible_connection: network_cli

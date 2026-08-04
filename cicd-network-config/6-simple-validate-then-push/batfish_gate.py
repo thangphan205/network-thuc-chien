@@ -15,7 +15,7 @@ chan pipeline, KHONG duoc day config ra thiet bi. Exit 0 neu PASS.
 import sys
 
 from pybatfish.client.session import Session
-from pybatfish.datamodel import Header
+from pybatfish.datamodel import HeaderConstraints
 
 NETWORK_NAME = "simple-validate-push-lab"
 BASE_PATH = "configs/base"
@@ -46,7 +46,7 @@ def check_acl(bf) -> tuple[bool, str]:
 
 
 def check_reachability(bf) -> tuple[bool, str]:
-    headers = Header(
+    headers = HeaderConstraints(
         srcIps=APP_SRC_IP,
         dstIps=DB_DST_IP,
         ipProtocols=["tcp"],

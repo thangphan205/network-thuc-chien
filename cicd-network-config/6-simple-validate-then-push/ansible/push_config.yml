@@ -1,16 +1,23 @@
 ---
 # Push nguyen ban file cau hinh da duoc Batfish gate xac nhan PASS
-# (configs/proposed/{{ inventory_hostname }}.cfg) xuong thiet bi that.
+# (configs/proposed/configs/{{ config_name }}.cfg) xuong thiet bi that.
 # Khac Mo hinh 1 (module co cau truc nhu ios_acls/ios_bgp_global): lab nay
 # push RAW config vi file .cfg dung chung voi Batfish snapshot, khong tien
 # xu ly lai thanh YAML structured.
+# Dung host var "config_name" (khai bao trong inventory.yml) thay vi
+# {{ inventory_hostname }} truc tiep, vi lab rut gon chi con 1 container
+# (cisco1) nhung Batfish van validate toan bo 4 thiet bi logic trong
+# configs/ - config_name cho biet container nay dong vai thiet bi nao.
+# Duong dan co them cap "configs/" long nhau (configs/proposed/configs/)
+# vi Batfish snapshot BAT BUOC phai co subfolder "configs/" ben trong -
+# xem batfish_gate.py va README.md muc "Cau truc thu muc snapshot".
 - name: Push validated proposed config to network devices
   hosts: all
   gather_facts: false
   tasks:
-    - name: Apply raw config tu configs/proposed/{{ inventory_hostname }}.cfg
+    - name: Apply raw config tu configs/proposed/configs/{{ config_name }}.cfg
       cisco.ios.ios_config:
-        src: "{{ playbook_dir }}/../configs/proposed/{{ inventory_hostname }}.cfg"
+        src: "{{ playbook_dir }}/../configs/proposed/configs/{{ config_name }}.cfg"
         save_when: modified
       register: push_result
 

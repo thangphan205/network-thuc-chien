@@ -211,3 +211,4 @@ __marimo__/
 speaker-notes.md
 
 .claude/settings.json
+cicd-network-config/6-simple-validate-then-push/server_lab.txt

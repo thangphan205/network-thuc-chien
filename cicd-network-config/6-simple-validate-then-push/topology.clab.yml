@@ -6,23 +6,14 @@ mgmt:
 
 topology:
   nodes:
-    fw-edge:
+    cisco1:
       kind: cisco_iol
       image: vrnetlab/cisco_iol:17.12.01
       mgmt-ipv4: 192.168.26.11
       startup-config: ./config/cisco.config.partial
-    r1-core:
-      kind: cisco_iol
-      image: vrnetlab/cisco_iol:17.12.01
+    juniper1:
+      kind: juniper_crpd
+      image: crpd:26.2R1.7
       mgmt-ipv4: 192.168.26.12
-      startup-config: ./config/cisco.config.partial
-    r2-core:
-      kind: cisco_iol
-      image: vrnetlab/cisco_iol:17.12.01
-      mgmt-ipv4: 192.168.26.13
-      startup-config: ./config/cisco.config.partial
-    sw-dist1:
-      kind: cisco_iol
-      image: vrnetlab/cisco_iol:17.12.01
-      mgmt-ipv4: 192.168.26.14
-      startup-config: ./config/cisco.config.partial
+  links:
+    - endpoints: ["cisco1:eth1", "juniper1:eth1"]
