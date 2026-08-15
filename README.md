@@ -25,8 +25,8 @@ Dưới đây là sơ đồ các Module học tập cùng các playlist video đ
 | Module học tập | Thư mục mã nguồn | Playlist YouTube đồng hành 📺 | Mô tả |
 | :--- | :--- | :--- | :--- |
 | ☸️ **Kubernetes Networking** | [`kubernetes-networking/`](./kubernetes-networking) | [Xem Playlist K8s Networking](https://www.youtube.com/playlist?list=PL-3AGuUf6HCqpYV1BvKPtxMzxEeIKpWR2) | Series chuyên sâu 46 tập từ Linux kernel đến Production (Flannel, Calico, Cilium, eBPF) |
-| 🔍 **Debug Mạng từ A-Z** | [`debug-mang-az/`](./debug-mang-az) | [Kênh Network Thực Chiến](https://www.youtube.com/@NetworkThucChien) | Kỹ năng chẩn đoán lỗi mạng có hệ thống theo tầng OSI (Ping, MTR, SS, Netcat, Curl, Tcpdump) |
-| 🩺 **Network Bắt Bệnh** | [`network-bat-benh/`](./network-bat-benh) | [Kênh Network Thực Chiến](https://www.youtube.com/@NetworkThucChien) | Phân tích & chẩn đoán sự cố mạng thực tế qua các case study (Root cause, MTU, DNS, Routing, TLS, NAT...) |
+| 🔍 **Debug Mạng từ A-Z** | [`debug-mang-az/`](./debug-mang-az) | [Xem Playlist Debug Mạng A-Z](https://www.youtube.com/playlist?list=PL-3AGuUf6HCoA9F33thf4aGNoJpVTUE9I) | Kỹ năng chẩn đoán lỗi mạng có hệ thống theo tầng OSI (Ping, MTR, SS, Netcat, Curl, Tcpdump) |
+| 🩺 **Network Bắt Bệnh** | [`network-bat-benh/`](./network-bat-benh) | [Kênh Network Thực Chiến](https://www.youtube.com/@NetworkThucChien) | Phân tích & chẩn đoán sự cố mạng thực tế qua các case study — **cần học [Debug Mạng A-Z](./debug-mang-az) trước** (Root cause, MTU, DNS, Routing, TLS, NAT...) |
 | 🐳 **Container Networking** | [`container-networking/`](./container-networking) | [Kênh Network Thực Chiến](https://www.youtube.com/@NetworkThucChien) | Nền tảng Linux Networking: network namespaces, bridge, iptables, nftables, Docker networking |
 | 🤖 **Network Automation** | [`network-automation/`](./network-automation) | [Kênh Network Thực Chiến](https://www.youtube.com/@NetworkThucChien) | Tự động hóa mạng với Python (Paramiko, Netmiko, Scrapli), Ansible và xây dựng API bằng FastAPI |
 | 🔄 **CI/CD cho Network Config** | [`cicd-network-config/`](./cicd-network-config) | [Kênh Network Thực Chiến](https://www.youtube.com/@NetworkThucChien) | So sánh 4 mô hình NetDevOps: GitOps Push, GitOps Pull, Validation/Canary-Rollback, Golden-config Drift-detection |
@@ -184,7 +184,9 @@ cd kubernetes-networking/k8s-lab/tap-00-setup-lab
 > **Chẩn đoán mạng có hệ thống** — Một kỹ sư giỏi không đoán mò, họ sử dụng công cụ chuẩn xác cho từng tầng OSI (từ L1 đến L7).
 
 * 📁 **Thư mục Lab:** [`debug-mang-az/`](./debug-mang-az)
+* 📺 **Playlist YouTube:** [Debug Mạng A-Z](https://www.youtube.com/playlist?list=PL-3AGuUf6HCoA9F33thf4aGNoJpVTUE9I)
 * 📺 **Cách học:** Theo dõi các video ngắn và thực hành các câu lệnh trực tiếp trên máy ảo Linux.
+* 🎯 **Nền tảng bắt buộc cho series [Network Bắt Bệnh](./network-bat-benh):** nắm vững bộ 9 công cụ này trước khi vào các ca "bắt bệnh" thực chiến.
 
 | Module | Tập | Công cụ / Chủ đề | Nội dung thực hành |
 | :--- | :---: | :--- | :--- |

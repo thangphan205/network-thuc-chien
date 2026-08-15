@@ -15,6 +15,28 @@
 
 ---
 
+## 🎓 Điều Kiện Tiên Quyết: Nắm Vững Bộ Đồ Nghề Trước
+
+Series này là **thực chiến** — mỗi tập giả định bạn đã biết **cầm** từng "dụng cụ khám bệnh" (đọc output `ss`, soi gói `tcpdump`, đọc chuỗi cert `openssl`...). Ở đây ta tập trung vào **tư duy chẩn đoán**, không dừng lại giải thích từng lệnh.
+
+> 🧰 **Chưa quen các công cụ?** Học trước series **[Debug Mạng A-Z](https://www.youtube.com/playlist?list=PL-3AGuUf6HCoA9F33thf4aGNoJpVTUE9I)** — 9 công cụ CLI nền tảng, mỗi tập một dụng cụ, từ cách đọc output đến bẫy thường gặp. Nắm xong bộ này rồi quay lại đây "bắt bệnh" sẽ nhẹ nhàng hơn nhiều.
+
+| Công cụ (Debug Mạng A-Z) | Tầng | Dùng để | Xuất hiện ở ca bệnh |
+| :--- | :---: | :--- | :--- |
+| **`ping`** | L3 | Kiểm tra reachability, phân biệt lỗi L3 vs L4+ | 01, 02, 04, 05, 10 |
+| **`mtr`** | L3 | Soi từng hop, mất gói trên đường đi | (nền tảng định tuyến) |
+| **`netcat` (nc)** | L4 | Test cổng mở/đóng, bắt tay TCP thủ công | 01, 07 |
+| **`ss`** | L4 | Soi socket đang LISTEN, bind `127.0.0.1` vs `0.0.0.0` | 03, 09 |
+| **`dig`** | L7 | Truy vấn DNS, phân giải tên miền | 06 |
+| **`curl`** | L7 | Test HTTP/HTTPS, đọc mã trạng thái & verbose | hầu hết các tập |
+| **`openssl`** | L5/6 | Soi chuỗi chứng chỉ, hạn cert, bắt tay TLS | 07, 08 |
+| **`tcpdump`** | L2–L4 | Bắt gói tin (mở bằng Wireshark), soi cờ TCP/ICMP | mọi tập có bước bắt gói |
+| **`iperf3`** | L4 | Đo băng thông, tìm nghẽn throughput | (nền tảng hiệu năng) |
+
+> 💡 Ngắn gọn: **Debug Mạng A-Z dạy bạn *dùng dụng cụ*. Network Bắt Bệnh dạy bạn *chẩn đoán bệnh* bằng những dụng cụ đó.**
+
+---
+
 ## 🧠 Quy Trình "Bắt Bệnh" Chuẩn 5 Bước (Troubleshooting Framework)
 
 <p align="center">

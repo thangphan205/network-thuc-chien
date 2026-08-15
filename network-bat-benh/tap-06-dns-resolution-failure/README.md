@@ -36,7 +36,7 @@
 ### Bước 1: Khởi động môi trường Lab
 ```bash
 cd network-bat-benh/tap-06-dns-resolution-failure
-docker compose up -d
+docker compose up -d --build
 ```
 
 ---
