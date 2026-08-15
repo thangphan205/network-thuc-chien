@@ -1,0 +1,19 @@
+services:
+  web-server:
+    image: nginx:alpine
+    container_name: lab08-web-server
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    ports:
+      - "8444:443"
+    networks:
+      lab-net:
+        ipv4_address: 172.28.8.10
+
+networks:
+  lab-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.8.0/24

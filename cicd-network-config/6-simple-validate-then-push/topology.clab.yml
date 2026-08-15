@@ -11,7 +11,7 @@ topology:
     cisco1:
       kind: cisco_iol
       image: vrnetlab/cisco_iol:17.12.01
-      type: iol
+      type: l2
       mgmt-ipv4: 192.168.26.11
       startup-config: ./config/cisco.config.partial
     juniper1:

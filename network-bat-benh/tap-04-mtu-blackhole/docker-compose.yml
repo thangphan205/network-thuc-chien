@@ -1,0 +1,31 @@
+services:
+  web-server:
+    build: .
+    container_name: lab04-web-server
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "8084:80"
+    networks:
+      lab-net:
+        ipv4_address: 172.28.4.10
+
+  client:
+    image: alpine:latest
+    container_name: lab04-client
+    cap_add:
+      - NET_ADMIN
+    command: sleep infinity
+    init: true
+    networks:
+      lab-net:
+        ipv4_address: 172.28.4.20
+    depends_on:
+      - web-server
+
+networks:
+  lab-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.4.0/24

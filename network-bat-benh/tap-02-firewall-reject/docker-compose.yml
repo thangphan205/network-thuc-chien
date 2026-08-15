@@ -1,0 +1,18 @@
+services:
+  web-server:
+    build: .
+    container_name: lab02-web-server
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "8081:80"
+    networks:
+      lab-net:
+        ipv4_address: 172.28.2.10
+
+networks:
+  lab-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.2.0/24

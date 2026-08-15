@@ -1,0 +1,27 @@
+services:
+  server:
+    image: nginx:alpine
+    container_name: lab12-server
+    networks:
+      lab-net:
+        ipv4_address: 172.28.12.10
+
+  client:
+    image: alpine:latest
+    container_name: lab12-client
+    cap_add:
+      - NET_ADMIN
+    command: sleep infinity
+    init: true
+    networks:
+      lab-net:
+        ipv4_address: 172.28.12.20
+    depends_on:
+      - server
+
+networks:
+  lab-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.12.0/24
