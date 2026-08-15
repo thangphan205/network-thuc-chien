@@ -17,6 +17,12 @@
 
 ## 🧠 Quy Trình "Bắt Bệnh" Chuẩn 5 Bước (Troubleshooting Framework)
 
+<p align="center">
+  <a href="./quy-trinh-bat-benh.md">
+    <img src="./images/quy-trinh-bat-benh.jpg" alt="Quy Trình 5 Bước Bắt Bệnh Network" width="100%">
+  </a>
+</p>
+
 ```
 [1. Tiếp nhận bệnh án]  → Thu thập triệu chứng: Ai bị? Khi nào? Lỗi gì? Ứng dụng báo mã lỗi nào?
         ↓

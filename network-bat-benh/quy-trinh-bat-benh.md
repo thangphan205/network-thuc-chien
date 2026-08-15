@@ -4,6 +4,12 @@
 
 ---
 
+<p align="center">
+  <img src="./images/quy-trinh-bat-benh.jpg" alt="Quy Trình 5 Bước Bắt Bệnh Network" width="100%">
+</p>
+
+---
+
 ## 🗺️ 1. Sơ Đồ Tư Duy Tổng Thể (Mindmap)
 
 ```mermaid
