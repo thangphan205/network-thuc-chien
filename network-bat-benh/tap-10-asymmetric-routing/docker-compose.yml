@@ -1,6 +1,6 @@
 services:
   server:
-    image: nginx:alpine
+    build: ./server
     container_name: lab10-server
     cap_add:
       - NET_ADMIN
@@ -9,7 +9,7 @@ services:
         ipv4_address: 172.28.10.10
 
   client:
-    image: alpine:latest
+    build: ./client
     container_name: lab10-client
     cap_add:
       - NET_ADMIN

@@ -5,7 +5,7 @@ services:
     cap_add:
       - NET_ADMIN
     ports:
-      - "8081:80"
+      - "8082:80"
     networks:
       lab-net:
         ipv4_address: 172.28.2.10

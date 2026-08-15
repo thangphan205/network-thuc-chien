@@ -1,4 +1,13 @@
 services:
+  # Seed file cấu hình đang chạy (nginx/nginx.conf) = trạng thái ĐÃ CHỮA lúc `up`.
+  # nginx.conf được gitignore nên chạy fault/cure không làm bẩn cây git.
+  config-init:
+    image: alpine:latest
+    container_name: lab03-config-init
+    volumes:
+      - ./nginx:/nginx
+    command: sh -c "cp /nginx/conf/good.conf /nginx/nginx.conf"
+
   web-server:
     image: nginx:alpine
     container_name: lab03-web-server
@@ -7,12 +16,15 @@ services:
       - ./nginx/index.html:/usr/share/nginx/html/index.html:ro
     ports:
       - "8083:80"
+    depends_on:
+      config-init:
+        condition: service_completed_successfully
     networks:
       lab-net:
         ipv4_address: 172.28.3.10
 
   client:
-    image: alpine:latest
+    build: ./client
     container_name: lab03-client
     command: sleep infinity
     init: true

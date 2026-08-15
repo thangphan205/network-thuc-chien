@@ -63,11 +63,11 @@ docker compose up -d
 
 ---
 
-### Bước 3: Chữa Bệnh (Khắc Phục Sự Cố)
+### Bước 3: Khắc Phục Sự Cố (Fix & Remediate)
 
 Đổi cấu hình Nginx sang lắng nghe `0.0.0.0` (tất cả interfaces):
 ```bash
-./scripts/2-cure.sh
+./scripts/2-fix.sh
 ```
 
 Kiểm tra lại từ Client:
@@ -86,6 +86,21 @@ Kết quả trả về **`HTTP/1.1 200 OK`**!
 | **`listen 0.0.0.0:80`** (hoặc `listen 80`) | Lắng nghe trên **TẤT CẢ** các card mạng hiện có (Loopback, LAN, Public IP, Docker IP...). | ✅ **Mọi máy tính cùng mạng đều truy cập được**. |
 
 > 💡 **Thực tế hay gặp:** Các framework backend (Flask, Django, Node.js Express, Spring Boot, FastAPI) khi chạy ở chế độ dev thường mặc định bind `127.0.0.1:8000` / `localhost:3000`. Khi deploy lên Docker/Kubernetes nếu không đổi thành `0.0.0.0` thì bên ngoài hoàn toàn không gọi vào container được!
+
+---
+
+## 📝 Câu Hỏi Ôn Tập
+
+1. Vì sao đứng **tại server** curl `127.0.0.1` được, nhưng máy khác gọi vào IP server thì "Connection refused"?
+2. Lệnh nào cho thấy tiến trình đang lắng nghe trên địa chỉ nào (`127.0.0.1` hay `0.0.0.0`)?
+3. Sửa lỗi này bằng cách đổi `listen` thành gì?
+
+<details><summary>Gợi ý đáp án</summary>
+
+1. Nginx bind vào `127.0.0.1` (loopback) nên chỉ nhận kết nối từ chính máy đó; gói từ ngoài vào không có socket nào lắng nghe → RST/refused.
+2. `ss -tulpn` (hoặc `netstat -tulpn`). Cột `Local Address` là `127.0.0.1:80` khi lỗi, `0.0.0.0:80` khi đúng.
+3. `listen 80;` (tương đương `0.0.0.0:80`) để nghe trên mọi card mạng.
+</details>
 
 ---
 

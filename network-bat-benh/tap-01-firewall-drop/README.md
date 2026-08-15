@@ -86,11 +86,11 @@ Chạy lệnh kiểm tra từ Terminal:
 
 ---
 
-### Bước 4: Chữa Bệnh (Khắc Phục Sự Cố)
+### Bước 4: Khắc Phục Sự Cố (Fix & Remediate)
 
 Xóa bỏ luật DROP trên Firewall:
 ```bash
-./scripts/2-cure.sh
+./scripts/2-fix.sh
 ```
 
 Kiểm tra lại:
@@ -111,6 +111,21 @@ Trên Wireshark, bạn sẽ thấy ngay quá trình bắt tay 3 bước hoàn h�
 | **Tại sao Ping vẫn thông?** | `ping` sử dụng giao thức **ICMP** ở Tầng 3 (Network Layer) do Kernel Linux trực tiếp xử lý độc lập với các ứng dụng Web. |
 | **Tại sao Web bị Timeout?** | Khi Firewall áp dụng hành động **`DROP` (Silent Drop)**, gói tin bị hủy âm thầm mà không gửi bất kỳ thông báo lỗi nào về. Phía Client không biết chuyện gì xảy ra nên tiếp tục gửi lại (`Retransmission`) cho đến khi cạn thời gian chờ (Timeout). |
 | **Gặp trong thực tế ở đâu?** | • **AWS Security Group / Azure NSG / GCP Firewall:** Mặc định DROP mọi traffic nếu chưa khai báo Inbound Rule.<br>• **Firewall cứng (Palo Alto, Fortinet):** Cấu hình Stealth/Drop Rule.<br>• **Linux Server:** Bật `iptables` / `ufw` với policy `DROP`. |
+
+---
+
+## 📝 Câu Hỏi Ôn Tập
+
+1. Vì sao `ping` vẫn phản hồi 100% nhưng trình duyệt lại xoay tròn rồi Timeout?
+2. Firewall dùng luật `DROP` khác luật `REJECT` ở điểm nào về gói tin phản hồi cho client?
+3. Lệnh nào cho bạn thấy ngay luật iptables nào đang chặn cổng 80?
+
+<details><summary>Gợi ý đáp án</summary>
+
+1. `ping` là ICMP (L3) không bị chặn; luật chỉ DROP gói TCP cổng 80 (L4). Gói SYN bị nuốt im lặng nên client cứ retransmit tới khi timeout.
+2. `DROP` = im lặng nuốt gói → client treo đến timeout. `REJECT` = gửi lại TCP RST/ICMP → client báo lỗi "refused" ngay lập tức (xem Tập 02).
+3. `iptables -L INPUT -n -v --line-numbers` (hoặc `iptables -S`).
+</details>
 
 ---
 

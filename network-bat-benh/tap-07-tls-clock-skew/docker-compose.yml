@@ -1,4 +1,19 @@
 services:
+  certgen:
+    build: ./certgen
+    container_name: lab07-certgen
+    volumes:
+      - ./nginx/ssl:/certs
+
+  # Seed nginx.conf = trạng thái ĐÃ CHỮA (cert hợp lệ) lúc `up`.
+  # nginx.conf được gitignore nên chạy fault/cure không làm bẩn cây git.
+  config-init:
+    image: alpine:latest
+    container_name: lab07-config-init
+    volumes:
+      - ./nginx:/nginx
+    command: sh -c "cp /nginx/conf/good.conf /nginx/nginx.conf"
+
   web-server:
     image: nginx:alpine
     container_name: lab07-web-server
@@ -7,19 +22,21 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl:ro
     ports:
       - "8443:443"
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+      config-init:
+        condition: service_completed_successfully
     networks:
       lab-net:
         ipv4_address: 172.28.7.10
 
   client:
-    image: alpine:latest
+    build: ./client
     container_name: lab07-client
-    cap_add:
-      - SYS_TIME
-    command: sleep infinity
     init: true
     volumes:
-      - ./nginx/ssl/ca.crt:/etc/ssl/certs/ca-custom.crt:ro
+      - ./nginx/ssl:/etc/ssl/lab:ro
     networks:
       lab-net:
         ipv4_address: 172.28.7.20

@@ -29,8 +29,10 @@
 ### Bước 1: Khởi động môi trường Lab
 ```bash
 cd network-bat-benh/tap-08-tls-missing-intermediate-ca
-docker compose up -d
+docker compose up -d --build
 ```
+
+> **Lưu ý:** Chuỗi chứng chỉ 3 cấp (`Root CA -> Intermediate CA -> Server`) được service `certgen` **sinh tự động** mỗi lần `docker compose up`, nên lab không bao giờ bị lỗi cert hết hạn dù bạn chạy vào năm nào.
 
 ---
 
@@ -58,11 +60,11 @@ docker compose up -d
 
 ---
 
-### Bước 3: Chữa Bệnh (Khắc Phục Sự Cố)
+### Bước 3: Khắc Phục Sự Cố (Fix & Remediate)
 
 Chuyển cấu hình Nginx sang sử dụng file gộp **`fullchain.crt`** (`cat server.crt intermediate.crt > fullchain.crt`):
 ```bash
-./scripts/2-cure.sh
+./scripts/2-fix.sh
 ```
 
 Kiểm tra lại:

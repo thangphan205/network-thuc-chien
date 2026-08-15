@@ -23,12 +23,14 @@
 
 ---
 
+> **⚠️ Lưu ý về phạm vi mô phỏng:** Lab này dùng **1 server** chặn gói `SYN-ACK` chiều đi bằng iptables để **tái hiện đúng TRIỆU CHỨNG** của asymmetric routing (ping thông 2 chiều, nhưng TCP đứt ở bước bắt tay). Đây **không phải** một topology 2 firewall / 2 đường về thật. Cơ chế gốc ngoài đời: gói đi qua Firewall A, gói về theo tuyến khác qua Firewall B — Firewall B không có state của kết nối nên drop `SYN-ACK`. Muốn dựng bản đầy đủ 2 router thật, dùng Containerlab (xem series `cicd-network-config`).
+
 ## 🚀 Hướng Dẫn Thực Hành
 
 ### Bước 1: Khởi động môi trường Lab
 ```bash
 cd network-bat-benh/tap-10-asymmetric-routing
-docker compose up -d
+docker compose up -d --build
 ```
 
 ---
@@ -51,11 +53,11 @@ docker compose up -d
 
 ---
 
-### Bước 3: Chữa Bệnh (Khắc Phục Sự Cố)
+### Bước 3: Khắc Phục Sự Cố (Fix & Remediate)
 
 Đảm bảo lưu lượng 2 chiều đi qua cùng một cổng Firewall (Symmetric Path):
 ```bash
-./scripts/2-cure.sh
+./scripts/2-fix.sh
 ```
 
 Kiểm tra lại:

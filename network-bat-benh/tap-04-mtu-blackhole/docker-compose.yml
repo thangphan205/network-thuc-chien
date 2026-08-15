@@ -11,7 +11,7 @@ services:
         ipv4_address: 172.28.4.10
 
   client:
-    image: alpine:latest
+    build: ./client
     container_name: lab04-client
     cap_add:
       - NET_ADMIN

@@ -5,7 +5,7 @@
     <img src="https://img.shields.io/badge/YouTube-Network%20Thực%20Chiến-red?style=for-the-badge&logo=youtube" alt="YouTube Channel">
   </a>
   <a href="https://github.com/thangphan205/network-thuc-chien">
-    <img src="https://img.shields.io/badge/Status-12%20Labs%20Ready-brightgreen?style=for-the-badge" alt="Status">
+    <img src="https://img.shields.io/badge/Status-10%20Labs%20Ready-brightgreen?style=for-the-badge" alt="Status">
   </a>
   <img src="https://img.shields.io/badge/Format-1%20Tập%201%20Lỗi-blue?style=for-the-badge" alt="Format">
 </p>
@@ -39,7 +39,7 @@
 
 ---
 
-## 📋 Danh Mục 12 Ca Bệnh Thực Chiến (Mỗi Tập 1 Lỗi)
+## 📋 Danh Mục 10 Ca Bệnh Thực Chiến (Mỗi Tập 1 Lỗi)
 
 | Tập | Mã Lỗi | Tên Ca Bệnh & Hiện Tượng | Tầng Mạng / Giao Thức | Tài Liệu & Thực Hành |
 | :---: | :--- | :--- | :--- | :---: |
@@ -53,8 +53,6 @@
 | **08** | `TLS-CHAIN` | **Máy tính vào web bình thường, điện thoại/curl báo lỗi SSL** | L5/L6 — Thiếu Intermediate CA Cert | [📂 `tap-08-tls-missing-intermediate-ca`](./tap-08-tls-missing-intermediate-ca) |
 | **09** | `NAT-TIMEOUT` | **App đang dùng bình thường cứ sau 5 phút là bị ngắt kết nối** | L4 — NAT Session Idle Timeout | [📂 `tap-09-nat-session-timeout`](./tap-09-nat-session-timeout) |
 | **10** | `ASYM-ROUTING` | **Ping 2 chiều thông suốt nhưng SSH/HTTP vừa vào là rớt** | L3 — Asymmetric Routing qua Stateful FW | [📂 `tap-10-asymmetric-routing`](./tap-10-asymmetric-routing) |
-| **11** | `CONNTRACK-FULL` | **Server mạng mạnh nhưng thỉnh thoảng drop kết nối ngẫu nhiên** | Linux Kernel — Tràn bảng `nf_conntrack` | [📂 `tap-11-conntrack-table-full`](./tap-11-conntrack-table-full) |
-| **12** | `GW-MISSING` | **Trong mạng LAN giao tiếp tốt, không ra được Internet** | L3 — Default Gateway & Subnet Mask | [📂 `tap-12-missing-default-gateway`](./tap-12-missing-default-gateway) |
 
 ---
 
@@ -66,18 +64,36 @@ Mọi bài lab trong series này đều được đóng gói độc lập bằng
 # 1. Di chuyển vào thư mục bài lab bạn muốn học (Ví dụ Tập 01)
 cd tap-01-firewall-drop
 
-# 2. Khởi động môi trường lab
-docker compose up -d
+# 2. Khởi động môi trường lab (--build vì một số tập có Dockerfile riêng)
+docker compose up -d --build
 
 # 3. Kích hoạt lỗi để bắt đầu bắt bệnh
 ./scripts/1-fault.sh
 
-# 4. Mở Wireshark trên máy tính (bắt card Loopback lo0 hoặc docker bridge) và chạy test
+# 4. Chạy test để quan sát triệu chứng
 ./scripts/test.sh
 
-# 5. Chữa bệnh và khôi phục hệ thống
-./scripts/2-cure.sh
+# 5. Khắc phục lỗi và khôi phục hệ thống
+./scripts/2-fix.sh
 ```
+
+> **Lưu ý cấu hình:** Chứng chỉ TLS (Tập 07, 08) và file `nginx/nginx.conf` được **sinh tự động lúc `docker compose up`** (không commit vào repo), nên chạy lab **không làm bẩn cây git** và cert không bao giờ hết hạn. Mọi gói tool (`curl`, `dig`, `tcpdump`...) đã **bake sẵn trong image** — không cần Internet giữa chừng.
+
+### 🦈 Bắt gói tin bằng Wireshark trên **mọi hệ điều hành**
+
+Trên **macOS/Windows**, Docker chạy trong máy ảo nên **không có card `docker0`** để Wireshark bắt trực tiếp. Cách chạy được ở mọi nơi là bắt gói **ngay trong container** rồi mở file `.pcap` bằng Wireshark:
+
+```bash
+# Bắt gói trong container (mọi tập đều đã có sẵn tcpdump); Ctrl+C để dừng
+docker compose exec client tcpdump -i eth0 -w /tmp/cap.pcap
+#   (hoặc bắt phía server: docker compose exec server tcpdump -i eth0 -w /tmp/cap.pcap)
+
+# Sao file pcap ra máy host rồi mở bằng Wireshark
+docker compose cp client:/tmp/cap.pcap ./cap.pcap
+wireshark ./cap.pcap    # hoặc mở bằng giao diện Wireshark
+```
+
+Display filter gợi ý cho từng tập nằm trong README của tập đó (ví dụ `tcp.port == 80 || icmp`, `tls`, `dns`).
 
 ---
 
@@ -90,6 +106,12 @@ docker compose up -d
 | **L4 (Transport)** | Cổng có mở không? Trạng thái Socket ra sao? Firewall chặn gì? | `ss -tulpn`, `nc -zvw`, `curl -Iv`, `iptables -L` |
 | **L5-L6 (TLS/SSL)** | Chuỗi chứng chỉ có đủ không? Giờ hệ thống có chuẩn không? | `openssl s_client -showcerts`, `date`, `chronyc` |
 | **L7 (Application)** | DNS trả về IP nào? Mã trạng thái HTTP trả về là gì? | `dig +trace`, `nslookup`, `curl -sI` |
+
+---
+
+## 📋 Sau Khi Chữa Xong: Viết Bệnh Án
+
+Bước 5 của quy trình là **phòng ngừa tái diễn**. Sau mỗi sự cố thật ngoài production, hãy điền [**Mẫu Biên Bản Hậu Sự Cố (Post-mortem)**](./post-mortem-template.md) để cả team không mắc lại cùng một lỗi.
 
 ---
 

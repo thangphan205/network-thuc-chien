@@ -9,7 +9,7 @@ services:
         ipv4_address: 172.28.5.10
 
   client:
-    image: alpine:latest
+    build: ./client
     container_name: lab05-client
     cap_add:
       - NET_ADMIN

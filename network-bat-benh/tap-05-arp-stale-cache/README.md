@@ -66,7 +66,7 @@ docker compose up -d
 
 ### Bước 3: Bắt mạch trên Wireshark
 
-1. Bắt gói tin trên card Docker bridge với Display Filter:
+1. Bắt gói tin **trong container** rồi mở bằng Wireshark (chạy được trên cả macOS/Windows — xem mục [🦈 Bắt gói tin bằng Wireshark](../README.md#-bắt-gói-tin-bằng-wireshark-trên-mọi-hệ-điều-hành) ở README series). Display Filter:
    ```wireshark
    arp || icmp
    ```
@@ -76,11 +76,11 @@ docker compose up -d
 
 ---
 
-### Bước 4: Chữa Bệnh (Khắc Phục Sự Cố)
+### Bước 4: Khắc Phục Sự Cố (Fix & Remediate)
 
 Làm mới bảng ARP trên Client:
 ```bash
-./scripts/2-cure.sh
+./scripts/2-fix.sh
 ```
 
 Kiểm tra lại:
@@ -100,6 +100,21 @@ Ping thông suốt 0% packet loss!
    # hoặc xóa 1 IP cụ thể:
    ip neigh del 192.168.1.100 dev eth0
    ```
+
+---
+
+## 📝 Câu Hỏi Ôn Tập
+
+1. Vì sao Client và Server **cùng dải mạng** mà lại không ping được nhau?
+2. Lệnh nào cho bạn xem bảng ARP hiện tại của máy và địa chỉ MAC đã học?
+3. "Gratuitous ARP" là gì và giúp gì khi đổi IP/đổi máy chủ dự phòng?
+
+<details><summary>Gợi ý đáp án</summary>
+
+1. Bảng ARP của Client giữ một MAC **sai/cũ** cho IP của Server → khung Ethernet gửi tới MAC không tồn tại → gói đi vào hư vô.
+2. `ip neigh show` (hoặc `arp -n`). So sánh MAC ở đây với MAC thật của Server (`ip link show eth0`).
+3. Gói ARP quảng bá do một host tự phát để thông báo "IP này giờ ứng với MAC của tôi", giúp cả mạng cập nhật lại bảng ARP ngay khi đổi IP hoặc failover.
+</details>
 
 ---
 

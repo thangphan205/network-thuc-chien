@@ -1,9 +1,10 @@
 services:
   server:
-    image: nginx:alpine
+    build: ./server
     container_name: lab09-server
-    cap_add:
-      - NET_ADMIN
+    # privileged: can thiet de ghi sysctl net.netfilter.* trong netns cua container
+    # (Docker Desktop mount /proc/sys read-only voi container thuong)
+    privileged: true
     networks:
       lab-net:
         ipv4_address: 172.28.9.10
@@ -11,8 +12,6 @@ services:
   client:
     image: alpine:latest
     container_name: lab09-client
-    cap_add:
-      - NET_ADMIN
     command: sleep infinity
     init: true
     networks:

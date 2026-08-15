@@ -15,8 +15,4 @@ echo ""
 echo "=========================================="
 echo "🩺 [TEST 3] Đứng từ CLIENT (172.28.3.20) curl sang SERVER (172.28.3.10):"
 echo "=========================================="
-docker compose exec client apk add --no-cache curl >/dev/null 2>&1
 docker compose exec client curl -Iv http://172.28.3.10
-
-echo ""
-echo "=========================================="

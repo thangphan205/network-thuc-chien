@@ -33,8 +33,10 @@
 ### Bước 1: Khởi động môi trường Lab
 ```bash
 cd network-bat-benh/tap-09-nat-session-timeout
-docker compose up -d
+docker compose up -d --build
 ```
+
+> **Lưu ý:** Ngoài đời NAT Gateway thường đặt Idle Timeout **350 giây – vài phút**. Trong lab, để demo nhanh, ta nén xuống **5 giây** — cơ chế giống hệt nhau. Server chạy `privileged` để chỉnh được sysctl `net.netfilter.*` ngay trong network namespace của container (bắt buộc trên Docker Desktop).
 
 ---
 
@@ -50,12 +52,19 @@ docker compose up -d
    ./scripts/test.sh
    ```
 
+#### 🔍 Hiện tượng quan sát được:
+`test.sh` mở **một kết nối TCP duy nhất**: gửi GET #1 (thành công) → giữ im lặng 7 giây (vượt ngưỡng idle 5s, firewall xóa phiên khỏi bảng conntrack) → gửi GET #2 **trên cùng kết nối đó**:
+```
+👉 Số phản hồi HTTP 200 nhận được trên 1 kết nối: 1/2
+```
+GET #2 bị DROP **im lặng** — không có RST, không có báo lỗi — đúng hành vi "đơ cứng rồi Broken pipe" mà lập trình viên gặp ngoài đời. Sau khi chữa bệnh, chạy lại test sẽ ra `2/2`.
+
 ---
 
-### Bước 3: Chữa Bệnh (Khắc Phục Sự Cố)
+### Bước 3: Khắc Phục Sự Cố (Fix & Remediate)
 
 ```bash
-./scripts/2-cure.sh
+./scripts/2-fix.sh
 ```
 
 ---

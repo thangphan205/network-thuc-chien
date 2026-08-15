@@ -35,8 +35,14 @@
 ### Bước 1: Khởi động môi trường Lab
 ```bash
 cd network-bat-benh/tap-07-tls-clock-skew
-docker compose up -d
+docker compose up -d --build
 ```
+
+> **Lưu ý:** Toàn bộ chứng chỉ được service `certgen` **sinh tự động** mỗi lần `docker compose up`:
+> * `server.crt` — chứng chỉ hợp lệ (dùng để chữa bệnh).
+> * `expired.crt` — chứng chỉ có `notAfter = 01/01/2024` (đã hết hạn vĩnh viễn, dùng để kích hoạt ca bệnh).
+>
+> Nhờ sinh runtime nên lab chạy đúng ở bất kỳ thời điểm nào trong tương lai.
 
 ---
 
@@ -62,11 +68,11 @@ docker compose up -d
 
 ---
 
-### Bước 3: Chữa Bệnh (Khắc Phục Sự Cố)
+### Bước 3: Khắc Phục Sự Cố (Fix & Remediate)
 
-Áp dụng chứng chỉ hợp lệ và đồng bộ thời gian:
+Áp dụng chứng chỉ còn hạn:
 ```bash
-./scripts/2-cure.sh
+./scripts/2-fix.sh
 ```
 
 Kiểm tra lại:
@@ -74,6 +80,30 @@ Kiểm tra lại:
 ./scripts/test.sh
 ```
 Kết quả: `Verify return code: 0 (ok)` và nhận phản hồi `CA BENH 07: KET NOI HTTPS THANH CONG (TLS OK)!`
+
+---
+
+### Bước 4: Biến thể Clock Skew — Server đúng, Client sai giờ
+
+Ca bệnh này có **2 biến thể** cùng một triệu chứng `ERR_CERT_DATE_INVALID`:
+
+| Biến thể | Server | Client | Ai là thủ phạm? |
+|---|---|---|---|
+| Bước 2 (ở trên) | Serve chứng chỉ **đã hết hạn** | Đồng hồ đúng | Server (quên gia hạn cert) |
+| Bước 4 (dưới đây) | Chứng chỉ **hợp lệ** | Đồng hồ **lệch giờ** | Client (hết pin CMOS, mất NTP) |
+
+`test.sh` dùng `faketime` trên container client để giả lập đồng hồ sai mà không đụng đến đồng hồ thật:
+
+```
+--- Đồng hồ Client chạy sang năm 2035 (tương lai) ---
+curl: (60) certificate has expired          <- cert hợp lệ vẫn bị coi là hết hạn!
+--- Đồng hồ Client tụt về năm 2020 (hết pin CMOS) ---
+curl: (60) certificate is not yet valid     <- cert bị coi là "chưa đến ngày dùng"!
+--- Đồng hồ Client đúng giờ (đã đồng bộ NTP) ---
+CA BENH 07: KET NOI HTTPS THANH CONG (TLS OK)!
+```
+
+Đây chính là lý do khi debug lỗi cert, câu hỏi đầu tiên phải là: **"`date` trên cả 2 đầu đang trả về gì?"**
 
 ---
 

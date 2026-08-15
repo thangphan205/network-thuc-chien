@@ -216,3 +216,6 @@ cicd-network-config/6-simple-validate-then-push/server_lab.txt
 # Chung chi TLS cua lab network-bat-benh: sinh tu dong luc `docker compose up`, khong commit
 network-bat-benh/*/nginx/ssl/*
 !network-bat-benh/*/nginx/ssl/.gitkeep
+
+# File cau hinh nginx dang chay cua lab (sinh tu conf/*.conf luc `up`), khong commit
+network-bat-benh/*/nginx/nginx.conf

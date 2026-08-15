@@ -3,7 +3,6 @@
 echo "=========================================="
 echo "🩺 [BƯỚC 1] Ping trực tiếp qua IP (172.28.6.10):"
 echo "=========================================="
-docker compose exec client apk add --no-cache bind-tools curl iputils >/dev/null 2>&1
 docker compose exec client ping -c 2 172.28.6.10
 
 echo ""
@@ -23,6 +22,3 @@ echo "=========================================="
 echo "🩺 [BƯỚC 4] Truy cập Web bằng tên miền (curl):"
 echo "=========================================="
 docker compose exec client curl -Iv --connect-timeout 3 http://web-server 2>&1 | head -n 15
-
-echo ""
-echo "=========================================="

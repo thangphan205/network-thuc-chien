@@ -62,7 +62,7 @@ docker compose up -d --build
 
 ### Bước 3: Bắt mạch trên Wireshark
 
-1. Bắt gói tin trên card mạng Docker bridge hoặc Loopback.
+1. Bắt gói tin **trong container** rồi mở bằng Wireshark (chạy được trên cả macOS/Windows — xem mục [🦈 Bắt gói tin bằng Wireshark](../README.md#-bắt-gói-tin-bằng-wireshark-trên-mọi-hệ-điều-hành) ở README series).
 2. Display filter:
    ```wireshark
    tcp.port == 80 || icmp
@@ -74,17 +74,23 @@ docker compose up -d --build
 
 ---
 
-### Bước 4: Chữa Bệnh (Khắc Phục Sự Cố)
+### Bước 4: Khắc Phục Sự Cố (Fix & Remediate)
 
 ```bash
-./scripts/2-cure.sh
+./scripts/2-fix.sh
 ```
+
+> **Cách chữa của lab (MSS Clamping thật):** script **KHÔNG gỡ luật chặn gói lớn** — mô phỏng tình huống thực tế bạn không sửa được đường truyền nghẽn (VPN/tunnel/cloud của bên thứ ba). Thay vào đó nó kẹp MTU của route tới client xuống `940`:
+> ```bash
+> ip route replace 172.28.4.20/32 dev eth0 mtu 940
+> ```
+> Server tự tính MSS gửi đi `= 940 − 40 = 900 bytes`, nên mọi segment server→client tối đa ~940 bytes, **luôn nhỏ hơn ngưỡng 1000 bytes bị DROP** → Web tải trọn vẹn dù "đường ống" vẫn nghẽn.
 
 Kiểm tra lại:
 ```bash
-docker compose exec client curl http://172.28.4.10
+./scripts/test.sh
 ```
-Toàn bộ trang web được tải về đầy đủ tức thì!
+Trước khi chữa: `tải về 0 bytes` (curl treo 8s). Sau khi chữa: `tải về 3093 bytes | 0.6s`.
 
 ---
 
@@ -96,6 +102,21 @@ Toàn bộ trang web được tải về đầy đủ tức thì!
      `iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu`
      👉 Router tự động sửa giá trị MSS trong gói SYN thành kích thước nhỏ an toàn.
    * **Không bao giờ chặn ICMP Type 3 Code 4:** Mở Firewall cho phép gói ICMP thông báo "Fragmentation Needed".
+
+---
+
+## 📝 Câu Hỏi Ôn Tập
+
+1. Vì sao `ping` gói nhỏ chạy tốt, bắt tay TCP thành công, nhưng tải trang web lại đơ giữa chừng?
+2. TCP MSS Clamping khắc phục lỗi này bằng cơ chế nào (mà không cần sửa "đường ống" nghẽn)?
+3. Vì sao **tuyệt đối không** được chặn gói ICMP Type 3 Code 4?
+
+<details><summary>Gợi ý đáp án</summary>
+
+1. Gói nhỏ (ping, SYN) lọt qua; nhưng segment dữ liệu lớn vượt MTU đường truyền bị DROP âm thầm → nghẽn khi truyền data lớn (PMTUD Blackhole).
+2. Kẹp MSS/MTU của route để host chỉ gửi segment nhỏ hơn ngưỡng nghẽn — data không bao giờ chạm mức bị drop (lab đặt route MTU 940 → MSS 900).
+3. ICMP Type 3 Code 4 ("Fragmentation Needed") là cách mạng báo "gói quá to, hãy giảm kích thước". Chặn nó = tắt cơ chế PMTUD → sinh ra blackhole.
+</details>
 
 ---
 

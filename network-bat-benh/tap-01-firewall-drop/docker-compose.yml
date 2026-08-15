@@ -8,7 +8,7 @@ services:
       - "8080:80"
     networks:
       lab-net:
-        ipv4_address: 172.28.0.10
+        ipv4_address: 172.28.1.10
 
   client:
     image: alpine:latest
@@ -17,7 +17,7 @@ services:
     init: true
     networks:
       lab-net:
-        ipv4_address: 172.28.0.20
+        ipv4_address: 172.28.1.20
     depends_on:
       - web-server
 
@@ -26,4 +26,4 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.28.0.0/24
+        - subnet: 172.28.1.0/24

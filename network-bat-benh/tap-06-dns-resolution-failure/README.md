@@ -63,7 +63,7 @@ docker compose up -d
 
 ### Bước 3: Bắt mạch trên Wireshark
 
-1. Bắt gói tin trên card mạng Docker với filter:
+1. Bắt gói tin **trong container** rồi mở bằng Wireshark (chạy được trên cả macOS/Windows — xem mục [🦈 Bắt gói tin bằng Wireshark](../README.md#-bắt-gói-tin-bằng-wireshark-trên-mọi-hệ-điều-hành) ở README series). Filter:
    ```wireshark
    dns || icmp
    ```
@@ -73,11 +73,11 @@ docker compose up -d
 
 ---
 
-### Bước 4: Chữa Bệnh (Khắc Phục Sự Cố)
+### Bước 4: Khắc Phục Sự Cố (Fix & Remediate)
 
 Khôi phục DNS server chuẩn:
 ```bash
-./scripts/2-cure.sh
+./scripts/2-fix.sh
 ```
 
 Kiểm tra lại:

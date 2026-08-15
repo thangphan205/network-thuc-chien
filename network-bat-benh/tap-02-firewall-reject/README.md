@@ -14,11 +14,11 @@
 |                                                             |
 |   [Trình duyệt / curl]                    [ping 127.0.0.1]  |
 |            │                                     │          |
-|            │ (TCP:8081)                          │ (ICMP)   |
+|            │ (TCP:8082)                          │ (ICMP)   |
 |            ▼                                     ▼          |
 |   ┌─────────────────────────────────────────────────────┐   |
 |   │               Wireshark bắt trên `lo0`              │   |
-|   │         Filter: (tcp.port == 8081) || icmp          │   |
+|   │         Filter: (tcp.port == 8082) || icmp          │   |
 |   └─────────────────────────────────────────────────────┘   |
 |                              │                              |
 |                              ▼                              |
@@ -49,7 +49,7 @@ docker compose up -d --build
 1. Chọn Card mạng **`Loopback: lo0`** (macOS/Linux) hoặc adapter tương ứng.
 2. Nhập Display Filter:
    ```wireshark
-   (tcp.port == 8081) || icmp
+   (tcp.port == 8082) || icmp
    ```
 
 ---
@@ -69,22 +69,22 @@ Chạy kiểm tra từ Terminal:
 #### 🔍 Hiện tượng quan sát được:
 1. **Trên Terminal:**
    * `ping 127.0.0.1`: Phản hồi bình thường (`0% packet loss`).
-   * `curl http://127.0.0.1:8081`: Báo lỗi `Failed to connect to 127.0.0.1 port 8081: Connection refused` ngay lập tức!
+   * `curl http://127.0.0.1:8082`: Báo lỗi `Failed to connect to 127.0.0.1 port 8082: Connection refused` ngay lập tức!
 2. **Trên Wireshark:**
    * Client vừa gửi gói `[SYN]`.
    * Server lập tức phản hồi lại gói **`[RST, ACK]`** (màu đỏ đen). Client lập tức hủy kết nối.
 
 ---
 
-### Bước 4: Chữa Bệnh (Khắc Phục Sự Cố)
+### Bước 4: Khắc Phục Sự Cố (Fix & Remediate)
 
 ```bash
-./scripts/2-cure.sh
+./scripts/2-fix.sh
 ```
 
 Kiểm tra lại:
 ```bash
-curl -I http://127.0.0.1:8081
+curl -I http://127.0.0.1:8082
 ```
 Website trả về `HTTP/1.1 200 OK` thành công!
 
@@ -98,6 +98,21 @@ Website trả về `HTTP/1.1 200 OK` thành công!
 | **Trải nghiệm User** | Trình duyệt xoay tròn vô tận, sau đó `Timed Out` | Báo lỗi `Connection Refused` ngay tức thì |
 | **Wireshark** | Gói `[TCP Retransmission]` lặp lại liên tục | Gói `[RST, ACK]` xuất hiện ngay sau `[SYN]` |
 | **Ý nghĩa bảo mật** | Dấu hiệu máy chủ ẩn (Stealth mode) | Tiết lộ cho kẻ tấn công biết cổng này đang đóng |
+
+---
+
+## 📝 Câu Hỏi Ôn Tập
+
+1. Vì sao lỗi "Connection refused" xuất hiện **ngay lập tức** chứ không treo chờ như Tập 01?
+2. Khi cấu hình `REJECT --reject-with tcp-reset`, server gửi lại gói TCP gì cho client?
+3. Nhìn từ phía người dùng, `DROP` và `REJECT` khác nhau ra sao khi debug?
+
+<details><summary>Gợi ý đáp án</summary>
+
+1. Firewall gửi ngay gói phản hồi (RST) nên client biết "bị từ chối" tức thì, không phải chờ hết timeout.
+2. Gói **TCP RST** (Reset).
+3. `DROP` = treo tới timeout (khó biết bị chặn hay server chết). `REJECT` = báo lỗi ngay, dễ suy ra có firewall chủ động từ chối.
+</details>
 
 ---
 
