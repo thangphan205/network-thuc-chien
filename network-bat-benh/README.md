@@ -29,6 +29,8 @@
 [5. Kê đơn & Phòng ngừa] → Sửa lỗi (Fix), kiểm thử lại, viết Post-mortem & bổ sung Monitoring/Alert.
 ```
 
+> 📄 **Xem chi tiết sơ đồ tư duy & flowchart hoàn chỉnh:** [🧠 Sơ Đồ Tư Duy & Flowchart 5 Bước Bắt Bệnh](./quy-trinh-bat-benh.md)
+
 ---
 
 ## 📋 Danh Mục 12 Ca Bệnh Thực Chiến (Mỗi Tập 1 Lỗi)
