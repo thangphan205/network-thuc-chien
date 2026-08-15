@@ -10,6 +10,19 @@ services:
       lab-net:
         ipv4_address: 172.28.2.10
 
+  client:
+    build: ./client
+    container_name: lab02-client
+    cap_add:
+      - NET_ADMIN
+    command: sleep infinity
+    init: true
+    networks:
+      lab-net:
+        ipv4_address: 172.28.2.20
+    depends_on:
+      - web-server
+
 networks:
   lab-net:
     driver: bridge

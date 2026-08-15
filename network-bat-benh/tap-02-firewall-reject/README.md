@@ -9,27 +9,22 @@
 ## 🔬 Sơ đồ Kiến trúc Lab
 
 ```
-+-------------------------------------------------------------+
-|                     MÁY TÍNH CỦA BẠN                        |
-|                                                             |
-|   [Trình duyệt / curl]                    [ping 127.0.0.1]  |
-|            │                                     │          |
-|            │ (TCP:8082)                          │ (ICMP)   |
-|            ▼                                     ▼          |
-|   ┌─────────────────────────────────────────────────────┐   |
-|   │               Wireshark bắt trên `lo0`              │   |
-|   │         Filter: (tcp.port == 8082) || icmp          │   |
-|   └─────────────────────────────────────────────────────┘   |
-|                              │                              |
-|                              ▼                              |
-|   ┌─────────────────────────────────────────────────────┐   |
-|   │         Docker Container: lab02-web-server          │   |
-|   │                                                     │   |
-|   │   [ICMP Stack]  ──> Luôn phản hồi Echo Reply (✓)    │   |
-|   │                                                     │   |
-|   │   [iptables REJECT] ──> Trả về TCP RST lập tức (✗)  │   |
-|   └─────────────────────────────────────────────────────┘   |
-+-------------------------------------------------------------+
++-------------------------------------------------------------------------+
+|                              DOCKER NETWORK                             |
+|                                                                         |
+|   [Client: 172.28.2.20]                      [Web Server: 172.28.2.10]  |
+|            │                                             │              |
+|            │ (1) ping 172.28.2.10 (ICMP)                 │              |
+|            ├────────────────────────────────────────────►│ [ICMP Stack] |
+|            │◄────────────────────────────────────────────┤ (Reply ✓)    |
+|            │                                             │              |
+|            │ (2) curl http://172.28.2.10:80 (TCP)        │              |
+|            │──[TCP SYN]─────────────────────────────────►│ [iptables]   |
+|            │◄──[TCP RST, ACK] (Từ chối chủ động)────────┤ (REJECT ✗)   |
+|            │                                             │              |
+|            ▼                                             ▼              |
+|   [Connection Refused!]                      [Nginx Listen :80]         |
++-------------------------------------------------------------------------+
 ```
 
 ---
@@ -45,38 +40,41 @@ docker compose up -d --build
 
 ---
 
-### Bước 2: Bật Wireshark trên máy tính
-1. Chọn Card mạng **`Loopback: lo0`** (macOS/Linux) hoặc adapter tương ứng.
-2. Nhập Display Filter:
-   ```wireshark
-   (tcp.port == 8082) || icmp
-   ```
-
----
-
-### Bước 3: Kích hoạt Ca Bệnh & Bắt mạch
+### Bước 2: Kích hoạt Ca Bệnh & Bắt mạch
 
 Chạy script kích hoạt lỗi:
 ```bash
 ./scripts/1-fault.sh
 ```
 
-Chạy kiểm tra từ Terminal:
+Chạy lệnh kiểm tra tự động:
 ```bash
 ./scripts/test.sh
 ```
 
+*(Hoặc chạy thủ công từ terminal):*
+```bash
+# Bắt mạch L3: Ping trực tiếp IP container
+docker compose exec client ping -c 3 172.28.2.10
+
+# Bắt mạch L4: Curl vào Web Server
+docker compose exec client curl -Iv http://172.28.2.10
+```
+
 #### 🔍 Hiện tượng quan sát được:
 1. **Trên Terminal:**
-   * `ping 127.0.0.1`: Phản hồi bình thường (`0% packet loss`).
-   * `curl http://127.0.0.1:8082`: Báo lỗi `Failed to connect to 127.0.0.1 port 8082: Connection refused` ngay lập tức!
-2. **Trên Wireshark:**
-   * Client vừa gửi gói `[SYN]`.
-   * Server lập tức phản hồi lại gói **`[RST, ACK]`** (màu đỏ đen). Client lập tức hủy kết nối.
+   * `ping 172.28.2.10`: Phản hồi bình thường (`0% packet loss`, RTT < 1ms).
+   * `curl http://172.28.2.10`: Báo lỗi `Connection refused` ngay lập tức trong 0.001 giây!
+2. **Bắt gói tin kiểm tra (tcpdump):**
+   * Bắt gói tin trên client:
+     ```bash
+     docker compose exec client tcpdump -i eth0 -n "icmp or port 80"
+     ```
+   * Client vừa gửi gói `[SYN]`, Server lập tức phản hồi lại gói **`[RST, ACK]`**. Client lập tức đóng socket và trả lỗi.
 
 ---
 
-### Bước 4: Khắc Phục Sự Cố (Fix & Remediate)
+### Bước 3: Khắc Phục Sự Cố (Fix & Remediate)
 
 ```bash
 ./scripts/2-fix.sh
@@ -84,7 +82,7 @@ Chạy kiểm tra từ Terminal:
 
 Kiểm tra lại:
 ```bash
-curl -I http://127.0.0.1:8082
+docker compose exec client curl -I http://172.28.2.10
 ```
 Website trả về `HTTP/1.1 200 OK` thành công!
 

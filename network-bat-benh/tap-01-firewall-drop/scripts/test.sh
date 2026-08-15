@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Script test nhanh từ máy Host (Laptop)
+# Script test tu container Client (172.28.1.20) sang Web Server (172.28.1.10)
 echo "=========================================="
-echo "🩺 [BƯỚC 1] Bắt mạch L3: Kiểm tra Ping..."
+echo "🩺 [BƯỚC 1] Bắt mạch L3: Kiểm tra Ping (172.28.1.10)..."
 echo "=========================================="
-ping -c 3 127.0.0.1
+docker compose exec client ping -c 3 172.28.1.10
 
 echo ""
 echo "=========================================="
-echo "🩺 [BƯỚC 2] Bắt mạch L4/L7: Kiểm tra Web (cổng 8080)..."
+echo "🩺 [BƯỚC 2] Bắt mạch L4/L7: Kiểm tra Web (http://172.28.1.10)..."
 echo "=========================================="
-curl -Iv --connect-timeout 4 http://127.0.0.1:8080
+docker compose exec client curl -Iv --connect-timeout 4 http://172.28.1.10
 
 echo ""
 echo "=========================================="
