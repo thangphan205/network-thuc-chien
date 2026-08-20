@@ -1,15 +1,16 @@
 services:
   # Seed file cấu hình đang chạy (nginx/nginx.conf) = trạng thái ĐÃ CHỮA lúc `up`.
-  # nginx.conf được gitignore nên chạy fault/cure không làm bẩn cây git.
+  # nginx.conf được gitignore nên chạy fault/fix không làm bẩn cây git.
   config-init:
     image: alpine:latest
     container_name: lab03-config-init
+    network_mode: none
     volumes:
       - ./nginx:/nginx
     command: sh -c "cp /nginx/conf/good.conf /nginx/nginx.conf"
 
   web-server:
-    image: nginx:alpine
+    build: .
     container_name: lab03-web-server
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro

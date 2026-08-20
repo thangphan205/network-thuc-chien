@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Kích hoạt lỗi: Nginx chỉ lắng nghe trên 127.0.0.1
 set -e
+cd "$(dirname "$0")/.."
 echo "🚨 Đang cấu hình Nginx chỉ lắng nghe trên 127.0.0.1 (Loopback)..."
 # Ghi vào nginx/nginx.conf (đã gitignore) — không làm bẩn cây git
 cp nginx/conf/bad.conf nginx/nginx.conf

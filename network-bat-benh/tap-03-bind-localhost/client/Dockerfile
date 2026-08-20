@@ -1,4 +1,4 @@
 FROM alpine:latest
-# Bake san cong cu de khong phai `apk add` giua lúc quay demo
-RUN apk add --no-cache curl tcpdump
+# Bake sẵn công cụ để không phải `apk add` giữa lúc thực hành/quay demo
+RUN apk add --no-cache iputils curl iproute2 tcpdump
 CMD ["sleep", "infinity"]

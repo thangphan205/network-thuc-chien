@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Chữa bệnh: Chuyển Nginx sang lắng nghe 0.0.0.0 (tất cả card mạng)
 set -e
+cd "$(dirname "$0")/.."
 echo "🩺 Đang khắc phục sự cố (Fixing): Cấu hình Nginx lắng nghe trên 0.0.0.0:80..."
 # Ghi vào nginx/nginx.conf (đã gitignore) — không làm bẩn cây git
 cp nginx/conf/good.conf nginx/nginx.conf
