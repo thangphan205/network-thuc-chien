@@ -219,3 +219,7 @@ network-bat-benh/*/nginx/ssl/*
 
 # File cau hinh nginx dang chay cua lab (sinh tu conf/*.conf luc `up`), khong commit
 network-bat-benh/*/nginx/nginx.conf
+
+# File bat goi tin sinh ra khi lam lab (README huong dan tao trong thu muc tap)
+*.pcap
+*.pcapng
