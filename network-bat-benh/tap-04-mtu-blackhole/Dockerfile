@@ -1,5 +1,5 @@
 FROM nginx:alpine
-RUN apk add --no-cache iptables iproute2 iputils curl tcpdump
+RUN apk add --no-cache iptables iproute2 iputils curl tcpdump ethtool
 COPY ./nginx/index.html /usr/share/nginx/html/index.html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
