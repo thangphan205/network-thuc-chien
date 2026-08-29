@@ -10,28 +10,23 @@
 
 ## 🔬 Sơ đồ Kiến trúc Lab
 
-```
-+-------------------------------------------------------------------------+
-|                              DOCKER NETWORK                             |
-|                                                                         |
-|   [Client: 172.28.4.20]                      [Web Server: 172.28.4.10]  |
-|            │                                             │              |
-|            │ 1. ping 64B (ICMP nhỏ) ──────────────────> │ [PASS ✓]     |
-|            │ 2. TCP SYN (60B) ────────────────────────> │ [PASS ✓]     |
-|            │ 3. GET / (75B) ──────────────────────────> │ [PASS ✓]     |
-|            │                                             │              |
-|            │ <── 4. HTTP/1.1 200 OK header (239B) ──────┤ [PASS ✓]     |
-|            │                                             │              |
-|            │ <── 5. Body HTML (segment 1448B) ──────────┤              |
-|            │               ▼                             │              |
-|            │        [MTU BLACKHOLE]                      │              |
-|            │  (Mọi gói > 1000B bị vứt bỏ ÂM THẦM,        │              |
-|            │   không có ICMP Frag Needed báo về)         │              |
-|            │                                             │              |
-|            │ <── Server gửi lại liên tục [Retransmission] ──────────────┤
-|            ▼         (0.2s → 0.4s → 0.8s → 1.6s ...)                    |
-|   (curl: HTTP 200 | 0 bytes | treo mãi mãi)                             |
-+-------------------------------------------------------------------------+
+```text
+   DOCKER NETWORK 172.28.4.0/24
+   [Client: 172.28.4.20]                        [Web Server: 172.28.4.10]
+             |                                              |
+             |  1. ping 64B  ------------------------------>| PASS   gói nhỏ, qua lọt
+             |  2. TCP SYN (60B)  ------------------------->| PASS   bắt tay TCP xong
+             |  3. GET / (75B)  --------------------------->| PASS   request nhỏ, qua lọt
+             |                                              |
+             | <----- 4. HTTP/1.1 200 OK header (239B) -----| PASS   nên curl báo HTTP 200
+             |                                              |
+             | <-X-- 5. Body HTML (segment 1448B) ----------| DROP   > 1000B, vứt bỏ âm thầm
+             |   ^                                          |
+             | MTU BLACKHOLE                                | không có ICMP Frag Needed
+             |                                              | báo ngược về cho Server
+             | <-X-- Retransmit 0.2s 0.4s 0.8s 1.6s --------| DROP   Server thử lại vô vọng
+             v                                              |
+   curl: HTTP 200  |  0 bytes  |  treo mãi mãi
 ```
 
 > 🧪 **Ghi chú lab:** Ngưỡng chặn trong lab là **1000 bytes** (dễ quan sát), thực tế là MTU đường truyền 1400–1420 sau khi VPN/tunnel đóng thêm header. Luật DROP đặt ở phía **client** để Wireshark vẫn bắt được các gói Retransmission trước khi chúng bị vứt.
@@ -97,9 +92,9 @@ docker compose up -d --build
    * Sau đó server gửi body: `Len=1448` — và lặp đi lặp lại **`[TCP Retransmission]`** với backoff tăng dần (0.2s → 0.4s → 0.8s → 1.6s) vì không bao giờ nhận được ACK:
      ```
      172.28.4.10.80 > 172.28.4.20: seq 240:1688, length 1448
-     172.28.4.10.80 > 172.28.4.20: seq 240:1688, length 1448   ← Retransmission
-     172.28.4.10.80 > 172.28.4.20: seq 240:1688, length 1448   ← Retransmission
-     172.28.4.10.80 > 172.28.4.20: seq 240:1688, length 1448   ← Retransmission
+     172.28.4.10.80 > 172.28.4.20: seq 240:1688, length 1448   <-- Retransmission
+     172.28.4.10.80 > 172.28.4.20: seq 240:1688, length 1448   <-- Retransmission
+     172.28.4.10.80 > 172.28.4.20: seq 240:1688, length 1448   <-- Retransmission
      ```
    * **Tuyệt đối không có gói ICMP Type 3 Code 4** nào. Chính sự *vắng mặt* này mới là chẩn đoán — mạng đang "câm", không báo cho ai biết gói quá to.
 

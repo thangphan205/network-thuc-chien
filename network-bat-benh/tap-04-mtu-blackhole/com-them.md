@@ -10,10 +10,10 @@ Trong lab cơ bản của Tập 04, chúng ta dùng mô hình **2 containers** (
 
 Tuy nhiên, trong các mạng doanh nghiệp, ISP, VPN Site-to-Site hoặc hạ tầng Cloud (AWS, Azure, GCP, Kubernetes Overlay), **MTU Blackhole hầu như luôn xảy ra ở các thiết bị Router/Firewall trung gian**.
 
-```
-[Client LAN] ──(MTU 1500)──> [Edge Router] ──(MTU 1400 - IPsec/GRE/VXLAN)──> [Firewall] ──(MTU 1500)──> [Web Server]
-                                                            ▲
-                                           Chỗ thắt nút MTU & Điểm chặn ICMP
+```text
+[Client LAN] --(MTU 1500)--> [Edge Router] --(MTU 1400: IPsec/GRE/VXLAN)--> [Firewall] --(MTU 1500)--> [Web Server]
+                                                          ^
+                                          Chỗ thắt nút MTU & điểm chặn ICMP
 ```
 
 ---
@@ -24,26 +24,23 @@ Tuy nhiên, trong các mạng doanh nghiệp, ISP, VPN Site-to-Site hoặc hạ 
 
 Khi Router trung gian kết nối một đường hầm VPN có `MTU = 1400` và **không có Firewall nào chặn ICMP**:
 
-```
-Client (172.28.41.20)                 Router (MTU 1400)                  Web Server (172.28.42.10)
-      │                                       │                                      │
-      │ ─── 1. TCP SYN (MSS=1460) ──────────> │ ───────────────────────────────────> │
-      │ <── 2. TCP SYN, ACK (MSS=1460) ────── │ <─────────────────────────────────── │
-      │ ─── 3. TCP ACK ─────────────────────> │ ───────────────────────────────────> │
-      │ ─── 4. HTTP GET / ──────────────────> │ ───────────────────────────────────> │
-      │                                       │                                      │
-      │                                       │ <─── 5. Data Segment (1500B, DF=1) ── │
-      │                                       │      (Vượt MTU 1400 của Router)      │
-      │                                       │                                      │
-      │                                       │ ─── 6. ICMP Type 3 Code 4 ─────────> │
-      │                                       │    "Frag Needed, Next-hop MTU=1400"  │
-      │                                       │                                      │
-      │                                       │                                      │ (Server tự hạ socket
-      │                                       │                                      │  PMTU xuống 1400)
-      │                                       │                                      │
-      │ <── 7. Data Segment (1400B) ───────── │ <─── 8. Data Segment (1400B) ─────── │
-      ▼                                       ▼                                      ▼
-             [🎉 KẾT NỐI THÀNH CÔNG — TẢI TRỌNG VẸN WEB DÙ ĐƯỜNG TRUYỀN BỊ THẮT NÚT]
+```text
+   Client 172.28.41.20              Router  MTU 1400                    Web Server 172.28.42.10
+      |                                     |                                       |
+      | --- 1. TCP SYN (MSS=1460) --------->| ------------------------------------->|
+      |<--- 2. TCP SYN,ACK (MSS=1460) ------|<--------------------------------------|
+      | --- 3. TCP ACK -------------------->| ------------------------------------->|
+      | --- 4. HTTP GET / ----------------->| ------------------------------------->|
+      |                                     |                                       |
+      |                                     |<--- 5. Data Segment (1500B, DF=1) ----|   vượt MTU 1400 của Router
+      |                                     |                                       |
+      |                                     | --- 6. ICMP Type 3 Code 4 ----------->|   Frag Needed, next-hop MTU=1400
+      |                                     |                                       |   Server tự hạ PMTU xuống 1400
+      |                                     |                                       |
+      |<--- 7. Data Segment (1400B) --------|<--- 8. Data (1400B) ------------------|
+      v                                     v                                       v
+
+   => Kết nối thành công, web tải trọn vẹn dù đường truyền bị thắt nút.
 ```
 
 👉 **Cơ chế:** Gói dữ liệu đầu tiên bị rớt, nhưng Server nhận được `ICMP Type 3 Code 4` $\rightarrow$ Server tự động phân mảnh hoặc giảm kích thước các segment tiếp theo $\rightarrow$ Web vẫn tải bình thường.
@@ -56,26 +53,23 @@ Nhiều quản trị viên mạng cấu hình chính sách bảo mật Firewall 
 
 Hậu quả là gói tin **ICMP Type 3 Code 4 cũng bị giết chết**:
 
-```
-Client (172.28.41.20)                 Router (MTU 1400)                  Web Server (172.28.42.10)
-      │                                       │                                      │
-      │ ─── 1. Bắt tay TCP + HTTP GET ──────> │ ───────────────────────────────────> │
-      │                                       │                                      │
-      │                                       │ <─── 2. Data Segment (1500B, DF=1) ── │
-      │                                       │      (Vượt MTU 1400 -> DROP)         │
-      │                                       │                                      │
-      │                                       │ ─── 3. ICMP Frag Needed ───X (BỊ DROP BỞI FIREWALL)
-      │                                       │                              │
-      │                                       │                              ▼
-      │                                       │                  Server KHÔNG NHẬN ĐƯỢC GÌ!
-      │                                       │                  Nghĩ rằng gói bị rớt ngẫu nhiên...
-      │                                       │                                      │
-      │                                       │ <─── 4. Retransmit 1500B (sau 0.2s) ─│
-      │                                       │      (Vượt MTU -> LẠI DROP!)         │
-      │                                       │ <─── 5. Retransmit 1500B (sau 0.4s) ─│
-      │                                       │ <─── 6. Retransmit 1500B (sau 0.8s) ─│
-      ▼                                       ▼                                      ▼
-             [💀 MTU BLACKHOLE: CURL BÁO HTTP 200 NHƯNG TẢI 0 BYTES — TREO MÃI MÃI]
+```text
+   Client 172.28.41.20              Router  MTU 1400                    Web Server 172.28.42.10
+      |                                     |                                       |
+      | --- 1. TCP handshake + HTTP GET --->| ------------------------------------->|
+      |                                     |                                       |
+      |                                     |<--- 2. Data Segment (1500B, DF=1) ----|   vượt MTU 1400 -> DROP
+      |                                     |                                       |
+      |                                     | --- 3. ICMP Frag Needed -------------X|   bị firewall DROP ngay tại Router
+      |                                     |                                       |   Server không nhận được gì,
+      |                                     |                                       |   tưởng gói rớt ngẫu nhiên
+      |                                     |                                       |
+      |                                     |<--- 4. Retransmit 1500B (0.2s) -------|   lại vượt MTU -> DROP
+      |                                     |<--- 5. Retransmit 1500B (0.4s) -------|   lại DROP
+      |                                     |<--- 6. Retransmit 1500B (0.8s) -------|   lại DROP
+      v                                     v                                       v
+
+   => MTU BLACKHOLE: curl báo HTTP 200 nhưng tải 0 bytes, treo mãi mãi.
 ```
 
 ---
@@ -86,23 +80,24 @@ Trong thực tế, bạn không thể ép tất cả Firewall trên Internet m�
 
 Giải pháp tối ưu nhất là cấu hình **TCP MSS Clamping ngay trên Gateway / Router trung gian**:
 
-```
-Client (172.28.41.20)                 Router (Bật MSS Clamping)          Web Server (172.28.42.10)
-      │                                       │                                      │
-      │ ─── 1. TCP SYN (MSS=1460) ──────────> │                                      │
-      │                                       │ (Router sửa MSS: 1460 -> 1360)       │
-      │                                       │ ─── 2. TCP SYN (MSS=1360) ─────────> │
-      │                                       │                                      │
-      │                                       │ <── 3. TCP SYN, ACK (MSS=1460) ───── │
-      │                                       │ (Router sửa MSS: 1460 -> 1360)       │
-      │ <── 4. TCP SYN, ACK (MSS=1360) ────── │                                      │
-      │                                       │                                      │
-      │   [CẢ 2 PHÍA ĐỀU TIN RẰNG PHÍA KIA CHỈ NHẬN ĐƯỢC TỐI ĐA SEGMENT 1360 BYTES]  │
-      │                                       │                                      │
-      │ ─── 5. HTTP GET / ──────────────────> │ ───────────────────────────────────> │
-      │ <── 6. Data (Segment 1360B) ───────── │ <─── 7. Data (Segment 1360B) ──────── │
-      ▼                                       ▼                                      ▼
-             [🚀 WEB TẢI VỚI TỐC ĐỘ TỐI ĐA NGAY TỪ GÓI ĐẦU TIÊN — KHÔNG CẦN PMTUD]
+```text
+   Client 172.28.41.20              Router  MSS clamp                   Web Server 172.28.42.10
+      |                                     |                                       |
+      | --- 1. TCP SYN (MSS=1460) --------->|                                       |
+      |                                     |                                       |   Router sửa MSS: 1460 -> 1360
+      |                                     | --- 2. TCP SYN (MSS=1360) ----------->|
+      |                                     |                                       |
+      |                                     |<--- 3. TCP SYN,ACK (MSS=1460) --------|
+      |                                     |                                       |   Router sửa MSS: 1460 -> 1360
+      |<--- 4. TCP SYN,ACK (MSS=1360) ------|                                       |
+      |                                     |                                       |   Hai đầu đều tin phía kia chỉ
+      |                                     |                                       |   nhận tối đa segment 1360 byte
+      |                                     |                                       |
+      | --- 5. HTTP GET / ----------------->| ------------------------------------->|
+      |<--- 6. Data (Segment 1360B) --------|<--- 7. Data (1360B) ------------------|
+      v                                     v                                       v
+
+   => Web tải tốc độ tối đa ngay từ gói đầu tiên, không cần PMTUD.
 ```
 
 ---
