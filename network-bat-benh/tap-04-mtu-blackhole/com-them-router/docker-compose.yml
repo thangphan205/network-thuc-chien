@@ -1,0 +1,52 @@
+services:
+  router:
+    build: ./router
+    container_name: lab04-router
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.icmp_ratelimit=0
+    networks:
+      net-client:
+        ipv4_address: 172.28.41.254
+      net-server:
+        ipv4_address: 172.28.42.254
+    command: sleep infinity
+    init: true
+
+  client:
+    build: ../client
+    container_name: lab04-client-router
+    cap_add:
+      - NET_ADMIN
+    command: sleep infinity
+    init: true
+    networks:
+      net-client:
+        ipv4_address: 172.28.41.20
+    depends_on:
+      - router
+
+  web-server:
+    build: ..
+    container_name: lab04-web-server-router
+    cap_add:
+      - NET_ADMIN
+    networks:
+      net-server:
+        ipv4_address: 172.28.42.10
+    depends_on:
+      - router
+
+networks:
+  net-client:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.41.0/24
+  net-server:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.42.0/24

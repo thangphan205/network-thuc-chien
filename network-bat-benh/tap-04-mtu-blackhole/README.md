@@ -146,6 +146,15 @@ Trước khi chữa: `HTTP 200 | tải về 0 bytes` (curl treo 8s). Sau khi ch�
 
 ---
 
+---
+
+## 💡 Cơm Thêm: Mô Phỏng Thực Tế Với Router / Firewall Trung Gian
+
+> 🚀 **Lab nâng cao (3 Nodes):** Bạn muốn thấy tận mắt gói `ICMP Type 3 Code 4` sinh ra từ Router, bị Firewall chặn tạo thành Blackhole, và cấu hình `TCP MSS Clamping` trên chain `FORWARD`?
+> 👉 Xem tài liệu chuyên sâu: [**`com-them.md`**](./com-them.md) và thực hành với lab 3 nodes tại thư mục [**`com-them-router/`**](./com-them-router).
+
+---
+
 ## 📝 Câu Hỏi Ôn Tập
 
 1. Vì sao `ping` gói nhỏ chạy tốt, bắt tay TCP thành công, `curl` còn báo được `HTTP 200`, nhưng trang web vẫn đơ giữa chừng?
@@ -167,3 +176,4 @@ Trước khi chữa: `HTTP 200 | tải về 0 bytes` (curl treo 8s). Sau khi ch�
 ```bash
 docker compose down
 ```
+
