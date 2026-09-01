@@ -64,7 +64,7 @@
 
     h1 {
       font-family: var(--font-serif);
-      font-size: clamp(1.75rem, 2.4vw + 0.75rem, 2.5rem);
+      font-size: clamp(1.5rem, 2vw + 0.5rem, 2.125rem);
       font-weight: 400;
       letter-spacing: -0.02em;
       line-height: 1.05;
@@ -96,7 +96,7 @@
       border: 1px solid var(--color-rule);
       border-radius: 6px;
       background: #ffffff;
-      font-size: 1rem;
+      font-size: 1.125rem;
       font-weight: 600;
       color: var(--color-soft);
       cursor: pointer;
@@ -162,7 +162,7 @@
 
     .cmd code {
       font-family: var(--font-mono);
-      font-size: 0.9rem;
+      font-size: 0.95rem;
       line-height: 1.45;
       color: var(--color-ink);
       word-break: break-word;
@@ -171,7 +171,7 @@
     .panel ul {
       list-style: none;
       color: var(--color-muted);
-      font-size: 1rem;
+      font-size: 1.0625rem;
       line-height: 1.45;
       align-self: center;
     }
@@ -210,7 +210,7 @@
     </div>
 
     <div class="diagram">
-      <svg viewBox="0 0 1280 460" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mtu-lab-title mtu-lab-desc">
+      <svg viewBox="0 0 1056 392" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mtu-lab-title mtu-lab-desc">
         <title id="mtu-lab-title">Kiến trúc mạng lab MTU Blackhole 3 nodes</title>
         <desc id="mtu-lab-desc">Client trong mạng 172.28.41.0/24 gọi HTTP tới Web Server trong mạng 172.28.42.0/24 qua một Router/Firewall L3 hai chân; đoạn WAN giới hạn MTU 1400. Ba kịch bản chọn bằng tab thay đổi trạng thái gói ICMP Fragmentation Needed trên đoạn WAN: đi tới nơi, bị firewall drop, hoặc không phát sinh nhờ TCP MSS clamping.</desc>
 
@@ -228,137 +228,128 @@
 
         <rect width="100%" height="100%" fill="#f5f5f5"/>
 
+        <!-- WAN segment label, centred over the router-to-server lane -->
+        <rect x="686" y="26" width="116" height="18" rx="2" fill="#f5f5f5"/>
+        <text x="744" y="40" fill="#7a8399" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.10em">WAN · MTU 1400</text>
+
         <!-- ============ ZONES ============ -->
-        <rect x="40" y="40" width="296" height="320" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="1"/>
-        <rect x="80" y="48" width="216" height="16" rx="2" fill="#f5f5f5"/>
-        <text x="188" y="60" fill="rgba(45,49,66,0.45)" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">NET-CLIENT · 172.28.41.0/24</text>
+        <rect x="20" y="48" width="220" height="264" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.12)" stroke-width="1.2"/>
+        <rect x="26" y="54" width="208" height="18" rx="2" fill="#f5f5f5"/>
+        <text x="130" y="68" fill="rgba(45,49,66,0.50)" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NET-CLIENT 172.28.41.0/24</text>
 
-        <rect x="808" y="56" width="176" height="288" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.18)" stroke-width="1" stroke-dasharray="7,5"/>
-        <rect x="816" y="64" width="160" height="16" rx="2" fill="#f5f5f5"/>
-        <text x="896" y="76" fill="rgba(45,49,66,0.45)" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">WAN / VPN · MTU 1400</text>
-
-        <rect x="1000" y="40" width="240" height="320" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="1"/>
-        <rect x="1012" y="48" width="216" height="16" rx="2" fill="#f5f5f5"/>
-        <text x="1120" y="60" fill="rgba(45,49,66,0.45)" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">NET-SERVER · 172.28.42.0/24</text>
+        <rect x="816" y="48" width="220" height="264" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.12)" stroke-width="1.2"/>
+        <rect x="822" y="54" width="208" height="18" rx="2" fill="#f5f5f5"/>
+        <text x="926" y="68" fill="rgba(45,49,66,0.50)" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NET-SERVER 172.28.42.0/24</text>
 
         <!-- ============ STATIC ARROWS ============ -->
+        <line x1="224" y1="140" x2="336" y2="140" stroke="#2e5aa8" stroke-width="1.8" marker-end="url(#arrow-link)"/>
+        <rect x="234" y="108" width="92" height="20" rx="2" fill="#f5f5f5"/>
+        <text x="280" y="123" fill="#2e5aa8" font-size="14" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">GET / :80</text>
 
-        <!-- Client -> Router -->
-        <line x1="308" y1="160" x2="456" y2="160" stroke="#2e5aa8" stroke-width="1.6" marker-end="url(#arrow-link)"/>
-        <rect x="338" y="134" width="88" height="16" rx="2" fill="#f5f5f5"/>
-        <text x="382" y="146" fill="#2e5aa8" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">GET / :80</text>
+        <line x1="336" y1="244" x2="224" y2="244" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)"/>
+        <rect x="234" y="212" width="92" height="20" rx="2" fill="#f5f5f5"/>
+        <text x="280" y="227" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">RESPONSE</text>
 
-        <!-- Router -> Client -->
-        <line x1="456" y1="232" x2="308" y2="232" stroke="#4f5d75" stroke-width="1.6" marker-end="url(#arrow)"/>
-        <rect x="342" y="206" width="80" height="16" rx="2" fill="#f5f5f5"/>
-        <text x="382" y="218" fill="#4f5d75" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">RESPONSE</text>
+        <line x1="656" y1="124" x2="832" y2="124" stroke="#2e5aa8" stroke-width="1.8" marker-end="url(#arrow-link)"/>
+        <rect x="692" y="92" width="104" height="20" rx="2" fill="#f5f5f5"/>
+        <text x="744" y="107" fill="#2e5aa8" font-size="14" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">FORWARD</text>
 
-        <!-- Router -> Server -->
-        <line x1="792" y1="128" x2="1024" y2="128" stroke="#2e5aa8" stroke-width="1.6" marker-end="url(#arrow-link)"/>
-        <rect x="870" y="102" width="76" height="16" rx="2" fill="#f5f5f5"/>
-        <text x="908" y="114" fill="#2e5aa8" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">FORWARD</text>
-
-        <!-- Server -> Router (label is per-scenario) -->
-        <line x1="1024" y1="208" x2="792" y2="208" stroke="#4f5d75" stroke-width="1.6" marker-end="url(#arrow)"/>
+        <line x1="832" y1="192" x2="656" y2="192" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)"/>
 
         <!-- ============ NODES ============ -->
 
         <!-- Client -->
-        <rect x="68" y="88" width="240" height="216" rx="8" fill="#f5f5f5"/>
-        <rect x="68" y="88" width="240" height="216" rx="8" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1.2"/>
-        <rect x="84" y="104" width="44" height="16" rx="2" fill="transparent" stroke="rgba(122,131,153,0.45)" stroke-width="1"/>
-        <text x="106" y="116" fill="#7a8399" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">HOST</text>
-        <text x="188" y="180" fill="#2d3142" font-size="16" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Client</text>
-        <text x="188" y="216" fill="#4f5d75" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">172.28.41.20</text>
-        <text x="188" y="244" fill="#4f5d75" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">eth0 · MTU 1500</text>
+        <rect x="36" y="92" width="188" height="192" rx="8" fill="#f5f5f5"/>
+        <rect x="36" y="92" width="188" height="192" rx="8" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1.6"/>
+        <rect x="52" y="104" width="52" height="20" rx="3" fill="transparent" stroke="rgba(122,131,153,0.50)" stroke-width="1.2"/>
+        <text x="78" y="118" fill="#7a8399" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">HOST</text>
+        <text x="130" y="172" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">Client</text>
+        <text x="130" y="212" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">172.28.41.20</text>
+        <text x="130" y="242" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">eth0 · MTU 1500</text>
 
         <!-- Router / Firewall — FOCAL -->
-        <rect x="456" y="68" width="336" height="256" rx="8" fill="#f5f5f5"/>
-        <rect x="456" y="68" width="336" height="256" rx="8" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
-        <rect x="472" y="84" width="34" height="16" rx="2" fill="transparent" stroke="rgba(235,108,54,0.45)" stroke-width="1"/>
-        <text x="489" y="96" fill="#eb6c36" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">L3</text>
-        <text x="624" y="140" fill="#2d3142" font-size="16" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Router / Firewall</text>
+        <rect x="336" y="72" width="320" height="240" rx="8" fill="#f5f5f5"/>
+        <rect x="336" y="72" width="320" height="240" rx="8" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.6"/>
+        <rect x="352" y="84" width="40" height="20" rx="3" fill="transparent" stroke="rgba(235,108,54,0.50)" stroke-width="1.2"/>
+        <text x="372" y="98" fill="#eb6c36" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">L3</text>
+        <text x="496" y="144" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">Router / Firewall</text>
 
-        <rect x="472" y="176" width="144" height="80" rx="6" fill="rgba(45,49,66,0.04)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
-        <text x="544" y="204" fill="#7a8399" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.1em">ETH0 · LAN</text>
-        <text x="544" y="232" fill="#2d3142" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">172.28.41.254</text>
+        <rect x="352" y="168" width="136" height="66" rx="6" fill="rgba(45,49,66,0.05)" stroke="rgba(45,49,66,0.25)" stroke-width="1.2"/>
+        <text x="420" y="192" fill="#7a8399" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ETH0 · LAN</text>
+        <text x="420" y="218" fill="#2d3142" font-size="15" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">172.28.41.254</text>
 
-        <rect x="632" y="176" width="144" height="80" rx="6" fill="rgba(45,49,66,0.04)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
-        <text x="704" y="204" fill="#7a8399" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.1em">ETH1 · WAN</text>
-        <text x="704" y="232" fill="#2d3142" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">172.28.42.254</text>
+        <rect x="504" y="168" width="136" height="66" rx="6" fill="rgba(45,49,66,0.05)" stroke="rgba(45,49,66,0.25)" stroke-width="1.2"/>
+        <text x="572" y="192" fill="#7a8399" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ETH1 · WAN</text>
+        <text x="572" y="218" fill="#2d3142" font-size="15" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">172.28.42.254</text>
 
         <!-- Web Server -->
-        <rect x="1024" y="88" width="192" height="216" rx="8" fill="#f5f5f5"/>
-        <rect x="1024" y="88" width="192" height="216" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.2"/>
-        <rect x="1040" y="104" width="40" height="16" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="1"/>
-        <text x="1060" y="116" fill="#2d3142" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WEB</text>
-        <text x="1120" y="180" fill="#2d3142" font-size="16" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Web Server</text>
-        <text x="1120" y="216" fill="#4f5d75" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">172.28.42.10</text>
-        <text x="1120" y="244" fill="#4f5d75" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">eth0 · MTU 1500</text>
+        <rect x="832" y="92" width="188" height="192" rx="8" fill="#f5f5f5"/>
+        <rect x="832" y="92" width="188" height="192" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6"/>
+        <rect x="848" y="104" width="48" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)" stroke-width="1.2"/>
+        <text x="872" y="118" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WEB</text>
+        <text x="926" y="172" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">Web Server</text>
+        <text x="926" y="212" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">172.28.42.10</text>
+        <text x="926" y="242" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">eth0 · MTU 1500</text>
 
         <!-- ============ PER-SCENARIO LAYERS ============ -->
 
         <!-- KB1 · PMTUD hoạt động -->
         <g class="kb1">
-          <rect x="860" y="182" width="96" height="16" rx="2" fill="#f5f5f5"/>
-          <text x="908" y="194" fill="#4f5d75" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">DATA 1500B</text>
+          <rect x="692" y="160" width="104" height="20" rx="2" fill="#f5f5f5"/>
+          <text x="744" y="175" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">DATA 1500B</text>
 
-          <line x1="792" y1="280" x2="1024" y2="280" stroke="#eb6c36" stroke-width="1.6" stroke-dasharray="7,5" marker-end="url(#arrow-accent)"/>
-          <rect x="892" y="254" width="80" height="16" rx="2" fill="#f5f5f5"/>
-          <text x="932" y="266" fill="#eb6c36" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ICMP 3/4</text>
+          <line x1="656" y1="260" x2="832" y2="260" stroke="#eb6c36" stroke-width="1.8" stroke-dasharray="8,5" marker-end="url(#arrow-accent)"/>
+          <rect x="732" y="228" width="92" height="20" rx="2" fill="#f5f5f5"/>
+          <text x="778" y="243" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">ICMP 3/4</text>
 
-          <circle cx="864" cy="280" r="16" fill="#f5f5f5" stroke="#eb6c36" stroke-width="1.6"/>
-          <path d="M 856 280 L 862 287 L 873 273" fill="none" stroke="#eb6c36" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-          <rect x="812" y="302" width="104" height="16" rx="2" fill="#f5f5f5"/>
-          <text x="864" y="314" fill="#eb6c36" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ICMP TỚI NƠI</text>
+          <circle cx="700" cy="260" r="18" fill="#f5f5f5" stroke="#eb6c36" stroke-width="2"/>
+          <path d="M 691 260 L 697 267 L 710 252" fill="none" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
 
-          <text x="624" y="292" fill="#4f5d75" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">route mtu 1400 · ICMP mở</text>
+          <text x="496" y="282" fill="#4f5d75" font-size="14" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">route mtu 1400 · ICMP mở</text>
         </g>
 
         <!-- KB2 · MTU Blackhole -->
         <g class="kb2">
-          <rect x="860" y="182" width="96" height="16" rx="2" fill="#f5f5f5"/>
-          <text x="908" y="194" fill="#4f5d75" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">DATA 1500B</text>
+          <rect x="692" y="160" width="104" height="20" rx="2" fill="#f5f5f5"/>
+          <text x="744" y="175" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">DATA 1500B</text>
 
-          <line x1="792" y1="280" x2="1024" y2="280" stroke="#eb6c36" stroke-width="1.6" stroke-dasharray="7,5" marker-end="url(#arrow-accent)"/>
-          <rect x="892" y="254" width="80" height="16" rx="2" fill="#f5f5f5"/>
-          <text x="932" y="266" fill="#eb6c36" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ICMP 3/4</text>
+          <line x1="656" y1="260" x2="832" y2="260" stroke="#eb6c36" stroke-width="1.8" stroke-dasharray="8,5" marker-end="url(#arrow-accent)"/>
+          <rect x="732" y="228" width="92" height="20" rx="2" fill="#f5f5f5"/>
+          <text x="778" y="243" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">ICMP 3/4</text>
 
-          <circle cx="864" cy="280" r="16" fill="#f5f5f5" stroke="#eb6c36" stroke-width="1.6"/>
-          <line x1="855" y1="271" x2="873" y2="289" stroke="#eb6c36" stroke-width="1.8" stroke-linecap="round"/>
-          <line x1="873" y1="271" x2="855" y2="289" stroke="#eb6c36" stroke-width="1.8" stroke-linecap="round"/>
-          <rect x="812" y="302" width="104" height="16" rx="2" fill="#f5f5f5"/>
-          <text x="864" y="314" fill="#eb6c36" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ICMP BỊ DROP</text>
+          <circle cx="700" cy="260" r="18" fill="#f5f5f5" stroke="#eb6c36" stroke-width="2"/>
+          <line x1="690" y1="250" x2="710" y2="270" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round"/>
+          <line x1="710" y1="250" x2="690" y2="270" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round"/>
 
-          <text x="624" y="292" fill="#4f5d75" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">route mtu 1400 · ICMP DROP</text>
+          <text x="496" y="282" fill="#4f5d75" font-size="14" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">route mtu 1400 · ICMP DROP</text>
         </g>
 
         <!-- KB3 · TCP MSS Clamping -->
         <g class="kb3">
-          <rect x="860" y="182" width="96" height="16" rx="2" fill="#f5f5f5"/>
-          <text x="908" y="194" fill="#eb6c36" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">DATA 1360B</text>
+          <rect x="692" y="160" width="104" height="20" rx="2" fill="#f5f5f5"/>
+          <text x="744" y="175" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">DATA 1360B</text>
 
-          <rect x="816" y="272" width="160" height="16" rx="2" fill="#f5f5f5"/>
-          <text x="896" y="284" fill="#7a8399" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">KHÔNG GÓI NÀO &gt; 1400</text>
+          <rect x="672" y="250" width="144" height="20" rx="2" fill="#f5f5f5"/>
+          <text x="744" y="265" fill="#7a8399" font-size="14" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">KHÔNG SINH ICMP</text>
 
-          <text x="624" y="292" fill="#4f5d75" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">mangle FORWARD · MSS → 1360</text>
+          <text x="496" y="282" fill="#4f5d75" font-size="14" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">mangle FORWARD · MSS → 1360</text>
         </g>
 
         <!-- ============ LEGEND ============ -->
-        <line x1="40" y1="392" x2="1240" y2="392" stroke="rgba(45,49,66,0.10)" stroke-width="1"/>
-        <text x="40" y="426" fill="#4f5d75" font-size="11" font-family="'Geist Mono', monospace" letter-spacing="0.14em">LEGEND</text>
+        <line x1="20" y1="332" x2="1036" y2="332" stroke="rgba(45,49,66,0.12)" stroke-width="1"/>
+        <text x="20" y="364" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" letter-spacing="0.14em">LEGEND</text>
 
-        <line x1="124" y1="422" x2="144" y2="422" stroke="#2e5aa8" stroke-width="1.6" marker-end="url(#arrow-link)"/>
-        <text x="156" y="426" fill="#4f5d75" font-size="12" font-family="'Geist', sans-serif">HTTP request</text>
+        <line x1="104" y1="359" x2="128" y2="359" stroke="#2e5aa8" stroke-width="1.8" marker-end="url(#arrow-link)"/>
+        <text x="140" y="364" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif">HTTP request</text>
 
-        <line x1="284" y1="422" x2="304" y2="422" stroke="#4f5d75" stroke-width="1.6" marker-end="url(#arrow)"/>
-        <text x="316" y="426" fill="#4f5d75" font-size="12" font-family="'Geist', sans-serif">TCP data</text>
+        <line x1="258" y1="359" x2="282" y2="359" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)"/>
+        <text x="294" y="364" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif">TCP data</text>
 
-        <line x1="424" y1="422" x2="444" y2="422" stroke="#eb6c36" stroke-width="1.6" stroke-dasharray="5,4" marker-end="url(#arrow-accent)"/>
-        <text x="456" y="426" fill="#4f5d75" font-size="12" font-family="'Geist', sans-serif">ICMP frag needed</text>
+        <line x1="384" y1="359" x2="408" y2="359" stroke="#eb6c36" stroke-width="1.8" stroke-dasharray="6,4" marker-end="url(#arrow-accent)"/>
+        <text x="420" y="364" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif">ICMP frag needed</text>
 
-        <rect x="616" y="414" width="20" height="14" rx="2" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.18)" stroke-width="1.2" stroke-dasharray="4,3"/>
-        <text x="648" y="426" fill="#4f5d75" font-size="12" font-family="'Geist', sans-serif">Docker network</text>
+        <rect x="568" y="352" width="22" height="14" rx="2" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.20)" stroke-width="1.2" stroke-dasharray="4,3"/>
+        <text x="602" y="364" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif">Docker network</text>
       </svg>
     </div>
 
