@@ -1,0 +1,73 @@
+# Lab "Cơm Thêm" của Tập 05: CÙNG ca bệnh, nhưng có ROUTER đứng giữa.
+# Client và server nằm KHÁC SUBNET -> client không bao giờ ARP hỏi VIP.
+# Kẻ ôm MAC chết lúc này là ROUTER, không phải client.
+services:
+  router:
+    build: ./router
+    container_name: lab05r-router
+    hostname: router
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    networks:
+      lan-client:
+        ipv4_address: 172.28.6.254
+      lan-server:
+        ipv4_address: 172.28.7.254
+
+  node-a:
+    build:
+      context: ../node
+      args:
+        NODE_NAME: "NODE A (MASTER)"
+        NODE_IP: "172.28.7.11"
+    container_name: lab05r-node-a
+    hostname: node-a
+    cap_add:
+      - NET_ADMIN
+    networks:
+      lan-server:
+        ipv4_address: 172.28.7.11
+
+  node-b:
+    build:
+      context: ../node
+      args:
+        NODE_NAME: "NODE B (BACKUP)"
+        NODE_IP: "172.28.7.12"
+    container_name: lab05r-node-b
+    hostname: node-b
+    cap_add:
+      - NET_ADMIN
+    networks:
+      lan-server:
+        ipv4_address: 172.28.7.12
+
+  client:
+    build: ../client
+    container_name: lab05r-client
+    hostname: client
+    cap_add:
+      - NET_ADMIN
+    command: sleep infinity
+    init: true
+    networks:
+      lan-client:
+        ipv4_address: 172.28.6.20
+    depends_on:
+      - router
+      - node-a
+      - node-b
+
+networks:
+  lan-client:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.6.0/24
+  lan-server:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.7.0/24

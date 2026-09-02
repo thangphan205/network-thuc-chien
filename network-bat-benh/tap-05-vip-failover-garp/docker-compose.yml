@@ -1,12 +1,31 @@
 services:
-  server:
-    image: nginx:alpine
-    container_name: lab05-server
+  node-a:
+    build:
+      context: ./node
+      args:
+        NODE_NAME: "NODE A (MASTER)"
+        NODE_IP: "172.28.5.11"
+    container_name: lab05-node-a
+    hostname: node-a
     cap_add:
       - NET_ADMIN
     networks:
       lab-net:
-        ipv4_address: 172.28.5.10
+        ipv4_address: 172.28.5.11
+
+  node-b:
+    build:
+      context: ./node
+      args:
+        NODE_NAME: "NODE B (BACKUP)"
+        NODE_IP: "172.28.5.12"
+    container_name: lab05-node-b
+    hostname: node-b
+    cap_add:
+      - NET_ADMIN
+    networks:
+      lab-net:
+        ipv4_address: 172.28.5.12
 
   client:
     build: ./client
@@ -19,7 +38,8 @@ services:
       lab-net:
         ipv4_address: 172.28.5.20
     depends_on:
-      - server
+      - node-a
+      - node-b
 
 networks:
   lab-net:

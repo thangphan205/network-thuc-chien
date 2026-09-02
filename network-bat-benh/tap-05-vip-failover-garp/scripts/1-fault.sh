@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
-# Kích hoạt lỗi: Tạo Stale/Fake ARP entry trên máy Client
-echo "🚨 Đang kích hoạt lỗi: Stale ARP Cache trên Client (Gán sai MAC cho Server 172.28.5.10)..."
-docker compose exec client ip neigh replace 172.28.5.10 lladdr 02:42:ac:1c:05:ee dev eth0 nud permanent
-echo "✅ Đã gán MAC sai (02:42:ac:1c:05:ee) vào bảng ARP của Client!"
-echo "👉 Hiện tượng: Client cùng dải mạng nhưng không thể ping hay truy cập được Server do gửi nhầm MAC đích."
+# Kích hoạt lỗi: MASTER chết, BACKUP cướp VIP nhưng KHÔNG phát Gratuitous ARP.
+# Đây là kịch bản failover HA (Keepalived/VRRP/Pacemaker) đời thật khi script
+# failover tự viết tay quên mất bước thông báo lại địa chỉ MAC cho toàn LAN.
+set -e
+VIP=172.28.5.100
+
+echo "🚨 Đang kích hoạt lỗi: Failover không phát GARP..."
+
+echo "   [1/2] node-a (MASTER) chết..."
+docker compose stop node-a >/dev/null 2>&1
+
+echo "   [2/2] node-b (BACKUP) cướp VIP $VIP — KHÔNG gửi GARP..."
+docker compose exec node-b ip addr replace $VIP/24 dev eth0
+
+echo "✅ Failover 'thành công': VIP đã nằm trên node-b, nginx vẫn chạy, cấu hình đúng 100%."
+echo "👉 Hiện tượng: Client vẫn CHẾT — vì bảng ARP của nó còn ôm MAC của node-a đã tắt thở."
