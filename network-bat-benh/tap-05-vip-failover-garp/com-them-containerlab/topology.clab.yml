@@ -1,0 +1,104 @@
+# ==============================================================================
+# TAP 05 - VIP FAILOVER & GARP | Topology dùng router Cisco IOL
+# Yêu cầu: image vrnetlab/cisco_iol:17.12.01 + Linux bridge "br-server"
+# (scripts/deploy.sh sẽ tự tạo bridge trước khi deploy)
+# ==============================================================================
+name: tap05_garp_ha
+
+mgmt:
+  network: tap05_mgmt
+  ipv4-subnet: 192.168.55.0/24
+
+topology:
+  nodes:
+    # --------------------------------------------------------------------------
+    # Router Cisco IOL
+    # Ethernet0/0 là cổng management do containerlab quản lý -> KHÔNG dùng làm
+    # data link. Data link bắt đầu từ Ethernet0/1.
+    # Dùng .partial.cfg để containerlab NỐI THÊM config thay vì ghi đè bootstrap.
+    # --------------------------------------------------------------------------
+    router:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 192.168.55.254
+      startup-config: config/router.partial.cfg
+
+    # Linux Bridge đóng vai trò L2 Switch nối Router + 2 Server
+    # Bridge PHẢI tồn tại sẵn trên host, containerlab không tự tạo.
+    br-server:
+      kind: bridge
+
+    # Server 1 (HA MASTER)
+    node-a:
+      kind: linux
+      image: tap05-ha-node:latest
+      mgmt-ipv4: 192.168.55.11
+      binds:
+        - config/node-a/keepalived.conf:/etc/keepalived/keepalived.conf:ro
+        - config/node-a/nginx-site.conf:/etc/nginx/http.d/default.conf:ro
+        - config/node-a/index.html:/var/www/html/index.html:ro
+      exec:
+        - ip addr add 172.28.52.11/24 dev eth1
+        - ip link set eth1 up
+        # Containerlab bật sẵn ip_forward=1 cho node kind linux. Với server thì
+        # PHẢI tắt: nếu không, node-a (đã mất VIP) vẫn nhận frame router gửi tới
+        # MAC cũ, rồi ĐỊNH TUYẾN GIÙM gói đó sang node-b -> traffic vẫn thông,
+        # blackhole bị che mất và cả bài lab mất ý nghĩa.
+        - sysctl -w net.ipv4.ip_forward=0
+        # KHÔNG dùng "ip route add default": eth0 (mgmt) đã có default route sẵn
+        # nên lệnh sẽ lỗi "RTNETLINK answers: File exists". Chỉ cần route tới
+        # subnet của client là đủ để chứng minh traffic đi qua router.
+        - ip route add 172.28.51.0/24 via 172.28.52.254 dev eth1
+        - nginx
+        - keepalived -D
+
+    # Server 2 (HA BACKUP)
+    node-b:
+      kind: linux
+      image: tap05-ha-node:latest
+      mgmt-ipv4: 192.168.55.12
+      binds:
+        - config/node-b/keepalived.conf:/etc/keepalived/keepalived.conf:ro
+        - config/node-b/nginx-site.conf:/etc/nginx/http.d/default.conf:ro
+        - config/node-b/index.html:/var/www/html/index.html:ro
+      exec:
+        - ip addr add 172.28.52.12/24 dev eth1
+        - ip link set eth1 up
+        # Containerlab bật sẵn ip_forward=1 cho node kind linux. Với server thì
+        # PHẢI tắt: nếu không, node-a (đã mất VIP) vẫn nhận frame router gửi tới
+        # MAC cũ, rồi ĐỊNH TUYẾN GIÙM gói đó sang node-b -> traffic vẫn thông,
+        # blackhole bị che mất và cả bài lab mất ý nghĩa.
+        - sysctl -w net.ipv4.ip_forward=0
+        - ip route add 172.28.51.0/24 via 172.28.52.254 dev eth1
+        - nginx
+        - keepalived -D
+
+    # Client Node
+    client:
+      kind: linux
+      image: tap05-ha-node:latest
+      mgmt-ipv4: 192.168.55.20
+      binds:
+        - config/client/monitor.sh:/root/monitor.sh:ro
+      exec:
+        - ip addr add 172.28.51.20/24 dev eth1
+        - ip link set eth1 up
+        # Containerlab bật sẵn ip_forward=1 cho node kind linux. Với server thì
+        # PHẢI tắt: nếu không, node-a (đã mất VIP) vẫn nhận frame router gửi tới
+        # MAC cũ, rồi ĐỊNH TUYẾN GIÙM gói đó sang node-b -> traffic vẫn thông,
+        # blackhole bị che mất và cả bài lab mất ý nghĩa.
+        - sysctl -w net.ipv4.ip_forward=0
+        - ip route add 172.28.52.0/24 via 172.28.51.254 dev eth1
+
+  links:
+    # Client LAN: Client nối trực tiếp sang Router (Ethernet0/1)
+    - endpoints: ["client:eth1", "router:Ethernet0/1"]
+
+    # Server LAN: Router và cụm Server nối qua L2 Bridge br-server.
+    # Tên endpoint phía bridge chính là tên interface tạo ra TRÊN HOST, nên phải
+    # đặt tên riêng biệt (srv-*). Dùng eth1/eth2/eth3 sẽ đụng tên với interface
+    # sẵn có của lab khác trên host -> veth không được gắn vào bridge, L2 đứt,
+    # VRRP không thấy nhau và cả hai server cùng lên MASTER (split-brain).
+    - endpoints: ["router:Ethernet0/2", "br-server:srv-rtr"]
+    - endpoints: ["node-a:eth1", "br-server:srv-na"]
+    - endpoints: ["node-b:eth1", "br-server:srv-nb"]

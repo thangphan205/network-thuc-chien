@@ -1,0 +1,152 @@
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="1456" height="636" viewBox="0 0 1456 636" xmlns="http://www.w3.org/2000/svg"
+     role="img" aria-labelledby="topo-normal-title topo-normal-desc">
+  <title id="topo-normal-title">Trạng thái bình thường</title>
+  <desc id="topo-normal-desc">Sơ đồ ba tầng: client-remote ở subnet 172.28.51.0/24 đi qua router tới VIP 172.28.52.100 đang nằm trên node-a; bảng ARP của router trỏ đúng MAC node-a; HAProxy kiểm tra backend ở tầng app qua router.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <polygon points="0 0, 9 3.5, 0 7" fill="#4f5d75"/>
+    </marker>
+    <marker id="arrow-accent" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <polygon points="0 0, 9 3.5, 0 7" fill="#eb6c36"/>
+    </marker>
+    <marker id="arrow-link" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <polygon points="0 0, 9 3.5, 0 7" fill="#2e5aa8"/>
+    </marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#f5f5f5"/>
+  <g transform="translate(0,-24)">
+  <rect x="24" y="64" width="240" height="216" rx="8"
+        fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+  <rect x="44" y="56" width="222" height="18" rx="2" fill="#f5f5f5"/>
+  <text x="155" y="69" fill="rgba(45,49,66,0.50)" font-size="12" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">CLIENT LAN · 172.28.51.0/24</text>
+  <rect x="296" y="64" width="688" height="216" rx="8"
+        fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+  <rect x="316" y="56" width="207" height="18" rx="2" fill="#f5f5f5"/>
+  <text x="419" y="69" fill="rgba(45,49,66,0.50)" font-size="12" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">LB / DMZ · 172.28.52.0/24</text>
+  <rect x="1016" y="64" width="416" height="216" rx="8"
+        fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+  <rect x="1036" y="56" width="207" height="18" rx="2" fill="#f5f5f5"/>
+  <text x="1139" y="69" fill="rgba(45,49,66,0.50)" font-size="12" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">APP TIER · 172.28.53.0/24</text>
+  <line x1="144" y1="252" x2="144" y2="416" stroke="#4f5d75" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <rect x="156" y="316" width="79" height="22" rx="2" fill="#f5f5f5"/>
+  <text x="195" y="332" fill="#7a8399" font-size="14" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">GỌI VIP</text>
+  <line x1="608" y1="416" x2="608" y2="252" stroke="#eb6c36" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+  <rect x="472" y="286" width="124" height="22" rx="2" fill="#f5f5f5"/>
+  <text x="534" y="302" fill="#eb6c36" font-size="14" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">VIP → node-a</text>
+  <line x1="672" y1="252" x2="672" y2="416" stroke="#2e5aa8" stroke-width="1.6" marker-end="url(#arrow-link)"/>
+  <rect x="684" y="358" width="124" height="22" rx="2" fill="#f5f5f5"/>
+  <text x="746" y="374" fill="#2e5aa8" font-size="14" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">HEALTH CHECK</text>
+  <line x1="1124" y1="416" x2="1124" y2="216" stroke="#2e5aa8" stroke-width="1.6" marker-end="url(#arrow-link)"/>
+  <line x1="1324" y1="416" x2="1324" y2="216" stroke="#2e5aa8" stroke-width="1.6" marker-end="url(#arrow-link)"/>
+  <rect x="1336" y="316" width="106" height="22" rx="2" fill="#f5f5f5"/>
+  <text x="1389" y="332" fill="#2e5aa8" font-size="14" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.04em">QUA ROUTER</text>
+  <line x1="512" y1="168" x2="544" y2="168" stroke="#4f5d75" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <rect x="48" y="120" width="192" height="96" rx="8" fill="#f5f5f5"/>
+  <rect x="48" y="120" width="192" height="96" rx="8" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1.2"/>
+  <rect x="60" y="130" width="58" height="17" rx="2" fill="transparent"
+        stroke="#7a8399" stroke-opacity="0.4" stroke-width="0.8"/>
+  <text x="89" y="143" fill="#7a8399" fill-opacity="0.85" font-size="11" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">CLIENT</text>
+  <text x="144" y="178" fill="#2d3142" font-size="22" font-weight="700"
+        font-family="'Geist', system-ui, sans-serif" text-anchor="middle">client-remote</text>
+  <text x="144" y="202" fill="#4f5d75" font-size="15" font-weight="500"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">172.28.51.20</text>
+  <rect x="56" y="228" width="176" height="24" rx="3"
+        fill="#f5f5f5" stroke="#7a8399" stroke-opacity="0.55" stroke-width="1"/>
+  <text x="144" y="245" fill="#7a8399" font-size="13" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">ARP: chỉ có gateway</text>
+  <rect x="320" y="120" width="192" height="96" rx="8" fill="#f5f5f5"/>
+  <rect x="320" y="120" width="192" height="96" rx="8" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1.2"/>
+  <rect x="332" y="130" width="58" height="17" rx="2" fill="transparent"
+        stroke="#7a8399" stroke-opacity="0.4" stroke-width="0.8"/>
+  <text x="361" y="143" fill="#7a8399" fill-opacity="0.85" font-size="11" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">CLIENT</text>
+  <text x="416" y="178" fill="#2d3142" font-size="22" font-weight="700"
+        font-family="'Geist', system-ui, sans-serif" text-anchor="middle">client-lan</text>
+  <text x="416" y="202" fill="#4f5d75" font-size="15" font-weight="500"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">172.28.52.20</text>
+  <rect x="356" y="228" width="120" height="24" rx="3"
+        fill="#f5f5f5" stroke="#4f5d75" stroke-opacity="0.55" stroke-width="1"/>
+  <text x="416" y="245" fill="#4f5d75" font-size="13" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">ARP → node-a</text>
+  <rect x="544" y="120" width="192" height="96" rx="8" fill="#f5f5f5"/>
+  <rect x="544" y="120" width="192" height="96" rx="8" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+  <rect x="556" y="130" width="30" height="17" rx="2" fill="transparent"
+        stroke="#eb6c36" stroke-opacity="0.4" stroke-width="0.8"/>
+  <text x="571" y="143" fill="#eb6c36" fill-opacity="0.85" font-size="11" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">LB</text>
+  <text x="640" y="178" fill="#2d3142" font-size="22" font-weight="700"
+        font-family="'Geist', system-ui, sans-serif" text-anchor="middle">node-a</text>
+  <text x="640" y="202" fill="#4f5d75" font-size="15" font-weight="500"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">172.28.52.11</text>
+  <rect x="560" y="228" width="160" height="24" rx="3"
+        fill="#f5f5f5" stroke="#eb6c36" stroke-opacity="0.55" stroke-width="1"/>
+  <text x="640" y="245" fill="#eb6c36" font-size="13" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">MASTER · prio 110</text>
+  <rect x="768" y="120" width="192" height="96" rx="8" fill="#f5f5f5"/>
+  <rect x="768" y="120" width="192" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1.2"/>
+  <rect x="780" y="130" width="30" height="17" rx="2" fill="transparent"
+        stroke="#4f5d75" stroke-opacity="0.4" stroke-width="0.8"/>
+  <text x="795" y="143" fill="#4f5d75" fill-opacity="0.85" font-size="11" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">LB</text>
+  <text x="864" y="178" fill="#2d3142" font-size="22" font-weight="700"
+        font-family="'Geist', system-ui, sans-serif" text-anchor="middle">node-b</text>
+  <text x="864" y="202" fill="#4f5d75" font-size="15" font-weight="500"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">172.28.52.12</text>
+  <rect x="784" y="228" width="160" height="24" rx="3"
+        fill="#f5f5f5" stroke="#4f5d75" stroke-opacity="0.55" stroke-width="1"/>
+  <text x="864" y="245" fill="#4f5d75" font-size="13" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">BACKUP · prio 100</text>
+  <rect x="1040" y="120" width="168" height="96" rx="8" fill="#f5f5f5"/>
+  <rect x="1040" y="120" width="168" height="96" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.2"/>
+  <rect x="1052" y="130" width="65" height="17" rx="2" fill="transparent"
+        stroke="#2d3142" stroke-opacity="0.4" stroke-width="0.8"/>
+  <text x="1084" y="143" fill="#2d3142" fill-opacity="0.85" font-size="11" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">BACKEND</text>
+  <text x="1124" y="178" fill="#2d3142" font-size="22" font-weight="700"
+        font-family="'Geist', system-ui, sans-serif" text-anchor="middle">web-1</text>
+  <text x="1124" y="202" fill="#4f5d75" font-size="15" font-weight="500"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">172.28.53.31</text>
+  <rect x="1240" y="120" width="168" height="96" rx="8" fill="#f5f5f5"/>
+  <rect x="1240" y="120" width="168" height="96" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.2"/>
+  <rect x="1252" y="130" width="65" height="17" rx="2" fill="transparent"
+        stroke="#2d3142" stroke-opacity="0.4" stroke-width="0.8"/>
+  <text x="1284" y="143" fill="#2d3142" fill-opacity="0.85" font-size="11" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">BACKEND</text>
+  <text x="1324" y="178" fill="#2d3142" font-size="22" font-weight="700"
+        font-family="'Geist', system-ui, sans-serif" text-anchor="middle">web-2</text>
+  <text x="1324" y="202" fill="#4f5d75" font-size="15" font-weight="500"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">172.28.53.32</text>
+  <rect x="24" y="416" width="1408" height="112" rx="8" fill="#f5f5f5"/>
+  <rect x="24" y="416" width="1408" height="112" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1.2"/>
+  <rect x="40" y="428" width="34" height="17" rx="2" fill="transparent"
+        stroke="#4f5d75" stroke-opacity="0.4" stroke-width="0.8"/>
+  <text x="57" y="441" fill="#4f5d75" fill-opacity="0.85" font-size="11" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">L3</text>
+  <text x="728" y="456" fill="#2d3142" font-size="22" font-weight="700"
+        font-family="'Geist', system-ui, sans-serif" text-anchor="middle">router</text>
+  <text x="728" y="482" fill="#4f5d75" font-size="15" font-weight="500"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">.51.254 · .52.254 · .53.254 · ip_forward=1</text>
+  <text x="728" y="510" fill="#4f5d75" font-size="16" font-weight="700"
+        font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">ARP 172.28.52.100 → MAC node-a   ✓ ĐÚNG</text>
+  <line x1="24" y1="568" x2="1432" y2="568" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+  <text x="24" y="588" fill="#4f5d75" font-size="12" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.14em">CHÚ GIẢI</text>
+  <rect x="132" y="576" width="14" height="14" rx="2" fill="#eb6c36" fill-opacity="0.18" stroke="#eb6c36" stroke-width="1.2"/>
+  <text x="154" y="588" fill="#4f5d75" font-size="12" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace">node đang giữ VIP</text>
+  <rect x="340" y="576" width="14" height="14" rx="2" fill="#2e5aa8" fill-opacity="0.18" stroke="#2e5aa8" stroke-width="1.2"/>
+  <text x="362" y="588" fill="#4f5d75" font-size="12" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace">health check qua router</text>
+  <rect x="596" y="576" width="14" height="14" rx="2" fill="#4f5d75" fill-opacity="0.18" stroke="#4f5d75" stroke-width="1.2"/>
+  <text x="618" y="588" fill="#4f5d75" font-size="12" font-weight="600"
+        font-family="'Geist Mono', ui-monospace, monospace">lưu lượng client</text>
+  </g>
+</svg>

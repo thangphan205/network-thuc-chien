@@ -223,3 +223,17 @@ network-bat-benh/*/nginx/nginx.conf
 # File bat goi tin sinh ra khi lam lab (README huong dan tao trong thu muc tap)
 *.pcap
 *.pcapng
+
+# Video files
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.m4v
+
+
+# Local lab server notes (host/user, do not publish)
+server_lab.txt

@@ -1,49 +1,181 @@
+# ==============================================================================
+# TAP 05 - VIP FAILOVER & GARP  (topology 3 tang co dinh tuyen)
+#
+#   CLIENT LAN 172.28.51.0/24  --+
+#                                |
+#   LB / DMZ   172.28.52.0/24  --+--[ router 3 chan, ip_forward=1 ]
+#   VIP 172.28.52.100            |
+#                                |
+#   APP TIER   172.28.53.0/24  --+
+#
+# Vi sao tach 3 tang? Ngoai production khong ai de client, load balancer va
+# app server chung mot broadcast domain. Khi co router o giua, ke om MAC chet
+# sau failover la ROUTER chu khong phai client -> trieu chung doi hoan toan.
+# ==============================================================================
 services:
-  node-a:
-    build:
-      context: ./node
-      args:
-        NODE_NAME: "NODE A (MASTER)"
-        NODE_IP: "172.28.5.11"
-    container_name: lab05-node-a
-    hostname: node-a
+  # ---------------------------------------------------------------------------
+  # ROUTER: 3 chan, noi ca 3 tang. Dong vai router/firewall cua doanh nghiep.
+  # Bang ARP cua chan .52 chinh la O BENH cua ca tap nay.
+  # ---------------------------------------------------------------------------
+  router:
+    build: ./router
+    container_name: lab05-router
+    hostname: router
+    init: true
     cap_add:
-      - NET_ADMIN
+      - NET_ADMIN      # sua route, sua bang neigh, chay iptables
+      # Docker mount /proc/sys READ-ONLY, nen khong the `sysctl -w` luc chay.
+      # Kich ban 5 phan 2 can bat/tat ARP timeout kieu Cisco NGAY TRONG lab
+      # -> can SYS_ADMIN de `mount -o remount,rw /proc/sys`.
+      # Dung SYS_ADMIN chu KHONG dung `privileged: true`: privileged con mo them
+      # toan bo device cua host va go seccomp/apparmor - thua va nguy hiem.
+      - SYS_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
     networks:
-      lab-net:
-        ipv4_address: 172.28.5.11
+      lan-client:
+        ipv4_address: 172.28.51.254
+      lan-lb:
+        ipv4_address: 172.28.52.254
+      lan-app:
+        ipv4_address: 172.28.53.254
+
+  # ---------------------------------------------------------------------------
+  # CAP LOAD BALANCER: moi node chay HAProxy + Keepalived
+  # Keepalived giu VIP 172.28.52.100 va tu chuyen khi MASTER chet.
+  # ---------------------------------------------------------------------------
+  node-a:
+    build: ./lb
+    image: lab05-lb:latest
+    container_name: lab05-node-a
+    init: true       # tini lam PID 1 de THU DON tien trinh keepalived da chet
+    hostname: node-a
+    environment:
+      LB_NAME: "node-a"
+      ROUTER_ID: "NODE_A"
+      VRRP_STATE: "MASTER"
+      VRRP_PRIORITY: "110"
+    cap_add:
+      - NET_ADMIN      # Keepalived can quyen gan/go VIP
+      - NET_BROADCAST  # ...va gui Gratuitous ARP broadcast
+    sysctls:
+      # BAT BUOC = 0. Neu node thua van forward, no se chuyen tiep frame sang
+      # node dang giu VIP -> blackhole bi che giau, ca benh khong hien ra.
+      - net.ipv4.ip_forward=0
+    networks:
+      lan-lb:
+        ipv4_address: 172.28.52.11
+    depends_on:
+      - router
 
   node-b:
-    build:
-      context: ./node
-      args:
-        NODE_NAME: "NODE B (BACKUP)"
-        NODE_IP: "172.28.5.12"
+    build: ./lb
+    image: lab05-lb:latest
     container_name: lab05-node-b
+    init: true
     hostname: node-b
+    environment:
+      LB_NAME: "node-b"
+      ROUTER_ID: "NODE_B"
+      VRRP_STATE: "BACKUP"
+      VRRP_PRIORITY: "100"
+    cap_add:
+      - NET_ADMIN
+      - NET_BROADCAST
+    sysctls:
+      - net.ipv4.ip_forward=0
+    networks:
+      lan-lb:
+        ipv4_address: 172.28.52.12
+    depends_on:
+      - router
+
+  # ---------------------------------------------------------------------------
+  # 2 BACKEND NGINX o tang app RIENG. HAProxy phai di QUA ROUTER moi toi duoc
+  # -> mo ra kich ban 11: router chan .52 -> .53 thi client an HTTP 503.
+  # ---------------------------------------------------------------------------
+  web-1:
+    build:
+      context: ./web
+      args:
+        WEB_NAME: "web-1"
+    container_name: lab05-web-1
+    hostname: web-1
+    cap_add:
+      - NET_ADMIN      # can de cai route tinh ve LB LAN
+    networks:
+      lan-app:
+        ipv4_address: 172.28.53.31
+    depends_on:
+      - router
+
+  web-2:
+    build:
+      context: ./web
+      args:
+        WEB_NAME: "web-2"
+    container_name: lab05-web-2
+    hostname: web-2
     cap_add:
       - NET_ADMIN
     networks:
-      lab-net:
-        ipv4_address: 172.28.5.12
+      lan-app:
+        ipv4_address: 172.28.53.32
+    depends_on:
+      - router
 
-  client:
+  # ---------------------------------------------------------------------------
+  # CLIENT REMOTE: nan nhan THAT SU. Khac subnet voi VIP nen KHONG BAO GIO
+  # ARP hoi VIP -> soi `ip neigh` tren may nay la ngo cut 100%.
+  # ---------------------------------------------------------------------------
+  client-remote:
     build: ./client
-    container_name: lab05-client
+    container_name: lab05-client-remote
+    hostname: client-remote
     cap_add:
       - NET_ADMIN
     command: sleep infinity
     init: true
     networks:
-      lab-net:
-        ipv4_address: 172.28.5.20
+      lan-client:
+        ipv4_address: 172.28.51.20
+    depends_on:
+      - router
+      - node-a
+      - node-b
+
+  # ---------------------------------------------------------------------------
+  # CLIENT LAN: doi chung. Cung subnet voi VIP nen CO bang ARP cho VIP.
+  # Cung mot su co: may nay tu khoi sau ~30s, client-remote thi khong.
+  # ---------------------------------------------------------------------------
+  client-lan:
+    build: ./client
+    container_name: lab05-client-lan
+    hostname: client-lan
+    cap_add:
+      - NET_ADMIN
+    command: sleep infinity
+    init: true
+    networks:
+      lan-lb:
+        ipv4_address: 172.28.52.20
     depends_on:
       - node-a
       - node-b
 
 networks:
-  lab-net:
+  lan-client:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.28.5.0/24
+        - subnet: 172.28.51.0/24
+  lan-lb:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.52.0/24
+  lan-app:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.53.0/24

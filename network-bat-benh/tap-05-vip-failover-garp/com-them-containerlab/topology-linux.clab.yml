@@ -1,0 +1,105 @@
+# ==============================================================================
+# TAP 05 - VIP FAILOVER & GARP | Topology 100% open-source (router Linux)
+# Không cần image Cisco. Yêu cầu Linux bridge "br-server" (deploy.sh tự tạo).
+# ==============================================================================
+name: tap05_garp_ha_linux
+
+mgmt:
+  network: tap05_mgmt_linux
+  ipv4-subnet: 192.168.56.0/24
+
+topology:
+  nodes:
+    # --------------------------------------------------------------------------
+    # Router mềm Linux
+    # Mặc định ARP cache của Linux hết hạn sau vài chục giây nên "bệnh" sẽ tự
+    # khỏi trước khi kịp quan sát. Kéo dài base_reachable_time + gc_stale_time
+    # để mô phỏng ARP timeout dài như Cisco (14400s).
+    # --------------------------------------------------------------------------
+    router:
+      kind: linux
+      image: tap05-ha-node:latest
+      mgmt-ipv4: 192.168.56.254
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - ip addr add 172.28.51.254/24 dev eth1
+        - ip link set eth1 up
+        - ip addr add 172.28.52.254/24 dev eth2
+        - ip link set eth2 up
+        - sysctl -w net.ipv4.neigh.eth2.base_reachable_time_ms=14400000
+        - sysctl -w net.ipv4.neigh.eth2.gc_stale_time=14400
+        - sysctl -w net.ipv4.neigh.eth2.delay_first_probe_time=14400
+
+    # Linux Bridge đóng vai trò L2 Switch nối Router + 2 Server
+    br-server:
+      kind: bridge
+
+    # Server 1 (HA MASTER)
+    node-a:
+      kind: linux
+      image: tap05-ha-node:latest
+      mgmt-ipv4: 192.168.56.11
+      binds:
+        - config/node-a/keepalived.conf:/etc/keepalived/keepalived.conf:ro
+        - config/node-a/nginx-site.conf:/etc/nginx/http.d/default.conf:ro
+        - config/node-a/index.html:/var/www/html/index.html:ro
+      exec:
+        - ip addr add 172.28.52.11/24 dev eth1
+        - ip link set eth1 up
+        # Containerlab bật sẵn ip_forward=1 cho node kind linux. Với server thì
+        # PHẢI tắt: nếu không, node-a (đã mất VIP) vẫn nhận frame router gửi tới
+        # MAC cũ, rồi ĐỊNH TUYẾN GIÙM gói đó sang node-b -> traffic vẫn thông,
+        # blackhole bị che mất và cả bài lab mất ý nghĩa.
+        - sysctl -w net.ipv4.ip_forward=0
+        - ip route add 172.28.51.0/24 via 172.28.52.254 dev eth1
+        - nginx
+        - keepalived -D
+
+    # Server 2 (HA BACKUP)
+    node-b:
+      kind: linux
+      image: tap05-ha-node:latest
+      mgmt-ipv4: 192.168.56.12
+      binds:
+        - config/node-b/keepalived.conf:/etc/keepalived/keepalived.conf:ro
+        - config/node-b/nginx-site.conf:/etc/nginx/http.d/default.conf:ro
+        - config/node-b/index.html:/var/www/html/index.html:ro
+      exec:
+        - ip addr add 172.28.52.12/24 dev eth1
+        - ip link set eth1 up
+        # Containerlab bật sẵn ip_forward=1 cho node kind linux. Với server thì
+        # PHẢI tắt: nếu không, node-a (đã mất VIP) vẫn nhận frame router gửi tới
+        # MAC cũ, rồi ĐỊNH TUYẾN GIÙM gói đó sang node-b -> traffic vẫn thông,
+        # blackhole bị che mất và cả bài lab mất ý nghĩa.
+        - sysctl -w net.ipv4.ip_forward=0
+        - ip route add 172.28.51.0/24 via 172.28.52.254 dev eth1
+        - nginx
+        - keepalived -D
+
+    # Client Node
+    client:
+      kind: linux
+      image: tap05-ha-node:latest
+      mgmt-ipv4: 192.168.56.20
+      binds:
+        - config/client/monitor.sh:/root/monitor.sh:ro
+      exec:
+        - ip addr add 172.28.51.20/24 dev eth1
+        - ip link set eth1 up
+        # Containerlab bật sẵn ip_forward=1 cho node kind linux. Với server thì
+        # PHẢI tắt: nếu không, node-a (đã mất VIP) vẫn nhận frame router gửi tới
+        # MAC cũ, rồi ĐỊNH TUYẾN GIÙM gói đó sang node-b -> traffic vẫn thông,
+        # blackhole bị che mất và cả bài lab mất ý nghĩa.
+        - sysctl -w net.ipv4.ip_forward=0
+        - ip route add 172.28.52.0/24 via 172.28.51.254 dev eth1
+
+  links:
+    # Client LAN
+    - endpoints: ["client:eth1", "router:eth1"]
+
+    # Server LAN - tên endpoint phía bridge phải riêng biệt (xem ghi chú trong
+    # topology.clab.yml): trùng tên với interface sẵn có trên host sẽ làm veth
+    # không gắn được vào bridge -> đứt L2 -> VRRP split-brain.
+    - endpoints: ["router:eth2", "br-server:srv-rtr"]
+    - endpoints: ["node-a:eth1", "br-server:srv-na"]
+    - endpoints: ["node-b:eth1", "br-server:srv-nb"]
