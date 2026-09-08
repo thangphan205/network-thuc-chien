@@ -10,26 +10,38 @@ set -e
 cd "$(dirname "$0")/.."
 source scripts/lib.sh
 
-echo "🔧 [1/6] Khởi động toàn bộ lab (router + HAProxy/Keepalived + 2 backend)..."
-docker compose up -d --build
+# ------------------------------------------------------------------------------
+# Vì sao có nhánh này? `--build` in một trang log build lên màn hình mỗi lần
+# chạy. Giữa buổi thực hành (và nhất là khi đang quay video) thì đó là rác.
+# Image đã có sẵn -> khởi động thẳng. Muốn build lại: BUILD=1 ./scripts/0-setup.sh
+# ------------------------------------------------------------------------------
+if [ "${BUILD:-0}" = "1" ] || ! docker image inspect lab05-lb:latest >/dev/null 2>&1; then
+    echo "🔧 [1/6] Build image rồi khởi động lab (router + HAProxy/Keepalived + 2 backend)..."
+    docker compose up -d --build
+else
+    echo "🔧 [1/6] Khởi động lab (image đã có — BUILD=1 để build lại)..."
+    docker compose up -d >/dev/null 2>&1
+fi
 
 echo "🔧 [2/6] Dọn sạch dấu vết của cảnh trước rồi khởi động lại HA..."
 # Reset PHẢI dứt khoát: các cảnh trước có thể để lại
 #   - rule iptables chặn VRRP (cảnh 8 split-brain)
-#   - keepalived đang chạy bằng cấu hình nopreempt (cảnh 9) hoặc use_vmac (cảnh 12)
-#   - HAProxy bị giết (cảnh 10)
+#   - keepalived đang chạy bằng cấu hình nopreempt (cảnh 10) hoặc use_vmac (cảnh 13)
+#   - HAProxy bị giết (cảnh 11)
 #   - VIP còn dính lại trên node sai (cảnh 3 gán tay)
 # Vì vậy không dùng `ka-start` kiểu "đang chạy thì thôi" mà khởi động lại hẳn.
 for N in $NODE_A $NODE_B; do
     docker exec "$N" iptables -D INPUT -p 112 -j DROP 2>/dev/null || true
-    docker exec "$N" rm -f /etc/keepalived/USE_NOPREEMPT /etc/keepalived/USE_VMAC 2>/dev/null || true
+    docker exec "$N" rm -f /etc/keepalived/USE_NOPREEMPT /etc/keepalived/USE_VMAC /etc/keepalived/USE_UNICAST 2>/dev/null || true
+    # Cảnh 9 chặn RIÊNG multicast; cảnh 8 chặn TOÀN BỘ protocol 112. Gỡ cả hai.
+    docker exec "$N" iptables -D INPUT -p 112 -d 224.0.0.18 -j DROP 2>/dev/null || true
     docker exec "$N" pkill -9 keepalived 2>/dev/null || true
     docker exec "$N" ip addr del $VIP/24 dev eth0 2>/dev/null || true
     # use_vmac để lại interface macvlan `vrrp51` — không xoá thì lần sau xung đột.
     docker exec "$N" ip link del vrrp51 2>/dev/null || true
     docker exec "$N" sh -c 'pgrep haproxy >/dev/null || haproxy -f /etc/haproxy/haproxy.cfg -D' 2>/dev/null || true
 done
-# Cảnh 11 để lại rule chặn .52 -> .53 trên router.
+# Cảnh 12 để lại rule chặn .52 -> .53 trên router.
 docker exec $ROUTER iptables -D FORWARD -s $LB_NET -d $APP_NET -p tcp --dport 80 -j DROP   2>/dev/null || true
 docker exec $ROUTER iptables -D FORWARD -s $LB_NET -d $APP_NET -p tcp --dport 80 -j REJECT 2>/dev/null || true
 # Cảnh 5 phần 2 để lại ARP timeout kiểu Cisco trên router.
@@ -87,7 +99,9 @@ in_bang_arp
 echo "   client-remote: KHÔNG có entry ARP cho VIP — đúng như mong đợi,"
 echo "                  vì nó khác subnet nên chỉ ARP hỏi gateway $R_CLIENT."
 echo ""
-echo "👉 Mở terminal thứ 2 — máy đo phía client:"
-echo "   docker exec -it $CLIENT_REMOTE monitor.sh"
-echo "👉 Mở terminal thứ 3 — soi bảng ARP của router (ổ bệnh thật):"
-echo "   ./scripts/xem-arp-router.sh"
+echo "👉 Mở MỘT terminal thứ 2 — bảng điều khiển gộp (khuyên dùng khi quay video):"
+echo "   ./scripts/bang-dieu-khien.sh"
+echo ""
+echo "   Hoặc tách làm hai terminal riêng nếu màn hình đủ rộng:"
+echo "     docker exec -it $CLIENT_REMOTE monitor.sh   # máy đo phía client"
+echo "     ./scripts/xem-arp-router.sh                 # bảng ARP của router"

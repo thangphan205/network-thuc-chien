@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# KỊCH BẢN 9 — PREEMPT: MỘT SỰ CỐ, HAI LẦN MẤT PHIÊN
+# KỊCH BẢN 10 — PREEMPT: MỘT SỰ CỐ, HAI LẦN MẤT PHIÊN
 #
 # Mặc định Keepalived bật preempt: node priority cao hơn LUÔN giành lại VIP ngay
 # khi nó sống lại. Một lần node-a chết vì thế sinh ra HAI lần chuyển VIP:
@@ -32,11 +32,15 @@ tai_file() {   # $1 = tên kết quả
 # node mới, node đó không biết phiên này nên bỏ qua) -> curl treo tới hết
 # --max-time. Đọc sớm sẽ ra chuỗi rỗng và người xem tưởng script hỏng.
 ket_qua() {
-    for _ in $(seq 45); do
+    local i=0
+    for i in $(seq 45); do
         R=$(docker exec $CLIENT_REMOTE sh -c "cat /tmp/$1 2>/dev/null")
-        case "$R" in *curl_exit=*) echo "$R"; return ;; esac
+        case "$R" in *curl_exit=*) xoa_dong_ho; echo "$R"; return ;; esac
+        # Hàm này chạy trong $( ) -> đồng hồ phải ra stderr mới hiện lên màn hình.
+        dem_len "$i" "chờ kết nối $1 kết thúc (rơi im lặng, không có RST)"
         sleep 1
     done
+    xoa_dong_ho
     echo "(vẫn đang treo sau 45s — kết nối rơi im lặng, không hề có RST)"
 }
 
@@ -54,7 +58,7 @@ chay_kich_ban() {
 
     echo "   💥 SIGKILL node-a  -> sự cố THẬT"
     docker compose kill node-a >/dev/null 2>&1
-    sleep 14
+    cho_dem_nguoc 14 "VRRP phát hiện MASTER chết rồi chuyển VIP"
     echo "      VIP giờ ở: $(vip_owner)"
 
     echo "   ⬇️  Mở kết nối #2 trên node đang phục vụ (đang chạy hoàn toàn tốt)..."
@@ -67,7 +71,7 @@ chay_kich_ban() {
     # node-a không với tới backend ở tầng .53 và sẽ trả 503 thay vì phục vụ.
     sleep 3
     cai_route $NODE_A
-    sleep 27
+    cho_dem_nguoc 27 "node-a hồi phục — xem nó có ĐÒI LẠI VIP không"
     echo "      VIP giờ ở: $(vip_owner)"
 
     echo ""
@@ -104,7 +108,7 @@ sleep 1
 docker exec $NODE_A ka-start /etc/keepalived/keepalived-nopreempt.conf
 sleep 4
 docker exec $NODE_B ka-start /etc/keepalived/keepalived-nopreempt.conf
-sleep 6
+cho_dem_nguoc 6 "chờ cụm hội tụ với cấu hình nopreempt"
 echo "   VIP đang nằm trên: $(vip_owner)"
 echo ""
 chay_kich_ban

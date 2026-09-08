@@ -24,15 +24,20 @@ trap 'echo ""; echo "🧹 Trả router về ARP mặc định Linux..."; set_arp
 
 # Đo thời gian tới khi $1 gọi được VIP, tối đa $2 giây. In ra số giây hoặc "".
 do_tu_khoi() {
-    local C="$1" MAX="$2" START NOW
+    local C="$1" MAX="$2" NHAN="${3:-ngồi im, không chữa gì}" START T
     START=$(date +%s)
-    while [ $(( $(date +%s) - START )) -lt "$MAX" ]; do
+    while : ; do
+        T=$(( $(date +%s) - START ))
+        [ "$T" -ge "$MAX" ] && break
         if docker exec "$C" curl -sf --max-time 1 -o /dev/null "http://$VIP/" 2>/dev/null; then
-            echo $(( $(date +%s) - START )); return 0
+            xoa_dong_ho ; echo "$T" ; return 0
         fi
+        # Đồng hồ đi ra stderr: hàm này được gọi trong $( ) nên stdout bị nuốt.
+        # Không có dòng này, màn hình đứng im 150 giây không một dấu hiệu sống.
+        dem_len "$T" "$NHAN"
         sleep 1
     done
-    echo ""; return 1
+    xoa_dong_ho ; echo "" ; return 1
 }
 
 # ------------------------------------------------------------------------------
@@ -47,7 +52,7 @@ in_bang_arp
 echo ""
 echo "⏳ Ngồi im, không chữa gì. Đo bằng đồng hồ tường (tối đa 150 giây)..."
 
-T_REMOTE=$(do_tu_khoi $CLIENT_REMOTE 150) || true
+T_REMOTE=$(do_tu_khoi $CLIENT_REMOTE 150 "client-remote vẫn chết, chờ NUD của router") || true
 T_LAN=$(do_tu_khoi $CLIENT_LAN 10) || true
 
 if [ -n "$T_REMOTE" ]; then
@@ -90,7 +95,7 @@ gay_benh_stale_arp
 in_bang_arp
 echo ""
 echo "⏳ Ngồi im 90 giây (phần 1 chỉ cần ~30-50 giây là khỏi)..."
-T2=$(do_tu_khoi $CLIENT_REMOTE 90) || true
+T2=$(do_tu_khoi $CLIENT_REMOTE 90 "router kiểu Cisco: KHÔNG có NUD, sẽ không tự khỏi") || true
 
 if [ -n "$T2" ]; then
     echo "   ⚠️  Tự khỏi sau $T2 giây — sysctl chưa ăn. Kiểm tra lại chân router."

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# KỊCH BẢN 11 — CÙNG LỜI THAN, KHÁC TẦNG BỆNH
+# KỊCH BẢN 12 — CÙNG LỜI THAN, KHÁC TẦNG BỆNH
 #
 # Người dùng báo y hệt kịch bản 3: "cụm HA vừa failover xong, dịch vụ không vào
 # được". Nhưng lần này ổ bệnh KHÔNG ở bảng ARP.
@@ -11,7 +11,7 @@
 #
 # Phân biệt hai ca này CHỈ bằng một dấu hiệu:
 #     Kịch bản 3  : KHÔNG có response nào  -> curl (28) timeout  -> lỗi Tầng 2
-#     Kịch bản 11 : CÓ response HTTP 503   -> gói đi tới nơi     -> lỗi Tầng 3/7
+#     Kịch bản 12 : CÓ response HTTP 503   -> gói đi tới nơi     -> lỗi Tầng 3/7
 #
 # "Có response hay không" là câu hỏi đầu tiên phải trả lời trong mọi sự cố.
 # ==============================================================================
@@ -84,7 +84,7 @@ echo ""
 echo "   Bảng phân biệt nhanh ba ca 'dịch vụ chết' trông giống hệt nhau:"
 cat <<'TBL'
 
-   Dấu hiệu              KB3 (ARP cũ)     KB11 (mất backend)  KB10 (HAProxy chết)
+   Dấu hiệu              KB3 (ARP cũ)     KB12 (mất backend)  KB11 (HAProxy chết)
    --------------------- ---------------- ------------------- -------------------
    curl trả về           (28) timeout     HTTP 503            200 (sau ~7s)
    Có response HTTP?     KHÔNG            CÓ                  CÓ
@@ -98,10 +98,10 @@ echo "   👉 Dòng 'HAProxy stats' là chỗ lật ngược trực giác:"
 echo "      - KB3  : monitoring báo XANH HẾT mà dịch vụ chết. Monitoring bị mù,"
 echo "               vì HAProxy chỉ nhìn XUỐNG backend, không biết gì về bảng ARP"
 echo "               ở phía TRÊN nó."
-echo "      - KB11 : monitoring báo ĐỎ đúng chỗ. Đây là ca dễ, nếu bạn chịu mở"
+echo "      - KB12 : monitoring báo ĐỎ đúng chỗ. Đây là ca dễ, nếu bạn chịu mở"
 echo "               trang stats ra xem thay vì đoán."
 echo ""
-echo "   Ngoài đời KB11 xảy ra khi nào? Đổi rule firewall giữa DMZ và vùng app,"
+echo "   Ngoài đời KB12 xảy ra khi nào? Đổi rule firewall giữa DMZ và vùng app,"
 echo "   security group / NACL siết lại, ACL trên core switch, hoặc microsegmentation"
 echo "   mới bật. Thường không liên quan gì tới cụm HA — nhưng vì sự cố nổ ra ngay"
 echo "   sau một lần failover nên ai cũng đổ tội cho HA trước."

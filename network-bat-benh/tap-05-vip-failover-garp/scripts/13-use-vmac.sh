@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# KỊCH BẢN 12 — CHỮA TẬN GỐC: use_vmac (RFC 5798)
+# KỊCH BẢN 13 — CHỮA TẬN GỐC: use_vmac (RFC 5798)
 #
 # Mọi cách chữa từ kịch bản 4 tới 6 đều là chữa TRIỆU CHỨNG: VIP nhảy sang máy
 # khác, MAC đổi, nên phải đi báo cho cả LAN biết MAC mới. Còn phải báo là còn

@@ -42,7 +42,7 @@ echo "💥 SIGKILL node-a NGAY GIỮA CHỪNG kết nối đang tải..."
 docker compose kill node-a >/dev/null 2>&1
 
 echo "⏳ Chờ 45 giây: Keepalived chuyển VIP sang node-b, đồng thời xem file có tải xong không..."
-sleep 45
+cho_dem_nguoc 45 "VIP đang chuyển — theo dõi kết nối đang tải dở"
 
 echo ""
 echo "=========================================="

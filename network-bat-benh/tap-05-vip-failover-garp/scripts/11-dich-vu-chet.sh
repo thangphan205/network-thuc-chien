@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# KỊCH BẢN 10 — DỊCH VỤ CHẾT NHƯNG MÁY VẪN SỐNG
+# KỊCH BẢN 11 — DỊCH VỤ CHẾT NHƯNG MÁY VẪN SỐNG
 #
 # Không giết node-a. Chỉ giết HAProxy trên nó.
 # Máy vẫn ping được, VRRP advertisement vẫn phát bình thường — nhưng dịch vụ đã

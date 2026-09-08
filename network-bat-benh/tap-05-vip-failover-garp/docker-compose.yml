@@ -12,6 +12,23 @@
 # app server chung mot broadcast domain. Khi co router o giua, ke om MAC chet
 # sau failover la ROUTER chu khong phai client -> trieu chung doi hoan toan.
 # ==============================================================================
+# ------------------------------------------------------------------------------
+# VI SAO GHIM MAC BANG TAY?
+#
+# Mac dinh Docker sinh MAC ngau nhien moi lan `up` -> moi lan chay lab lai ra
+# mot day MAC khac. Ca benh cua tap nay ke chuyen BANG MAC ("router dang om MAC
+# cua may da chet"), nen MAC doi lien tuc lam:
+#   - tai lieu khong the trich dan con so that
+#   - quay video phai doc lai loi thoai moi lan quay lai
+#
+# Ghim roi thi ca tap dung mot quy uoc doc duoc bang mat:
+#   02:05:00:<subnet>:00:<host>
+#      52 = LB LAN        0a = node-a      0b = node-b
+#      51 = CLIENT LAN    fe = router      20 = client
+#
+# Octet dau 0x02 = unicast + locally administered -> hop le, khong dung cham
+# dai MAC cua nha san xuat nao.
+# ------------------------------------------------------------------------------
 services:
   # ---------------------------------------------------------------------------
   # ROUTER: 3 chan, noi ca 3 tang. Dong vai router/firewall cua doanh nghiep.
@@ -35,10 +52,13 @@ services:
     networks:
       lan-client:
         ipv4_address: 172.28.51.254
+        mac_address:  02:05:00:51:00:fe   # router - chan CLIENT LAN
       lan-lb:
         ipv4_address: 172.28.52.254
+        mac_address:  02:05:00:52:00:fe   # router - chan LB LAN (o benh)
       lan-app:
         ipv4_address: 172.28.53.254
+        mac_address:  02:05:00:53:00:fe   # router - chan APP TIER
 
   # ---------------------------------------------------------------------------
   # CAP LOAD BALANCER: moi node chay HAProxy + Keepalived
@@ -52,6 +72,10 @@ services:
     hostname: node-a
     environment:
       LB_NAME: "node-a"
+      # Dung cho kich ban 9 (unicast_peer). Khai bao san o day de
+      # entrypoint sinh truoc file keepalived-unicast.conf.
+      UNICAST_SRC: "172.28.52.11"
+      UNICAST_PEER: "172.28.52.12"
       ROUTER_ID: "NODE_A"
       VRRP_STATE: "MASTER"
       VRRP_PRIORITY: "110"
@@ -65,6 +89,7 @@ services:
     networks:
       lan-lb:
         ipv4_address: 172.28.52.11
+        mac_address:  02:05:00:52:00:0a   # node-a  -> duoi :0a
     depends_on:
       - router
 
@@ -76,6 +101,10 @@ services:
     hostname: node-b
     environment:
       LB_NAME: "node-b"
+      # Dung cho kich ban 9 (unicast_peer). Khai bao san o day de
+      # entrypoint sinh truoc file keepalived-unicast.conf.
+      UNICAST_SRC: "172.28.52.12"
+      UNICAST_PEER: "172.28.52.11"
       ROUTER_ID: "NODE_B"
       VRRP_STATE: "BACKUP"
       VRRP_PRIORITY: "100"
@@ -87,6 +116,7 @@ services:
     networks:
       lan-lb:
         ipv4_address: 172.28.52.12
+        mac_address:  02:05:00:52:00:0b   # node-b  -> duoi :0b
     depends_on:
       - router
 
@@ -106,6 +136,7 @@ services:
     networks:
       lan-app:
         ipv4_address: 172.28.53.31
+        mac_address:  02:05:00:53:00:31   # web-1
     depends_on:
       - router
 
@@ -121,6 +152,7 @@ services:
     networks:
       lan-app:
         ipv4_address: 172.28.53.32
+        mac_address:  02:05:00:53:00:32   # web-2
     depends_on:
       - router
 
@@ -139,6 +171,7 @@ services:
     networks:
       lan-client:
         ipv4_address: 172.28.51.20
+        mac_address:  02:05:00:51:00:20   # client-remote
     depends_on:
       - router
       - node-a
@@ -159,6 +192,7 @@ services:
     networks:
       lan-lb:
         ipv4_address: 172.28.52.20
+        mac_address:  02:05:00:52:00:20   # client-lan
     depends_on:
       - node-a
       - node-b

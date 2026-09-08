@@ -5,14 +5,14 @@
 > * **Bản chất lỗi:** **Stale ARP Cache ở Tầng 2**. Một thiết bị nào đó vẫn ôm địa chỉ MAC của node MASTER **đã tắt thở** cho IP của VIP. Node BACKUP cầm VIP rồi nhưng **không phát Gratuitous ARP (GARP)** để báo cho toàn LAN biết "VIP này giờ ứng với MAC của tôi".
 > * **Chỗ khác biệt của tập này:** thiết bị ôm MAC chết **không phải là client**. Client nằm ở subnet khác nên nó chưa bao giờ hỏi ARP về VIP. Kẻ ôm MAC chết là **ROUTER** — và bạn có soi bảng ARP ở client cả ngày cũng không thấy gì bất thường.
 
-> 🧪 **Lab dùng stack HA thật, topology 3 tầng như production:** client ở vùng người dùng, cặp **Keepalived + HAProxy** ở DMZ, backend nginx ở tầng app riêng, giữa các tầng là router. **12 kịch bản** chia 4 nhóm theo tình huống bạn thực sự gặp:
+> 🧪 **Lab dùng stack HA thật, topology 3 tầng như production:** client ở vùng người dùng, cặp **Keepalived + HAProxy** ở DMZ, backend nginx ở tầng app riêng, giữa các tầng là router. **13 kịch bản** chia 4 nhóm theo tình huống bạn thực sự gặp:
 >
 > | Nhóm | KB | Đo được |
 > | :--- | :-- | :--- |
 > | **A. Failover chạy đúng** | 1–2 | downtime **~2.8s**; nhưng phiên TCP đang mở vẫn đứt (`curl_exit=18`) |
 > | **B. Ổ bệnh Tầng 2** | 3–7 | blackhole `curl (28)`; tự khỏi **32 giây** trên Linux, **4 tiếng** trên Cisco |
-> | **C. Cụm HA tự đánh nhau** | 8–9 | 2 MAC cùng đáp 1 IP; `preempt` gây **2 lần** mất phiên thay vì 1 |
-> | **D. Chết vì lý do KHÁC L2** | 10–12 | HTTP **503** (khác hẳn blackhole); `use_vmac` khiến MAC **không bao giờ đổi** |
+> | **C. Cụm HA tự đánh nhau** | 8–10 | 2 MAC cùng đáp 1 IP; `unicast_peer` cứu khi switch nuốt multicast; `preempt` gây **2 lần** mất phiên thay vì 1 |
+> | **D. Chết vì lý do KHÁC L2** | 11–13 | HTTP **503** (khác hẳn blackhole); `use_vmac` khiến MAC **không bao giờ đổi** |
 >
 > 👉 Chi tiết từng kịch bản: [**kich-ban.md**](./kich-ban.md)
 
@@ -41,7 +41,7 @@
 
 * `client-remote` là **nạn nhân thật**: khác subnet với VIP nên nó không bao giờ ARP hỏi VIP.
 * `client-lan` là **đối chứng**: cùng subnet với VIP nên nó CÓ bảng ARP cho VIP. Cùng một sự cố, hai máy này khỏi ở hai thời điểm khác nhau.
-* Health check của HAProxy xuống backend **phải đi qua router** — mở ra kịch bản 11 (mất backend → HTTP 503).
+* Health check của HAProxy xuống backend **phải đi qua router** — mở ra kịch bản 12 (mất backend → HTTP 503).
 * Ổ bệnh ARP luôn nằm ở **chân `.52.254` của router**, bất kể tách bao nhiêu tầng.
 
 ![Sơ đồ kiến trúc lab tập 05](./images/so-do-kien-truc.png)
@@ -99,7 +99,7 @@ phải đi soi, không phải máy client.
 | :--- | :--- | :--- |
 | **`(28)` timeout** | không có response nào, im lặng tuyệt đối | frame vào hư vô → **lỗi Tầng 2** |
 | **`(7)` refused** | gói ĐẾN được đích, bị từ chối | đích sống, không ai nghe cổng → lỗi dịch vụ |
-| **`HTTP 503`** | có response HTTP đàng hoàng | L2/L3 đều ổn → lỗi backend, xem KB11 |
+| **`HTTP 503`** | có response HTTP đàng hoàng | L2/L3 đều ổn → lỗi backend, xem KB12 |
 
 👉 **"Có response hay không" là câu hỏi đầu tiên phải trả lời trong mọi sự cố.**
 
@@ -141,7 +141,7 @@ Ba lưu ý khi có router:
 ```
 PHA 1 - Loai tru tang tren
         curl -> co response HTTP khong?
-            CO  (503/200) -> KHONG phai loi ARP. Sang KB10/KB11.
+            CO  (503/200) -> KHONG phai loi ARP. Sang KB11/KB12.
             KHONG (28)    -> tiep tuc PHA 2.
 
 PHA 2 - Xac dinh bien
@@ -261,7 +261,7 @@ grep -rn 'ip addr add' /etc/systemd/ /usr/local/bin/    # script tự viết -> 
 một lời than "cụm HA vừa failover xong, dịch vụ không vào được" nhưng ổ bệnh ở
 ba tầng khác nhau.
 
-| Dấu hiệu | KB3 — ARP cũ | KB11 — mất backend | KB10 — HAProxy chết |
+| Dấu hiệu | KB3 — ARP cũ | KB12 — mất backend | KB11 — HAProxy chết |
 | :--- | :--- | :--- | :--- |
 | `curl` trả về | **(28) timeout** | **HTTP 503** | 200 (sau ~7s) |
 | **Có response HTTP?** | **KHÔNG** | **CÓ** | CÓ |
@@ -274,7 +274,7 @@ ba tầng khác nhau.
 👉 Dòng **HAProxy stats** lật ngược trực giác:
 - **KB3**: monitoring báo **xanh hết** mà dịch vụ chết. Monitoring bị mù, vì
   HAProxy chỉ nhìn **xuống** backend, không biết gì về bảng ARP ở phía **trên** nó.
-- **KB11**: monitoring báo **đỏ đúng chỗ**. Ca dễ — nếu bạn chịu mở trang stats
+- **KB12**: monitoring báo **đỏ đúng chỗ**. Ca dễ — nếu bạn chịu mở trang stats
   ra xem thay vì đoán.
 
 ---
@@ -289,14 +289,18 @@ cd network-bat-benh/tap-05-vip-failover-garp
 ./scripts/0-setup.sh
 ```
 
-Mở đủ **ba terminal**:
+Mở thêm **một terminal** cho bảng điều khiển gộp:
 
 ```bash
-# Terminal 2 — máy đo phía client (nạn nhân)
-docker exec -it lab05-client-remote monitor.sh
+# Terminal 2 — client + bảng ARP của router, chung một bảng
+./scripts/bang-dieu-khien.sh
+```
 
-# Terminal 3 — soi bảng ARP của router (ổ bệnh thật)
-./scripts/xem-arp-router.sh
+Màn hình rộng thì tách ra hai cửa sổ riêng cho dễ nhìn:
+
+```bash
+docker exec -it lab05-client-remote monitor.sh   # máy đo phía client
+./scripts/xem-arp-router.sh                      # bảng ARP của router
 ```
 
 Trạng thái chuẩn phải như thế này:
@@ -305,10 +309,16 @@ Trạng thái chuẩn phải như thế này:
 ✅ Trạng thái bình thường đã sẵn sàng.
    VIP 172.28.52.100 đang nằm trên: node-a
    Bảng ARP đang trỏ về đâu:
-   router(.52):   c2:df:af:34:8a:99    -> node-a
-   client-lan:    c2:df:af:34:8a:99    -> node-a
+   router(.52):   02:05:00:52:00:0a    -> node-a
+   client-lan:    02:05:00:52:00:0a    -> node-a
    client-remote: KHÔNG có entry ARP cho VIP — đúng như mong đợi.
 ```
+
+> 🔖 **MAC đã được ghim sẵn** trong `docker-compose.yml` theo quy ước
+> `02:05:00:<subnet>:00:<host>` — nên MAC trên máy bạn **giống hệt** tài liệu và
+> không đổi qua các lần chạy lại. Cần nhớ đúng hai cái: **`:0a` = node-a**,
+> **`:0b` = node-b**. Cả tập rút gọn về một câu hỏi: bảng ARP của router đang trỏ
+> về `:0a` hay `:0b`?
 
 ### Bảng script
 
@@ -316,8 +326,10 @@ Trạng thái chuẩn phải như thế này:
 | :--- | :-- | :--- |
 | `0-setup.sh` | — | Dựng lab + reset sạch về trạng thái bình thường |
 | `test.sh` | — | **Chẩn đoán 8 bước** — đi từ ngoài vào trong |
+| `bang-dieu-khien.sh` | — | **Bảng gộp**: 2 client + bảng ARP router trong một cửa sổ |
 | `xem-arp-router.sh` | — | Theo dõi bảng ARP của router theo thời gian thực |
 | `bat-goi-garp.sh` | — | Bắt gói GARP (mặc định ở router — đúng chỗ) |
+| `kiem-tra-vip.sh` | — | **Cảnh báo giám sát**: đếm MAC đáp VIP + so ARP router với chủ thật (mã thoát Nagios) |
 | `1-failover-chuan.sh` | 1 | Failover đúng chuẩn — đo downtime ở cả 2 client |
 | `2-dut-phien-tcp.sh` | 2 | GARP cứu gói tin, **không** cứu phiên TCP |
 | `3-fault.sh` | 3 | **Ca bệnh** — script tự chế cướp VIP, quên GARP |
@@ -326,15 +338,17 @@ Trạng thái chuẩn phải như thế này:
 | `6-chua-tren-router.sh` | 6 | Chữa cháy phía router (`clear ip arp`) |
 | `7-garp-khong-xuyen-router.sh` | 7 | GARP dừng ở biên L3 |
 | `8-split-brain.sh` | 8 | **Thừa GARP** — hai node cùng giữ VIP |
-| `9-preempt.sh` | 9 | Một sự cố, **hai lần** mất phiên |
-| `10-dich-vu-chet.sh` | 10 | Dịch vụ chết nhưng máy vẫn sống (`track_script`) |
-| `11-backend-qua-router.sh` | 11 | Mất backend sau router → HTTP 503 |
-| `12-use-vmac.sh` | 12 | Chữa tận gốc: MAC ảo không bao giờ đổi |
+| `9-unicast-peer.sh` | 9 | Switch nuốt multicast → chữa bằng `unicast_peer` |
+| `10-preempt.sh` | 10 | Một sự cố, **hai lần** mất phiên |
+| `11-dich-vu-chet.sh` | 11 | Dịch vụ chết nhưng máy vẫn sống (`track_script`) |
+| `12-backend-qua-router.sh` | 12 | Mất backend sau router → HTTP 503 |
+| `13-use-vmac.sh` | 13 | Chữa tận gốc: MAC ảo không bao giờ đổi |
 
 > 🔁 **Sau MỖI kịch bản hãy chạy `./scripts/0-setup.sh`.** Nó dọn sạch mọi dấu vết
-> (rule iptables của KB8 và KB11, cờ `nopreempt` của KB9, cờ `USE_VMAC` của KB12,
-> ARP kiểu Cisco của KB5, HAProxy bị giết ở KB10, VIP gán tay ở KB3, và **route
-> tĩnh bay mất sau mỗi lần container restart**) rồi dựng lại trạng thái chuẩn.
+> (rule iptables của KB8/KB9/KB12, cờ `nopreempt` của KB10, cờ `USE_VMAC` của KB13,
+> cờ `USE_UNICAST` của KB9, ARP kiểu Cisco của KB5, HAProxy bị giết ở KB11,
+> VIP gán tay ở KB3, và **route tĩnh bay mất sau mỗi lần container restart**)
+> rồi dựng lại trạng thái chuẩn.
 
 👉 **Hướng dẫn chi tiết từng kịch bản — bối cảnh, output thật, cách đọc kết quả:
 [kich-ban.md](./kich-ban.md)**
@@ -384,7 +398,7 @@ Trung thực về giới hạn cũng quan trọng như bản thân bài lab. M�
    * Thiết bị phần cứng (Cisco/Juniper HSRP/VRRP) mặc định làm vậy.
    * **Keepalived trên Linux thì KHÔNG** — mặc định `use_vmac` tắt.
 
-   👉 Kịch bản 12 bật `use_vmac` và chứng minh MAC không đổi qua failover. Đọc cả phần **giá phải trả** trước khi bật ở production.
+   👉 Kịch bản 13 bật `use_vmac` và chứng minh MAC không đổi qua failover. Đọc cả phần **giá phải trả** trước khi bật ở production.
 
 6. **Con số "tự khỏi sau 30 giây" là hành vi của Linux, không phải của chuẩn ARP.**
    Đó là **NUD** — may mắn, không phải thiết kế. Cisco IOS mặc định **14400 giây = 4 tiếng**, và không có NUD. Test trên Linux rồi ship lên Cisco là sai lầm đắt nhất của tập này.
@@ -436,7 +450,7 @@ sơ đồ khi chuyển qua.
 
 > ⚠️ Khác biệt duy nhất: hai lab bonus **không có tầng app `172.28.53.0/24`** —
 > nginx chạy thẳng trên node HA, không qua HAProxy. Vì vậy chúng **không tái hiện
-> được kịch bản 11** (mất backend → 503). Đổi lại chúng cho bạn thứ lab chính
+> được kịch bản 12** (mất backend → 503). Đổi lại chúng cho bạn thứ lab chính
 > không thể có: hành vi thật của thiết bị mạng thật.
 
 ---
@@ -465,7 +479,7 @@ sơ đồ khi chuyển qua.
 4. Vì căn nguyên nằm ở **bên vừa đổi MAC**, không phải bên client. Một lệnh `arping` sửa cho **toàn bộ broadcast domain cùng lúc**. Khi có router ở giữa, lệnh đó thực chất đang sửa cho **ROUTER** — client remote được cứu gián tiếp vì nó gửi mọi thứ qua router (kịch bản 7 chứng minh GARP không hề tới được client remote).
 5. Chứng minh mỗi thiết bị trong broadcast domain ôm một bảng ARP **riêng** và ốm **độc lập**. Chữa một thiết bị không chữa cho những thiết bị còn lại. Đó chính là lý do cách chữa đúng phải là **GARP broadcast** — nó chữa tất cả cùng một lúc.
 6. Linux có **NUD** (Neighbour Unreachability Detection): entry `REACHABLE` hết hạn → `STALE` → `DELAY` → `PROBE` (thăm dò unicast tới MAC cũ, thất bại) → `FAILED` → broadcast ARP → học lại đúng. Tổng ~30–50s. Thiết bị mạng chuyên dụng **không có NUD**, chỉ có timer đếm ngược, và Cisco IOS đặt timer đó ở 14400 giây.
-7. VRRP chuẩn dùng **MAC ảo** `00:00:5e:00:01:<VRID>` — MAC nhảy sang node mới cùng với VIP nên bảng ARP vẫn đúng. Keepalived mặc định **không** dùng MAC ảo: nó chỉ gán VIP lên NIC thật nên failover **làm đổi MAC**. Bật `use_vmac` (+ `vmac_xmit_base`) để hành xử giống Cisco — xem kịch bản 12 và phần giá phải trả.
+7. VRRP chuẩn dùng **MAC ảo** `00:00:5e:00:01:<VRID>` — MAC nhảy sang node mới cùng với VIP nên bảng ARP vẫn đúng. Keepalived mặc định **không** dùng MAC ảo: nó chỉ gán VIP lên NIC thật nên failover **làm đổi MAC**. Bật `use_vmac` (+ `vmac_xmit_base`) để hành xử giống Cisco — xem kịch bản 13 và phần giá phải trả.
 8. **Không failover được.** VPC không phải mạng Tầng 2 thật — nó không flood broadcast giữa các instance nên GARP không ai nghe, và IP bị ràng vào ENI. Trên cloud phải dời IP/ENI bằng **API**, sửa route table, hoặc dùng Load Balancer của nhà cung cấp.
 9. Vì 3 giây chỉ là thời gian để một **kết nối MỚI** đi lọt trở lại. Phiên TCP đang mở lúc failover thì chết hẳn: seq/ack, cửa sổ và buffer nằm trong bộ nhớ node đã chết. GARP chỉ sửa Tầng 2, không di chuyển được phiên.
 10. Vì mọi health check đều chạy **từ bên trong cụm** và không đi qua bảng ARP đang hỏng: HAProxy gọi backend bằng IP thật, Keepalived gọi `127.0.0.1`, Prometheus scrape IP thật của node. Cần thêm **synthetic check từ ngoài cụm, gọi vào VIP, và đặt ở đúng subnet của người dùng** — đặt trong cùng subnet với VIP sẽ bỏ sót đúng ca bệnh của tập này.

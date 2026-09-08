@@ -26,7 +26,7 @@ khoi_phuc() {
     done
     sleep 1
     for N in $NODE_A $NODE_B; do docker exec "$N" ka-start; done
-    sleep 6
+    cho_dem_nguoc 6 "chờ cụm hội tụ lại"
     echo "   VIP giờ nằm trên: $(vip_owner)"
     echo "👉 Chạy ./scripts/0-setup.sh để về trạng thái chuẩn."
 }
@@ -43,8 +43,7 @@ echo "💥 Chặn gói VRRP (IP protocol 112) ở CẢ HAI node — mô phỏng 
 docker exec $NODE_A iptables -I INPUT -p 112 -j DROP
 docker exec $NODE_B iptables -I INPUT -p 112 -j DROP
 
-echo "⏳ Chờ 8 giây cho node-b hết hạn chờ advertisement và tự lên MASTER..."
-sleep 8
+cho_dem_nguoc 8 "chờ node-b hết hạn chờ advertisement rồi tự lên MASTER"
 
 echo ""
 echo "=========================================="

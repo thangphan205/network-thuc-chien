@@ -44,7 +44,7 @@ echo "💥 SIGKILL node-a (MASTER) — chết đột ngột, không kịp như�
 docker compose kill node-a >/dev/null 2>&1
 
 echo "⏳ Chờ 15 giây cho VRRP hội tụ và GARP lan ra..."
-sleep 15
+cho_dem_nguoc 15 "đo downtime ở cả hai client"
 
 docker exec $CLIENT_LAN    pkill ping 2>/dev/null || true
 docker exec $CLIENT_REMOTE pkill ping 2>/dev/null || true

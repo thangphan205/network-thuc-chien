@@ -193,3 +193,34 @@ in_bang_arp() {
     printf "   %-14s %-20s -> %s\n" "router(.52):" "${RMAC:-(chua hoc)}" "$(mac_to_node "$RMAC")"
     printf "   %-14s %-20s -> %s\n" "client-lan:"  "${CMAC:-(chua hoc)}" "$(mac_to_node "$CMAC")"
 }
+
+# ------------------------------------------------------------------------------
+# ĐỒNG HỒ CHỜ — in ra MÀN HÌNH trong lúc script đứng im.
+#
+# ⚠️ Vì sao in ra stderr (>&2) chứ không phải stdout?
+#    Nhiều hàm trong bộ script này được gọi trong $( ) để lấy kết quả — toàn bộ
+#    stdout bị nuốt cho tới khi hàm chạy xong. Nếu in đồng hồ ra stdout thì
+#    người xem KHÔNG thấy gì suốt thời gian chờ (kịch bản 5 đứng hình 150 giây),
+#    mà kết quả trả về lại bị lẫn rác. In ra stderr giải quyết cả hai.
+#
+# Dùng \r để ghi đè tại chỗ -> chỉ tốn 1 dòng màn hình, quay video không bị trôi.
+# ------------------------------------------------------------------------------
+cho_dem_nguoc() {
+    local CON="$1" NHAN="${2:-đang chờ}"
+    while [ "$CON" -gt 0 ]; do
+        printf "\r   ⏳ %-50s còn %3ds " "$NHAN" "$CON" >&2
+        sleep 1
+        CON=$((CON - 1))
+    done
+    printf "\r%-72s\r" "" >&2
+}
+
+# Đồng hồ ĐẾM LÊN, gọi từ trong vòng lặp poll. $1 = số giây đã trôi, $2 = nhãn.
+dem_len() {
+    printf "\r   ⏳ %-50s đã %3ds " "$2" "$1" >&2
+}
+
+# Xoá dòng đồng hồ khi poll xong.
+xoa_dong_ho() {
+    printf "\r%-72s\r" "" >&2
+}

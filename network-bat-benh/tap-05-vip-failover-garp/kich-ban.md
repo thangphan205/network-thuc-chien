@@ -8,26 +8,49 @@ Nó dọn sạch mọi dấu vết (rule iptables, cờ `nopreempt`/`USE_VMAC`, 
 Cisco, HAProxy bị giết, VIP gán tay, route bay mất sau restart) rồi dựng lại
 trạng thái chuẩn.
 
-Ba terminal nên mở sẵn suốt buổi:
+Hai terminal là đủ cho cả buổi:
 
 ```bash
 # Terminal 1 — chạy kịch bản
 ./scripts/0-setup.sh
 
-# Terminal 2 — máy đo phía client (nạn nhân)
-docker exec -it lab05-client-remote monitor.sh
-
-# Terminal 3 — soi bảng ARP của router (ổ bệnh thật)
-./scripts/xem-arp-router.sh
+# Terminal 2 — bảng điều khiển gộp: client + bảng ARP router trong một bảng
+./scripts/bang-dieu-khien.sh
 ```
 
-> ⚠️ **MAC trong lab ngẫu nhiên theo từng lần chạy.** Đừng so với MAC trong tài
-> liệu này — hãy so với MAC mà `./scripts/test.sh` in ra trên máy bạn. Các con số
-> thời gian cũng sẽ lệch chút ít; hãy kiểm **dấu hiệu**, đừng kiểm con số.
+Màn hình rộng thì có thể tách terminal 2 ra làm hai cho dễ nhìn:
+
+```bash
+docker exec -it lab05-client-remote monitor.sh   # máy đo phía client
+./scripts/xem-arp-router.sh                      # bảng ARP của router
+```
+
+### 🔖 MAC trong lab đã được GHIM — đọc bằng mắt được
+
+`docker-compose.yml` ghim sẵn MAC cho từng máy, nên **MAC bạn thấy trên máy mình
+giống hệt MAC trong tài liệu này**, và giống nhau qua mọi lần chạy lại:
+
+| MAC | Máy | Nhớ bằng |
+| :--- | :--- | :--- |
+| `02:05:00:52:00:0a` | **node-a** (MASTER, priority 110) | đuôi **`:0a`** = **a** |
+| `02:05:00:52:00:0b` | **node-b** (BACKUP, priority 100) | đuôi **`:0b`** = **b** |
+| `02:05:00:52:00:fe` | router — chân LB LAN (**ổ bệnh**) | `fe` = gateway `.254` |
+| `02:05:00:51:00:fe` | router — chân CLIENT LAN | |
+| `02:05:00:52:00:20` | client-lan | `20` = `.20` |
+| `02:05:00:51:00:20` | client-remote | |
+
+Quy ước: `02:05:00:<subnet>:00:<host>`. Nhìn octet thứ tư biết ngay máy nằm ở
+tầng nào — `51` = client LAN, `52` = LB/DMZ, `53` = app.
+
+👉 Vì vậy cả tập chỉ cần nhớ **một câu**: bảng ARP của router trỏ về `:0a` hay
+`:0b`? Trỏ về máy đã chết là ca bệnh.
+
+> ⚠️ Riêng **con số thời gian** vẫn lệch chút ít giữa các máy (tải, tốc độ đĩa).
+> Hãy kiểm **dấu hiệu**, đừng kiểm con số tuyệt đối.
 
 ---
 
-## Bản đồ 12 kịch bản
+## Bản đồ 13 kịch bản
 
 | Nhóm | KB | Script | Câu chuyện |
 | :--- | :-- | :--- | :--- |
@@ -39,10 +62,11 @@ docker exec -it lab05-client-remote monitor.sh
 | | 6 | `6-chua-tren-router.sh` | Chữa cháy phía router khi không với được server |
 | | 7 | `7-garp-khong-xuyen-router.sh` | GARP dừng ở biên L3 — bắn thêm cũng vô ích |
 | **C. Cụm HA tự đánh nhau** | 8 | `8-split-brain.sh` | Thừa GARP: hai node cùng giữ VIP |
-| | 9 | `9-preempt.sh` | Một sự cố, hai lần mất phiên |
-| **D. Chết vì lý do KHÁC L2** | 10 | `10-dich-vu-chet.sh` | Dịch vụ chết nhưng máy vẫn sống |
-| | 11 | `11-backend-qua-router.sh` | Mất backend sau router → HTTP 503 |
-| | 12 | `12-use-vmac.sh` | Chữa tận gốc: MAC ảo không bao giờ đổi |
+| | 9 | `9-unicast-peer.sh` | Chữa split-brain: bỏ multicast, đi thẳng unicast |
+| | 10 | `10-preempt.sh` | Một sự cố, hai lần mất phiên |
+| **D. Chết vì lý do KHÁC L2** | 11 | `11-dich-vu-chet.sh` | Dịch vụ chết nhưng máy vẫn sống |
+| | 12 | `12-backend-qua-router.sh` | Mất backend sau router → HTTP 503 |
+| | 13 | `13-use-vmac.sh` | Chữa tận gốc: MAC ảo không bao giờ đổi |
 
 ---
 
@@ -231,7 +255,7 @@ retransmit, mất là mất luôn. Khi có switch/router doanh nghiệp ở gi�
 thêm vài mili-giây, đổi lại đỡ phải giải thích vì sao dịch vụ chết thêm 4 tiếng.
 
 **Nhưng đây vẫn là chữa triệu chứng.** Lần failover sau, script tự chế lại quên
-lần nữa. Chữa gốc: vứt script đi dùng Keepalived, hoặc dùng `use_vmac` (KB12).
+lần nữa. Chữa gốc: vứt script đi dùng Keepalived, hoặc dùng `use_vmac` (KB13).
 
 **Dòng lệnh này nằm ở đâu trong các stack thật:**
 
@@ -241,6 +265,35 @@ lần nữa. Chữa gốc: vứt script đi dùng Keepalived, hoặc dùng `use_
 | pacemaker `ocf:heartbeat:IPaddr2` | có, chỉnh qua `arp_count` / `arp_bg` |
 | pacemaker `IPaddr` (bản cũ) | **không** |
 | script tự viết | **phải tự thêm** `arping -U` ngay sau `ip addr add` |
+
+### 🚫 Trên cloud, cách chữa này KHÔNG chạy — và không báo lỗi
+
+Đây là cái bẫy tốn nhiều giờ nhất của cả tập. Chạy `arping -U` trên một EC2
+instance, bạn sẽ thấy:
+
+```
+Sent 5 probes (5 broadcast(s))
+```
+
+Trông y hệt lúc thành công. **Nhưng không sửa được gì cả.**
+
+VPC của AWS/Azure/GCP **không phải mạng Tầng 2 thật**. Nó không flood broadcast
+giữa các instance, và địa chỉ IP bị **ràng cứng vào ENI/NIC** ở tầng điều khiển
+của nhà cung cấp — anti-spoofing còn drop thẳng gói mang IP nguồn lạ. Không ai
+nghe thấy GARP của bạn, mà cũng chẳng có thông báo nào nói thế.
+
+Trên cloud, VIP chuyển bằng **lời gọi API**, không bằng gói tin:
+
+| Nền tảng | Cách dời VIP |
+| :--- | :--- |
+| **AWS** | `assign-private-ip-addresses` (dời secondary IP), hoặc `replace-route` trỏ `/32` sang ENI mới, hoặc bỏ hẳn VIP dùng **NLB** |
+| **Azure** | `az network nic ip-config update`, hoặc Azure Load Balancer |
+| **GCP** | `gcloud compute routes`, hoặc Internal TCP/UDP LB |
+
+Keepalived vẫn dùng được trên cloud, nhưng **vai trò đổi hẳn**: nó thôi không
+gán IP nữa, chỉ còn làm nhiệm vụ **bầu chọn ai là MASTER**, rồi `notify_master`
+gọi API của nhà cung cấp để dời IP. Và nhớ kèm `unicast_peer` (KB9) — VPC cũng
+không cho multicast đi qua.
 
 ---
 
@@ -440,13 +493,129 @@ arping -c 4 -I <iface> <VIP>
 
 **Phòng tránh:**
 - Đường heartbeat **riêng**, tốt nhất hai đường độc lập
-- `unicast_peer` thay cho multicast (qua được switch chặn multicast)
+- `unicast_peer` thay cho multicast — **KB9 làm hẳn một kịch bản cho việc này**
 - Quorum / STONITH (Pacemaker) để ép chỉ một node được sống
 - Giám sát: cảnh báo ngay khi thấy 2 MAC cùng đáp cho 1 VIP
 
+### 🔬 Biến bài học này thành một cảnh báo thật
+
+Nói "nên giám sát" thì dễ. Đây là công cụ chạy được ngay:
+
+```bash
+./scripts/kiem-tra-vip.sh
+```
+
+Nó kiểm **hai** thứ mà không hệ giám sát nào có sẵn, và trả mã thoát chuẩn
+Nagios (`0` OK, `2` CRITICAL, `3` UNKNOWN) để cắm thẳng vào Zabbix/Icinga hoặc
+bọc vào textfile collector của `node_exporter`:
+
+| Kiểm | Bắt được ca nào | Vì sao công cụ có sẵn không bắt được |
+| :--- | :--- | :--- |
+| Đếm số MAC cùng đáp cho VIP | **KB8** split-brain | Ping VIP luôn thành công — một trong hai máy sẽ trả lời |
+| So MAC router đang ôm với node **thật sự** giữ VIP | **KB3** blackhole L2 | HAProxy stats **xanh hết**, VIP tồn tại, backend UP — mọi thứ đều "khoẻ" |
+
+Dòng thứ hai mới là dòng đáng tiền. Nó bắt đúng ca mà cả tập này xoay quanh:
+mọi dashboard báo xanh trong khi client chết.
+
+> ⚠️ **Phải chạy từ máy CÙNG SUBNET với VIP.** Từ subnet khác, gói ARP không bao
+> giờ tới nơi (lý do đầy đủ ở KB7) — check sẽ luôn báo "0 MAC đáp" và bạn đi
+> chữa nhầm bệnh. Ngoài đời: đặt máy giám sát trong chính VLAN DMZ đó.
+
 ---
 
-## KB9 — Một sự cố, hai lần mất phiên
+## KB9 — Chữa split-brain: bỏ multicast, đi thẳng unicast
+
+**Tình huống ngoài đời.** Cụm chạy yên 2 năm. Team mạng nâng cấp switch, hoặc
+bạn bê nguyên cụm lên máy ảo/cloud. Đột nhiên split-brain — mà **dây vẫn tốt,
+hai node vẫn `ping` được nhau**. Không ai đụng vào keepalived.
+
+**Chạy:**
+```bash
+./scripts/9-unicast-peer.sh
+```
+
+**Khác KB8 ở đúng một chỗ — và đó là cả vấn đề:**
+
+| | KB8 | KB9 |
+| :--- | :--- | :--- |
+| Chặn cái gì | `-p 112 -j DROP` — **toàn bộ** VRRP | `-p 112 -d 224.0.0.18 -j DROP` — **chỉ multicast** |
+| Mô phỏng | **đứt dây** heartbeat | dây tốt, **switch nuốt multicast** |
+| `ping` giữa 2 node | chết | **vẫn thông** |
+| Chữa bằng cấu hình được không | **không** — phải đi sửa hạ tầng | **được** |
+
+**Thấy gì:**
+```
+PHẦN 1 — SWITCH NUỐT MULTICAST (dây vẫn tốt)
+   2 packets transmitted, 2 packets received, 0% packet loss
+   👉 Mạng thông hoàn hảo. Chỉ riêng heartbeat VRRP là không tới nơi.
+
+   📊 SAU KHI MULTICAST BỊ NUỐT:
+      node-a giữ VIP : CÓ
+      node-b giữ VIP : CÓ
+      Số MAC đáp ARP : 2
+         02:05:00:52:00:0a  (node-a)
+         02:05:00:52:00:0b  (node-b)
+      ❌ SPLIT-BRAIN — hai máy cùng mang một IP.
+
+PHẦN 2 — unicast_peer (rule chặn multicast VẪN CÒN NGUYÊN)
+   📊 Số MAC đáp ARP : 1
+      ✅ Đúng một chủ sở hữu.
+
+   IP 172.28.52.11 > 172.28.52.12: VRRPv2, Advertisement
+   👉 Đích giờ là IP thật của node-b, không còn là 224.0.0.18.
+```
+
+**Vì sao.** Mặc định VRRP phát advertisement tới địa chỉ multicast
+`224.0.0.18`. `unicast_peer` đổi đích thành **IP thật của node kia**. Vẫn là IP
+protocol 112, nhưng giờ là gói unicast bình thường — đi qua được mọi chỗ mà
+multicast chết.
+
+```
+vrrp_instance VI_LB {
+    unicast_src_ip 172.28.52.11      # IP của CHÍNH node này
+    unicast_peer {
+        172.28.52.12                 # IP của node kia
+    }
+    ...
+}
+```
+
+**Ai nuốt multicast ngoài đời:**
+- Switch bật **IGMP snooping** mà VLAN không có querier
+- **storm-control** / broadcast-suppression đặt ngưỡng thấp
+- Firewall giữa hai node ở hai vùng khác nhau
+- **Hypervisor và VPC trên cloud** — gần như không nơi nào cho multicast đi qua
+
+👉 Vì vậy trên cloud và trên hạ tầng ảo hoá, `unicast_peer` **không phải tuỳ
+chọn nâng cao mà là cấu hình bắt buộc**.
+
+**Phân biệt hai ca trong 10 giây, trên máy thật:**
+```bash
+ping <ip node kia>                  # dây còn tốt không?
+tcpdump -nn -i <iface> proto 112    # có thấy advertisement không?
+```
+Thấy gói **đi ra** mà không thấy gói **vào** → đúng ca này, `unicast_peer` cứu được.
+Không ping được → đứt dây, cấu hình không cứu nổi.
+
+**Ba cái bẫy:**
+1. Phải khai trên **cả hai** node, mỗi node trỏ về node kia. Khai một bên =
+   một chiều nghe được, một chiều điếc → **vẫn split-brain**.
+2. Thiếu `unicast_src_ip`: keepalived chọn IP nguồn theo route mặc định. Máy
+   nhiều chân (bonding, VLAN, mạng quản trị riêng) rất dễ chọn nhầm IP khác
+   subnet → peer bỏ qua advertisement.
+3. Cụm **3 node trở lên** phải liệt kê đủ mọi peer. Multicast tự lo việc này,
+   unicast thì không — thiếu ai là điếc với người đó. Đây là lý do cụm lớn vẫn
+   thích multicast khi mạng cho phép.
+
+> 🪤 **`auth_pass` không phải bảo mật.** Nó đi trần trong gói VRRP, ai bắt gói
+> trong LAN cũng đọc được. Tác dụng duy nhất: **chống nhầm cụm** khi hai cụm lỡ
+> trùng `virtual_router_id` trên cùng VLAN. VRRPv3 (RFC 5798) đã bỏ hẳn phần
+> authentication vì lý do đó. Muốn bảo vệ VRRP thật thì chặn ở tầng mạng:
+> ACL, hoặc VLAN riêng cho heartbeat.
+
+---
+
+## KB10 — Một sự cố, hai lần mất phiên
 
 **Tình huống ngoài đời.** Node chính chết lúc 2 giờ sáng, node phụ gánh ngon
 lành. 8 giờ sáng bạn sửa xong node chính và bật lại — dịch vụ đứt **lần thứ
@@ -454,7 +623,7 @@ hai**, ngay giữa giờ cao điểm, do chính tay bạn.
 
 **Chạy:** (mất ~4 phút, hai phần)
 ```bash
-./scripts/9-preempt.sh
+./scripts/10-preempt.sh
 ```
 
 **Thấy gì:**
@@ -495,7 +664,7 @@ không rớt gói ICMP nào — nhưng vẫn giết sạch session đang mở.
 Ba kịch bản cuối tách bạch những ca **trông giống hệt** ca bệnh chính nhưng có ổ
 bệnh hoàn toàn khác — và cách chữa tận gốc.
 
-## KB10 — Dịch vụ chết nhưng máy vẫn sống
+## KB11 — Dịch vụ chết nhưng máy vẫn sống
 
 **Tình huống ngoài đời.** HAProxy crash, hoặc nginx bị OOM-kill. Máy vẫn ping
 được, VRRP vẫn chạy ngon, keepalived vẫn thấy peer khoẻ. Nếu không có
@@ -503,7 +672,7 @@ bệnh hoàn toàn khác — và cách chữa tận gốc.
 
 **Chạy:**
 ```bash
-./scripts/10-dich-vu-chet.sh
+./scripts/11-dich-vu-chet.sh
 ```
 
 **Thấy gì:**
@@ -537,7 +706,7 @@ vrrp_script chk_haproxy {
 
 ---
 
-## KB11 — Mất backend sau router → HTTP 503
+## KB12 — Mất backend sau router → HTTP 503
 
 **Tình huống ngoài đời.** Người dùng báo y hệt KB3: "cụm HA vừa failover xong,
 dịch vụ không vào được". Nhưng lần này ổ bệnh không ở bảng ARP mà ở một rule
@@ -545,7 +714,7 @@ firewall vừa đổi giữa vùng DMZ và vùng app.
 
 **Chạy:**
 ```bash
-./scripts/11-backend-qua-router.sh
+./scripts/12-backend-qua-router.sh
 ```
 
 **Thấy gì:**
@@ -567,7 +736,7 @@ hiện.
 
 **Bảng phân biệt ba ca "dịch vụ chết" trông giống hệt nhau:**
 
-| Dấu hiệu | KB3 (ARP cũ) | KB11 (mất backend) | KB10 (HAProxy chết) |
+| Dấu hiệu | KB3 (ARP cũ) | KB12 (mất backend) | KB11 (HAProxy chết) |
 | :--- | :--- | :--- | :--- |
 | `curl` trả về | **(28) timeout** | **HTTP 503** | 200 (sau ~7s) |
 | **Có response HTTP?** | **KHÔNG** | **CÓ** | CÓ |
@@ -583,7 +752,7 @@ Có response nghĩa là gói đã đi tới nơi về tới chốn — Tầng 2 
 👉 **Dòng "HAProxy stats" lật ngược trực giác:**
 - **KB3**: monitoring báo **xanh hết** mà dịch vụ chết. Monitoring bị mù, vì
   HAProxy chỉ nhìn **xuống** backend, không biết gì về bảng ARP ở phía **trên** nó.
-- **KB11**: monitoring báo **đỏ đúng chỗ**. Đây là ca dễ — nếu bạn chịu mở trang
+- **KB12**: monitoring báo **đỏ đúng chỗ**. Đây là ca dễ — nếu bạn chịu mở trang
   stats ra xem thay vì đoán.
 
 **Gặp ở đâu.** Đổi rule firewall DMZ ↔ app, siết security group / NACL, ACL trên
@@ -592,14 +761,14 @@ nhưng vì sự cố nổ ra ngay sau một lần failover nên ai cũng đổ t
 
 ---
 
-## KB12 — Chữa tận gốc: `use_vmac`
+## KB13 — Chữa tận gốc: `use_vmac`
 
 **Tình huống ngoài đời.** Bạn đã chữa xong sự cố và muốn nó **không bao giờ xảy
 ra lại**, thay vì mỗi lần lại đi kiểm tra xem GARP có được bắn không.
 
 **Chạy:** (mất ~2 phút, hai phần)
 ```bash
-./scripts/12-use-vmac.sh
+./scripts/13-use-vmac.sh
 ```
 
 **Thấy gì:**
@@ -646,9 +815,49 @@ vrrp_instance VI_LB {
 - **VRID phải DUY NHẤT trong cùng broadcast domain.** Hai cụm HA cùng dùng VRID
   51 trên một VLAN = hai cụm cùng một MAC ảo = hỏng cả hai
 
+> ⚠️ **Kiểm phiên bản keepalived trước khi chép cấu hình này.** Lab chạy
+> keepalived **2.x** (Alpine 3.20). Trên **CentOS 7 / RHEL 7 — keepalived
+> 1.3.5**, còn rất nhiều trong doanh nghiệp Việt Nam — `use_vmac` hành xử khác
+> hẳn: `vmac_xmit_base` chưa có hoặc chưa ổn định, và interface macvlan thường
+> **không được dọn** khi keepalived thoát, để lại `vrrp51` mồ côi làm lần khởi
+> động sau xung đột. Gõ `keepalived -v` trước, và nếu là 1.3.x thì nâng cấp
+> trước khi bật `use_vmac` — đừng bật rồi mới biết.
+
 **Khuyến nghị.** Hạ tầng bạn kiểm soát được Tầng 2 (bare-metal, VLAN riêng) thì
 bật `use_vmac`. Chạy trên cloud/hypervisor lạ thì giữ mặc định và đảm bảo GARP
 được bắn đủ (KB4).
+
+---
+
+## 📎 Hai thứ lab không dựng, nhưng cụm thật nào cũng có
+
+**1. Nhiều VIP → phải có `vrrp_sync_group`.**
+Lab chỉ có một VIP. Cụm thật thường gánh vài cái: VIP cho web, VIP cho DB, VIP
+cho mạng quản trị — mỗi cái một `vrrp_instance`. Nếu khai rời nhau, chúng bầu
+chọn **độc lập**: một sự cố nhỏ (rớt vài gói trên đúng một VLAN) là VIP web nhảy
+sang node-b trong khi VIP DB vẫn ở node-a. Kết quả: HAProxy ở node-b, còn đường
+ra DB thì ở node-a — hỏng theo kiểu rất khó tìm.
+
+```
+vrrp_sync_group NHOM_LB {
+    group {
+        VI_WEB
+        VI_DB
+    }
+}
+```
+
+Khai sync group rồi thì cả nhóm **chuyển cùng nhau, hoặc không chuyển cái nào**.
+
+> 🪤 Bẫy đi kèm: đặt `track_script` / `track_interface` vào **từng instance** thì
+> mỗi cái phản ứng một kiểu. Với sync group, hãy gắn track vào **nhóm**.
+
+**2. `interface eth0` chỉ đúng trong lab.**
+Máy thật hầu như luôn là `bond0.100` hoặc `ens192.20` — VIP nằm trên **VLAN
+sub-interface của một bond**. Hai chỗ phải sửa cho khớp, và sai một trong hai
+thì keepalived vẫn chạy nhưng VIP gán nhầm chỗ:
+- `interface` trong `vrrp_instance` — nơi phát/nhận advertisement
+- `dev` trong khối `virtual_ipaddress` — nơi VIP thực sự được gán
 
 ---
 

@@ -46,6 +46,12 @@ vrrp_instance VI_LB {
 $3
     # VRRPv2 simple auth: TỐI ĐA 8 ký tự, dài hơn sẽ bị cắt cụt kèm cảnh báo
     # "Truncating auth_pass to 8 characters".
+    #
+    # ⚠️ ĐỪNG NHẦM ĐÂY LÀ BẢO MẬT. auth_pass đi trần trong gói VRRP, ai bắt gói
+    #    trong LAN cũng đọc được. Nó chỉ có tác dụng CHỐNG NHẦM CỤM: hai cụm HA
+    #    lỡ trùng virtual_router_id trên cùng VLAN sẽ không trộn vào nhau.
+    #    VRRPv3 (RFC 5798) đã BỎ HẲN phần authentication vì lý do đó. Muốn bảo
+    #    vệ VRRP thật thì phải chặn ở tầng mạng: ACL/VLAN riêng cho heartbeat.
     authentication {
         auth_type PASS
         auth_pass 9pingHA1
@@ -87,6 +93,24 @@ gen_conf /etc/keepalived/keepalived-vmac.conf "${VRRP_STATE}" \
 "    use_vmac vrrp51
     vmac_xmit_base"
 
+# Cấu hình đối chứng cho cảnh "unicast_peer" (kịch bản 9).
+#   Mặc định VRRP gửi advertisement tới địa chỉ MULTICAST 224.0.0.18. Rất nhiều
+#   switch doanh nghiệp (IGMP snooping không có querier, storm-control), mọi
+#   hypervisor lạ và MỌI VPC trên cloud đều nuốt gói multicast này -> hai node
+#   không nghe thấy nhau -> split-brain, dù dây vẫn nối và cả hai vẫn sống.
+#
+#   unicast_peer đổi sang gửi THẲNG tới IP của node kia. Vẫn là IP protocol 112,
+#   nhưng là gói unicast bình thường nên đi qua được mọi chỗ mà multicast chết.
+#
+#   ⚠️ Khai báo ĐỦ CẢ HAI: thiếu unicast_src_ip thì keepalived lấy IP nguồn theo
+#      route mặc định — trên máy nhiều chân (bonding, VLAN, mạng quản trị riêng)
+#      IP đó thường KHÔNG nằm cùng subnet với peer, peer sẽ bỏ qua advertisement.
+gen_conf /etc/keepalived/keepalived-unicast.conf "${VRRP_STATE}" \
+"    unicast_src_ip ${UNICAST_SRC}
+    unicast_peer {
+        ${UNICAST_PEER}
+    }"
+
 echo "[entrypoint] $(hostname): khởi động HAProxy..."
 haproxy -f /etc/haproxy/haproxy.cfg -D
 
@@ -100,6 +124,9 @@ if [ -f /etc/keepalived/USE_NOPREEMPT ]; then
 elif [ -f /etc/keepalived/USE_VMAC ]; then
     KA_CONF=/etc/keepalived/keepalived-vmac.conf
     echo "[entrypoint] $(hostname): phát hiện cờ USE_VMAC -> dùng cấu hình use_vmac"
+elif [ -f /etc/keepalived/USE_UNICAST ]; then
+    KA_CONF=/etc/keepalived/keepalived-unicast.conf
+    echo "[entrypoint] $(hostname): phát hiện cờ USE_UNICAST -> dùng cấu hình unicast_peer"
 fi
 
 echo "[entrypoint] $(hostname): khởi động Keepalived (priority ${VRRP_PRIORITY}, conf=$(basename $KA_CONF))..."

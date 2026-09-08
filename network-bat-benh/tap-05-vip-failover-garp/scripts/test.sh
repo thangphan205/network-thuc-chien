@@ -101,7 +101,7 @@ for C in $CLIENT_LAN $CLIENT_REMOTE; do
     case "$OUT/$RC" in
         200/0) echo "  ✅ $C: HTTP 200" ;;
         503/0) echo "  🟡 $C: HTTP 503 — CÓ response! HAProxy sống nhưng mất backend."
-               echo "     -> Lỗi ở Tầng 3/7, KHÔNG phải bảng ARP. Xem cảnh 11." ;;
+               echo "     -> Lỗi ở Tầng 3/7, KHÔNG phải bảng ARP. Xem cảnh 12." ;;
         */28)  echo "  ❌ $C: curl (28) TIMEOUT — không có response nào."
                echo "     -> Chữ ký của blackhole Tầng 2: frame gửi vào hư vô."
                BLACKHOLE=1 ;;
