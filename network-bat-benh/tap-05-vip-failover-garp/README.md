@@ -1,4 +1,4 @@
-# 🩺 Ca Bệnh 05: Failover HA Thành Công Nhưng Dịch Vụ Vẫn Chết — Thủ Phạm Là Bảng ARP
+# 🩺 Ca Bệnh 05: Failover HA Thành Công Nhưng Dịch Vụ Vẫn Chết
 
 > **Hồ sơ ca bệnh:**
 > * **Hiện tượng:** Cụm HA vừa failover. Node MASTER chết, node BACKUP đã lên, đã cầm VIP, `HAProxy` vẫn chạy, backend vẫn khoẻ, cấu hình đúng 100%. **Nhưng client vẫn không truy cập được dịch vụ.**
@@ -13,31 +13,12 @@
 > | **B. Ổ bệnh Tầng 2** | 3–7 | blackhole `curl (28)`; tự khỏi **32 giây** trên Linux, **4 tiếng** trên Cisco |
 > | **C. Cụm HA tự đánh nhau** | 8–10 | 2 MAC cùng đáp 1 IP; `unicast_peer` cứu khi switch nuốt multicast; `preempt` gây **2 lần** mất phiên thay vì 1 |
 > | **D. Chết vì lý do KHÁC L2** | 11–13 | HTTP **503** (khác hẳn blackhole); `use_vmac` khiến MAC **không bao giờ đổi** |
->
-> 👉 Chi tiết từng kịch bản: [**kich-ban.md**](./kich-ban.md)
 
 > 📚 **Điều kiện tiên quyết:** Nắm được `ping`, `curl`, `ip neigh`, `ip route`, `tcpdump` ở mức cơ bản (xem series **Debug Mạng A-Z**). Đây là ca bệnh **Tầng 2** đầu tiên của series — mọi thứ ở L3/L4 đều đúng tuyệt đối, lỗi nằm dưới sâu hơn.
 
 ---
 
 ## 🔬 Sơ đồ Kiến trúc Lab
-
-```text
-  CLIENT LAN                 LB / DMZ                      APP TIER
-  172.28.51.0/24             172.28.52.0/24                172.28.53.0/24
-                             VIP 172.28.52.100
-
- +------------------+     +------------------------+     +------------------+
- | client-remote    |     | node-a .11  MASTER 110 |     | web-1  .53.31    |
- |     .51.20       |     | node-b .12  BACKUP 100 |     | web-2  .53.32    |
- |                  |     | HAProxy + Keepalived   |     | nginx            |
- |                  |     |                        |     |                  |
- |                  |     | client-lan  .52.20     |     |                  |
- +--------+---------+     +-----------+------------+     +--------+---------+
-          |                           |                           |
-          +---[ router  .51.254  |  .52.254  |  .53.254 ]----------+
-                          ip_forward = 1
-```
 
 * `client-remote` là **nạn nhân thật**: khác subnet với VIP nên nó không bao giờ ARP hỏi VIP.
 * `client-lan` là **đối chứng**: cùng subnet với VIP nên nó CÓ bảng ARP cho VIP. Cùng một sự cố, hai máy này khỏi ở hai thời điểm khác nhau.
@@ -349,9 +330,6 @@ Trạng thái chuẩn phải như thế này:
 > cờ `USE_UNICAST` của KB9, ARP kiểu Cisco của KB5, HAProxy bị giết ở KB11,
 > VIP gán tay ở KB3, và **route tĩnh bay mất sau mỗi lần container restart**)
 > rồi dựng lại trạng thái chuẩn.
-
-👉 **Hướng dẫn chi tiết từng kịch bản — bối cảnh, output thật, cách đọc kết quả:
-[kich-ban.md](./kich-ban.md)**
 
 ---
 
