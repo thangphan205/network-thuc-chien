@@ -27,7 +27,8 @@ Series này là **thực chiến** — mỗi tập giả định bạn đã bi�
 | **`mtr`** | L3 | Soi từng hop, mất gói trên đường đi | (nền tảng định tuyến) |
 | **`netcat` (nc)** | L4 | Test cổng mở/đóng, bắt tay TCP thủ công | 01, 07 |
 | **`ss`** | L4 | Soi socket đang LISTEN, bind `127.0.0.1` vs `0.0.0.0` | 03, 09 |
-| **`dig`** | L7 | Truy vấn DNS, phân giải tên miền | 06 |
+| **`dig`** | L7 | Hỏi **thẳng** nameserver — bỏ qua `/etc/hosts` và `nscd`. Ubuntu 24.04+: dùng `dig @<IP DNS thật>` để vượt cả bộ đệm `systemd-resolved` | 06 |
+| **`getent hosts`** | L7 | Đi **đúng đường ứng dụng đi** (`hosts` → cache → DNS). Lệch với `dig` = thủ phạm nằm trên máy client | 06 |
 | **`curl`** | L7 | Test HTTP/HTTPS, đọc mã trạng thái & verbose | hầu hết các tập |
 | **`openssl`** | L5/6 | Soi chuỗi chứng chỉ, hạn cert, bắt tay TLS | 07, 08 |
 | **`tcpdump`** | L2–L4 | Bắt gói tin (mở bằng Wireshark), soi cờ TCP/ICMP | mọi tập có bước bắt gói |
@@ -70,7 +71,7 @@ Series này là **thực chiến** — mỗi tập giả định bạn đã bi�
 | **03** | `BIND-LOCAL` | **Đứng tại server vào được Web, máy khác cùng mạng thì không** | L4 — Socket Bind `127.0.0.1` vs `0.0.0.0` | [📂 `tap-03-bind-localhost`](./tap-03-bind-localhost) |
 | **04** | `MTU-HOLE` | **Ping gói nhỏ OK, Web tải nửa chừng thì đơ (Treo trang)** | L3/L4 — Path MTU Discovery Blackhole | [📂 `tap-04-mtu-blackhole`](./tap-04-mtu-blackhole) |
 | **05** | `ARP-STALE` | **Đổi IP máy chủ xong cả mạng nội bộ mất kết nối** | L2 — Stale ARP Cache / Gratuitous ARP | [📂 `tap-05-arp-stale-cache`](./tap-05-arp-stale-cache) |
-| **06** | `DNS-CACHE` | **Truy cập IP được nhưng gõ Tên miền báo lỗi không tìm thấy** | L7 — DNS Resolver & `/etc/resolv.conf` | [📂 `tap-06-dns-resolution-failure`](./tap-06-dns-resolution-failure) |
+| **06** | `DNS-RESOLVE` | **Ping IP được nhưng gõ Tên miền thì chết — và 3 ca vẫn ra HTTP 200 từ nhầm máy** | L7 — DNS Resolver, `/etc/hosts`, bộ đệm | [📂 `tap-06-dns-resolution-failure`](./tap-06-dns-resolution-failure) |
 | **07** | `TLS-CLOCK` | **Vào web HTTPS bị báo lỗi Chứng chỉ không hợp lệ** | L5/L6 — TLS Handshake & Clock Skew | [📂 `tap-07-tls-clock-skew`](./tap-07-tls-clock-skew) |
 | **08** | `TLS-CHAIN` | **Máy tính vào web bình thường, điện thoại/curl báo lỗi SSL** | L5/L6 — Thiếu Intermediate CA Cert | [📂 `tap-08-tls-missing-intermediate-ca`](./tap-08-tls-missing-intermediate-ca) |
 | **09** | `NAT-TIMEOUT` | **App đang dùng bình thường cứ sau 5 phút là bị ngắt kết nối** | L4 — NAT Session Idle Timeout | [📂 `tap-09-nat-session-timeout`](./tap-09-nat-session-timeout) |

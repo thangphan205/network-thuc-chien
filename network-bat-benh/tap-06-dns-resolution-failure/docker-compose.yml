@@ -1,24 +1,66 @@
+# ==============================================================================
+# Lab tap 06 — DNS Resolution Failure
+#
+#                         172.28.6.0/24
+#   [client .20]      [dns .53]           [web .10]        [web-cu .11]
+#   debian/glibc      dnsmasq             nginx "MOI"      nginx "CU" (dich SAI)
+#   dig curl tcpdump  zone lab.local
+#                     cache + log-queries
+#
+# Client KHONG dung DNS nhung cua Docker (127.0.0.11) — no tro thang vao dns
+# server cua lab. Nho vay moi hanh vi phan giai deu nam trong tam kiem soat cua
+# script, khong phu thuoc mang ngoai (lab chay duoc ca khi may rut mang).
+# ==============================================================================
 services:
-  web-server:
+  dns:
+    build: ./dns
+    container_name: lab06-dns
+    command: sleep infinity      # dnsmasq chay nen, xem dns/dns-start
+    init: true
+    networks:
+      lab-net:
+        ipv4_address: 172.28.6.53
+
+  web:
     image: nginx:alpine
-    container_name: lab06-web-server
-    hostname: app.local
+    container_name: lab06-web
+    volumes:
+      - ./web/index.html:/usr/share/nginx/html/index.html:ro
     networks:
       lab-net:
         ipv4_address: 172.28.6.10
+
+  web-cu:
+    image: nginx:alpine
+    container_name: lab06-web-cu
+    volumes:
+      - ./web-cu/index.html:/usr/share/nginx/html/index.html:ro
+    networks:
+      lab-net:
+        ipv4_address: 172.28.6.11
 
   client:
     build: ./client
     container_name: lab06-client
     cap_add:
-      - NET_ADMIN
+      - NET_ADMIN            # de tcpdump bat goi trong container
     command: sleep infinity
     init: true
+    dns:
+      - 172.28.6.53
+    dns_search:
+      - lab.local
+    dns_opt:
+      - ndots:1
+      - timeout:1
+      - attempts:2
     networks:
       lab-net:
         ipv4_address: 172.28.6.20
     depends_on:
-      - web-server
+      - dns
+      - web
+      - web-cu
 
 networks:
   lab-net:

@@ -1,0 +1,6 @@
+# Ban ghi A cua zone lab.local — dinh dang giong /etc/hosts.
+# Cac script kich ban sua truc tiep file nay trong container roi nap lai dnsmasq.
+172.28.6.10   web.lab.local   web
+172.28.6.11   web-cu.lab.local  web-cu
+172.28.6.53   dns.lab.local   dns
+172.28.6.20   client.lab.local  client

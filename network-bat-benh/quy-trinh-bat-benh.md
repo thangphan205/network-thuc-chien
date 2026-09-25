@@ -85,8 +85,11 @@ flowchart TD
     
     Q2 -->|"✅ CÓ (TCP Handshake OK)"| Q3{"3. Phân giải Tên miền (L7 DNS) có ra IP?<br><code>dig +short &lt;domain&gt;</code>"}
     
-    Q3 -->|"❌ DNS Timeout / NXDOMAIN"| FIX_L7_DNS["🟡 L7: Sai DNS Server / /etc/resolv.conf hỏng"]
-    Q3 -->|"✅ CÓ (DNS Resolve đúng)"| Q4{"4. Bắt tay TLS/HTTPS (L5/L6) có thông?<br><code>openssl s_client</code>"}
+    Q3 -->|"❌ Timeout / Refused / NXDOMAIN"| FIX_L7_DNS["🟡 L7: Sai DNS Server / resolver chết / thiếu bản ghi"]
+    Q3 -->|"✅ CÓ ra IP"| Q3B{"3b. IP đó có ĐÚNG không, và<br><code>getent hosts</code> có khớp <code>dig</code> không?"}
+    Q3B -->|"❌ dig ra IP SAI"| FIX_L7_STALE["🟡 L7: Bản ghi A trỏ sai địa chỉ"]
+    Q3B -->|"❌ getent LỆCH dig"| FIX_L7_CLIENT["🟡 L7: Thủ phạm TRÊN MÁY CLIENT<br>(/etc/hosts hoặc nscd/systemd-resolved)"]
+    Q3B -->|"✅ Khớp và đúng"| Q4{"4. Bắt tay TLS/HTTPS (L5/L6) có thông?<br><code>openssl s_client</code>"}
     
     Q4 -->|"❌ Lỗi Cert Expired / Date"| FIX_TLS_CLOCK["🔵 L5/L6: Lệch giờ hệ thống (Clock Skew)"]
     Q4 -->|"❌ Lỗi Unable to get local issuer"| FIX_TLS_CHAIN["🔵 L5/L6: Thiếu Intermediate CA Certificate"]
@@ -101,6 +104,8 @@ flowchart TD
     style FIX_L4_BIND fill:#7c2d12,stroke:#f97316,color:#fff
     style FIX_L4_DOWN fill:#7c2d12,stroke:#f97316,color:#fff
     style FIX_L7_DNS fill:#713f12,stroke:#eab308,color:#fff
+    style FIX_L7_STALE fill:#713f12,stroke:#eab308,color:#fff
+    style FIX_L7_CLIENT fill:#713f12,stroke:#eab308,color:#fff
     style FIX_TLS_CLOCK fill:#1e3a5f,stroke:#3b82f6,color:#fff
     style FIX_TLS_CHAIN fill:#1e3a5f,stroke:#3b82f6,color:#fff
     style FIX_APP fill:#064e3b,stroke:#10b981,color:#fff
@@ -118,7 +123,7 @@ flowchart TD
 | **Trạm 4: Kích thước gói** | **L3 — MTU** | *Gói tin to có bị rơi vào hố đen không?* | `ping -s 1472 -M do <IP>` | Ping nhỏ thông 100%, ping to mất gói 100% (MTU Blackhole) |
 | **Trạm 5: Cổng dịch vụ** | **L4 — Transport** | *Cổng có mở không? Trạng thái kết nối ra sao?* | `nc -zvw3 <IP> <Port>`, `curl -Iv <URL>` | • `Connection timed out` (Firewall DROP)<br>• `Connection refused` (Port đóng / Bind 127.0.0.1) |
 | **Trạm 6: Socket Server** | **L4 — Socket** | *Server bind trên IP nào?* | `ss -tulpn \| grep :<Port>` | `127.0.0.1:80` (Sai — Chỉ cho nội bộ) thay vì `0.0.0.0:80` |
-| **Trạm 7: Tên miền** | **L7 — DNS** | *Domain có phân giải ra đúng IP không?* | `dig +short <Domain> @8.8.8.8`, `cat /etc/resolv.conf` | `Could not resolve host`, `NXDOMAIN`, `SERVFAIL` |
+| **Trạm 7: Tên miền** | **L7 — DNS** | *Domain có ra IP không, IP đó có **đúng** không, và **ứng dụng** có dùng đúng IP đó không?* | `getent hosts <Domain>` (đường ứng dụng đi), `dig @<IP DNS thật> <Domain>` (hỏi thẳng server, vượt bộ đệm `systemd-resolved`), `resolvectl status` / `cat /etc/resolv.conf` | `Could not resolve host` (exit 6), `Resolving timed out` (exit 28), `NXDOMAIN`, `REFUSED`, `SERVFAIL`<br>⚠️ **Nguy hiểm nhất: HTTP 200 từ nhầm máy** — `getent` lệch `dig`, hoặc `dig` ra IP sai |
 | **Trạm 8: Bảo mật TLS** | **L5/L6 — TLS** | *Chứng chỉ có đủ chuỗi và đúng ngày giờ không?* | `openssl s_client -connect <Host>:443 -showcerts` | `certificate has expired` (Sai giờ), `unable to get local issuer` (Thiếu Intermediate CA) |
 
 ---

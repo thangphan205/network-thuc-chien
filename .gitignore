@@ -237,3 +237,9 @@ network-bat-benh/*/nginx/nginx.conf
 
 # Local lab server notes (host/user, do not publish)
 server_lab.txt
+
+# Kich ban quay video cua tung tap (noi bo, khong publish)
+kich-ban.md
+
+# Simulation tuong tac danh rieng cho hoc vien dang ky (khong publish)
+simulation*.html

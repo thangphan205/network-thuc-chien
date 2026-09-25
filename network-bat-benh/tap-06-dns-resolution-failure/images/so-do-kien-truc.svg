@@ -1,0 +1,745 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1280 480" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" role="img"
+        aria-labelledby="lab06-topo-title lab06-topo-desc">
+        <title id="lab06-topo-title">Kiến trúc lab DNS Resolution Failure</title>
+        <desc id="lab06-topo-desc">LAN phẳng 172.28.6.0/24: trên client, curl phân giải tên qua getaddrinfo đi lần lượt
+          /etc/hosts, nscd rồi mới tới DNS server dnsmasq 172.28.6.53, còn dig hỏi thẳng DNS server; kết quả dẫn HTTP
+          tới web 172.28.6.10 hoặc web-cu 172.28.6.11, và 172.28.6.99 là địa chỉ không có máy. Tám tab lần lượt cho thấy
+          ổ bệnh của tám kịch bản, từ resolver câm, NXDOMAIN, forwarder chết, bản ghi sai tới /etc/hosts và bộ đệm nscd.
+        </desc>
+
+        <defs>
+    <style>@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap');
+      /* ban export tinh = tab mac dinh (KB1); cac lop kich ban khac an di */
+      .kb2,.kb3,.kb4,.kb5,.kb6,.kb7,.kb8{display:none}</style>
+          <marker id="arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 9 3.5, 0 7" fill="#4f5d75" />
+          </marker>
+          <marker id="arrow-accent" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 9 3.5, 0 7" fill="#eb6c36" />
+          </marker>
+          <marker id="arrow-link" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 9 3.5, 0 7" fill="#2e5aa8" />
+          </marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5" />
+
+        <text x="20" y="36" fill="#7a8399" font-size="12" font-weight="600" font-family="'Geist Mono', monospace"
+          text-anchor="start" letter-spacing="0.10em">172.28.6.0/24 · MỘT LAN PHẲNG, KHÔNG ROUTER</text>
+
+        <!-- ============ CLIENT ZONE ============ -->
+        <rect x="20" y="180" width="580" height="252" rx="8" fill="rgba(79,93,117,0.06)" stroke="rgba(79,93,117,0.35)"
+          stroke-width="1.2" />
+        <rect x="316" y="186" width="276" height="18" rx="2" fill="#f5f5f5" />
+        <text x="584" y="200" fill="rgba(45,49,66,0.55)" font-size="11" font-weight="600"
+          font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.08em">CLIENT · 172.28.6.20 ·
+          DEBIAN/GLIBC</text>
+
+        <text x="400" y="406" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace"
+          text-anchor="middle">dig KHÔNG đọc /etc/hosts, KHÔNG qua nscd</text>
+
+        <!-- ghost address: no machine lives at .99 -->
+        <rect x="1000" y="320" width="240" height="92" rx="8" fill="#f5f5f5" />
+        <rect x="1000" y="320" width="240" height="92" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.30)"
+          stroke-width="1.6" stroke-dasharray="6,4" />
+        <text x="1120" y="358" fill="#7a8399" font-size="15" font-weight="600" font-family="'Geist Mono', monospace"
+          text-anchor="middle">172.28.6.99</text>
+        <text x="1120" y="384" fill="#7a8399" font-size="14" font-weight="500" font-family="'Geist', sans-serif"
+          text-anchor="middle">không có máy nào</text>
+
+        <!-- dig box (static) -->
+        <rect x="40" y="340" width="144" height="72" rx="8" fill="#f5f5f5" />
+        <rect x="40" y="340" width="144" height="72" rx="8" fill="rgba(79,93,117,0.10)" stroke="#7a8399"
+          stroke-width="1.6" />
+        <text x="112" y="370" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+          text-anchor="middle">dig</text>
+        <text x="112" y="396" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+          text-anchor="middle">hỏi thẳng DNS</text>
+
+        <!-- ============ PER-SCENARIO LAYERS ============ -->
+        <g class="kb1">
+          <line x1="184" y1="264" x2="224" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="368" y1="264" x2="408" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="552" y1="264" x2="660" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="562" y="236" width="88" height="20" rx="2" fill="#f5f5f5" />
+          <text x="606" y="251" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">UDP 53</text>
+          <line x1="184" y1="376" x2="660" y2="376" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="328" y="348" width="144" height="20" rx="2" fill="#f5f5f5" />
+          <text x="400" y="363" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">NOERROR · .10</text>
+          <path d="M 96 216 V 100 Q 96 92 104 92 H 660" fill="none" stroke="#2e5aa8" stroke-width="1.8"
+            marker-end="url(#arrow-link)" />
+          <rect x="324" y="64" width="112" height="20" rx="2" fill="#f5f5f5" />
+          <text x="380" y="79" fill="#2e5aa8" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">HTTP 200</text>
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="112" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">curl</text>
+          <text x="112" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">getaddrinfo()</text>
+          <text x="112" y="300" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">→ .10</text>
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="296" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">/etc/hosts</text>
+          <text x="296" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">files</text>
+          <text x="296" y="300" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">sạch</text>
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="480" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">nscd</text>
+          <text x="480" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">cache hosts</text>
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="672" y="228" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="690" y="242" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">DNS</text>
+          <text x="790" y="280" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">dns</text>
+          <text x="790" y="306" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.53</text>
+          <text x="790" y="330" fill="#4f5d75" font-size="14" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">dnsmasq · lab.local</text>
+          <rect x="676" y="344" width="228" height="52" rx="6" fill="rgba(45,49,66,0.05)" stroke="rgba(45,49,66,0.25)"
+            stroke-width="1.2" />
+          <text x="790" y="362" fill="#7a8399" font-size="12" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.10em">BẢN GHI A</text>
+          <text x="790" y="387" fill="#2d3142" font-size="17" font-weight="700" font-family="'Geist Mono', monospace"
+            text-anchor="middle">web → .10</text>
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="672" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="690" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="790" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web</text>
+          <text x="790" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.10</text>
+          <text x="790" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER MỚI</text>
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="1012" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="1030" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="1120" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web-cu</text>
+          <text x="1120" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.11</text>
+          <text x="1120" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER CŨ</text>
+        </g>
+        <g class="kb2">
+          <line x1="184" y1="264" x2="224" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="368" y1="264" x2="408" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="552" y1="264" x2="628" y2="264" stroke="#eb6c36" stroke-width="1.8" stroke-dasharray="8,5" />
+          <circle cx="640" cy="264" r="12" fill="#f5f5f5" stroke="#eb6c36" stroke-width="2" />
+          <line x1="633" y1="257" x2="647" y2="271" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" />
+          <line x1="647" y1="257" x2="633" y2="271" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" />
+          <rect x="556" y="236" width="64" height="20" rx="2" fill="#f5f5f5" />
+          <text x="588" y="251" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">→ .99</text>
+          <line x1="184" y1="376" x2="628" y2="376" stroke="#eb6c36" stroke-width="1.8" stroke-dasharray="8,5" />
+          <circle cx="640" cy="376" r="12" fill="#f5f5f5" stroke="#eb6c36" stroke-width="2" />
+          <line x1="633" y1="369" x2="647" y2="383" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" />
+          <line x1="647" y1="369" x2="633" y2="383" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" />
+          <rect x="302" y="348" width="196" height="20" rx="2" fill="#f5f5f5" />
+          <text x="400" y="363" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">timed out · 2035 ms</text>
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="112" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">curl</text>
+          <text x="112" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">getaddrinfo()</text>
+          <text x="112" y="300" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">exit 28</text>
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="296" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">/etc/hosts</text>
+          <text x="296" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">files</text>
+          <text x="296" y="300" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">sạch</text>
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="480" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">nscd</text>
+          <text x="480" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">cache hosts</text>
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="672" y="228" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="690" y="242" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">DNS</text>
+          <text x="790" y="280" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">dns</text>
+          <text x="790" y="306" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.53</text>
+          <text x="790" y="330" fill="#4f5d75" font-size="14" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">dnsmasq · lab.local</text>
+          <rect x="676" y="344" width="228" height="52" rx="6" fill="rgba(45,49,66,0.05)" stroke="rgba(45,49,66,0.25)"
+            stroke-width="1.2" />
+          <text x="790" y="362" fill="#7a8399" font-size="12" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.10em">QUERY TỚI SERVER</text>
+          <text x="790" y="387" fill="#eb6c36" font-size="17" font-weight="700" font-family="'Geist Mono', monospace"
+            text-anchor="middle">0</text>
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="672" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="690" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="790" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web</text>
+          <text x="790" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.10</text>
+          <text x="790" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER MOI</text>
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="1012" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="1030" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="1120" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web-cu</text>
+          <text x="1120" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.11</text>
+          <text x="1120" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER CU</text>
+        </g>
+        <g class="kb3">
+          <line x1="184" y1="264" x2="224" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="368" y1="264" x2="408" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="552" y1="264" x2="660" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="562" y="236" width="88" height="20" rx="2" fill="#f5f5f5" />
+          <text x="606" y="251" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">UDP 53</text>
+          <line x1="184" y1="376" x2="660" y2="376" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="320" y="348" width="160" height="20" rx="2" fill="#f5f5f5" />
+          <text x="400" y="363" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">refused · 17 ms</text>
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="112" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">curl</text>
+          <text x="112" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">getaddrinfo()</text>
+          <text x="112" y="300" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">exit 6</text>
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="296" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">/etc/hosts</text>
+          <text x="296" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">files</text>
+          <text x="296" y="300" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">sạch</text>
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="480" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">nscd</text>
+          <text x="480" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">cache hosts</text>
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="rgba(235,108,54,0.08)" stroke="#eb6c36"
+            stroke-width="1.6" />
+          <rect x="672" y="228" width="36" height="20" rx="3" fill="transparent" stroke="rgba(235,108,54,0.50)"
+            stroke-width="1.2" />
+          <text x="690" y="242" fill="#eb6c36" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">DNS</text>
+          <text x="790" y="280" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">dns</text>
+          <text x="790" y="306" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.53</text>
+          <text x="790" y="330" fill="#4f5d75" font-size="14" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">dnsmasq ĐÃ CHẾT</text>
+          <rect x="676" y="344" width="228" height="52" rx="6" fill="rgba(45,49,66,0.05)" stroke="rgba(45,49,66,0.25)"
+            stroke-width="1.2" />
+          <text x="790" y="362" fill="#7a8399" font-size="12" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.10em">CỔNG 53</text>
+          <text x="790" y="387" fill="#eb6c36" font-size="17" font-weight="700" font-family="'Geist Mono', monospace"
+            text-anchor="middle">ĐÓNG · ping vẫn thông</text>
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="672" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="690" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="790" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web</text>
+          <text x="790" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.10</text>
+          <text x="790" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER MOI</text>
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="1012" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="1030" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="1120" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web-cu</text>
+          <text x="1120" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.11</text>
+          <text x="1120" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER CU</text>
+        </g>
+        <g class="kb4">
+          <line x1="184" y1="264" x2="224" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="368" y1="264" x2="408" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="552" y1="264" x2="660" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="562" y="236" width="88" height="20" rx="2" fill="#f5f5f5" />
+          <text x="606" y="251" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">wed?</text>
+          <line x1="184" y1="376" x2="660" y2="376" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="320" y="348" width="160" height="20" rx="2" fill="#f5f5f5" />
+          <text x="400" y="363" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">NXDOMAIN · 0 ms</text>
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="112" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">curl</text>
+          <text x="112" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">getaddrinfo()</text>
+          <text x="112" y="300" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">exit 6</text>
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="296" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">/etc/hosts</text>
+          <text x="296" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">files</text>
+          <text x="296" y="300" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">sạch</text>
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="480" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">nscd</text>
+          <text x="480" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">cache hosts</text>
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="672" y="228" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="690" y="242" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">DNS</text>
+          <text x="790" y="280" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">dns</text>
+          <text x="790" y="306" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.53</text>
+          <text x="790" y="330" fill="#4f5d75" font-size="14" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">dnsmasq · lab.local</text>
+          <rect x="676" y="344" width="228" height="52" rx="6" fill="rgba(45,49,66,0.05)" stroke="rgba(45,49,66,0.25)"
+            stroke-width="1.2" />
+          <text x="790" y="362" fill="#7a8399" font-size="12" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.10em">LOG SERVER</text>
+          <text x="790" y="387" fill="#eb6c36" font-size="17" font-weight="700" font-family="'Geist Mono', monospace"
+            text-anchor="middle">wed is NXDOMAIN</text>
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="672" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="690" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="790" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web</text>
+          <text x="790" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.10</text>
+          <text x="790" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER MOI</text>
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="1012" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="1030" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="1120" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web-cu</text>
+          <text x="1120" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.11</text>
+          <text x="1120" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER CU</text>
+        </g>
+        <g class="kb5">
+          <line x1="184" y1="264" x2="224" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="368" y1="264" x2="408" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="552" y1="264" x2="660" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="562" y="236" width="88" height="20" rx="2" fill="#f5f5f5" />
+          <text x="606" y="251" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">noi-bo?</text>
+          <line x1="184" y1="376" x2="660" y2="376" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="302" y="348" width="196" height="20" rx="2" fill="#f5f5f5" />
+          <text x="400" y="363" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">timed out · 2013 ms</text>
+          <line x1="920" y1="366" x2="956" y2="366" stroke="#eb6c36" stroke-width="1.8" stroke-dasharray="8,5" />
+          <circle cx="968" cy="366" r="10" fill="#f5f5f5" stroke="#eb6c36" stroke-width="2" />
+          <line x1="963" y1="361" x2="973" y2="371" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" />
+          <line x1="973" y1="361" x2="963" y2="371" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" />
+          <rect x="924" y="374" width="72" height="20" rx="2" fill="#f5f5f5" />
+          <text x="960" y="389" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">FORWARD</text>
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="112" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">curl</text>
+          <text x="112" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">getaddrinfo()</text>
+          <text x="112" y="300" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">exit 6</text>
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="296" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">/etc/hosts</text>
+          <text x="296" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">files</text>
+          <text x="296" y="300" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">sạch</text>
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="480" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">nscd</text>
+          <text x="480" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">cache hosts</text>
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="rgba(235,108,54,0.08)" stroke="#eb6c36"
+            stroke-width="1.6" />
+          <rect x="672" y="228" width="36" height="20" rx="3" fill="transparent" stroke="rgba(235,108,54,0.50)"
+            stroke-width="1.2" />
+          <text x="690" y="242" fill="#eb6c36" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">DNS</text>
+          <text x="790" y="280" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">dns</text>
+          <text x="790" y="306" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.53</text>
+          <text x="790" y="330" fill="#4f5d75" font-size="14" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">dnsmasq · lab.local</text>
+          <rect x="676" y="344" width="228" height="52" rx="6" fill="rgba(45,49,66,0.05)" stroke="rgba(45,49,66,0.25)"
+            stroke-width="1.2" />
+          <text x="790" y="362" fill="#7a8399" font-size="12" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.10em">QUERY TỚI SERVER</text>
+          <text x="790" y="387" fill="#eb6c36" font-size="17" font-weight="700" font-family="'Geist Mono', monospace"
+            text-anchor="middle">20 · forward .99</text>
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="672" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="690" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="790" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web</text>
+          <text x="790" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.10</text>
+          <text x="790" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER MOI</text>
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="1012" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="1030" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="1120" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web-cu</text>
+          <text x="1120" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.11</text>
+          <text x="1120" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER CU</text>
+        </g>
+        <g class="kb6">
+          <line x1="184" y1="264" x2="224" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="368" y1="264" x2="408" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="552" y1="264" x2="660" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="562" y="236" width="88" height="20" rx="2" fill="#f5f5f5" />
+          <text x="606" y="251" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">UDP 53</text>
+          <line x1="184" y1="376" x2="660" y2="376" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="328" y="348" width="144" height="20" rx="2" fill="#f5f5f5" />
+          <text x="400" y="363" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">NOERROR · .11</text>
+          <path d="M 144 216 V 172 Q 144 164 152 164 H 1112 Q 1120 164 1120 156 V 144" fill="none" stroke="#eb6c36"
+            stroke-width="1.8" marker-end="url(#arrow-accent)" />
+          <rect x="324" y="136" width="112" height="20" rx="2" fill="#f5f5f5" />
+          <text x="380" y="151" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">HTTP 200</text>
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="112" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">curl</text>
+          <text x="112" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">getaddrinfo()</text>
+          <text x="112" y="300" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">→ .11</text>
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="296" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">/etc/hosts</text>
+          <text x="296" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">files</text>
+          <text x="296" y="300" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">sạch</text>
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="480" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">nscd</text>
+          <text x="480" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">cache hosts</text>
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="rgba(235,108,54,0.08)" stroke="#eb6c36"
+            stroke-width="1.6" />
+          <rect x="672" y="228" width="36" height="20" rx="3" fill="transparent" stroke="rgba(235,108,54,0.50)"
+            stroke-width="1.2" />
+          <text x="690" y="242" fill="#eb6c36" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">DNS</text>
+          <text x="790" y="280" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">dns</text>
+          <text x="790" y="306" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.53</text>
+          <text x="790" y="330" fill="#4f5d75" font-size="14" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">dnsmasq · lab.local</text>
+          <rect x="676" y="344" width="228" height="52" rx="6" fill="rgba(45,49,66,0.05)" stroke="rgba(45,49,66,0.25)"
+            stroke-width="1.2" />
+          <text x="790" y="362" fill="#7a8399" font-size="12" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.10em">BẢN GHI A</text>
+          <text x="790" y="387" fill="#eb6c36" font-size="17" font-weight="700" font-family="'Geist Mono', monospace"
+            text-anchor="middle">web → .11 ✗ IP cũ</text>
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="672" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="690" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="790" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web</text>
+          <text x="790" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.10</text>
+          <text x="790" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER MOI</text>
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="1012" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="1030" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="1120" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web-cu</text>
+          <text x="1120" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.11</text>
+          <text x="1120" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER CU</text>
+        </g>
+        <g class="kb7">
+          <line x1="184" y1="264" x2="224" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="184" y1="376" x2="660" y2="376" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="320" y="348" width="160" height="20" rx="2" fill="#f5f5f5" />
+          <text x="400" y="363" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">NOERROR · .10 ✓</text>
+          <path d="M 144 216 V 172 Q 144 164 152 164 H 1112 Q 1120 164 1120 156 V 144" fill="none" stroke="#eb6c36"
+            stroke-width="1.8" marker-end="url(#arrow-accent)" />
+          <rect x="324" y="136" width="112" height="20" rx="2" fill="#f5f5f5" />
+          <text x="380" y="151" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">HTTP 200</text>
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="112" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">curl</text>
+          <text x="112" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">getaddrinfo()</text>
+          <text x="112" y="300" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">→ .11</text>
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="rgba(235,108,54,0.08)" stroke="#eb6c36"
+            stroke-width="1.6" />
+          <text x="296" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">/etc/hosts</text>
+          <text x="296" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">files</text>
+          <text x="296" y="300" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">web → .11</text>
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="480" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">nscd</text>
+          <text x="480" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">cache hosts</text>
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="672" y="228" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="690" y="242" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">DNS</text>
+          <text x="790" y="280" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">dns</text>
+          <text x="790" y="306" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.53</text>
+          <text x="790" y="330" fill="#4f5d75" font-size="14" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">dnsmasq · lab.local</text>
+          <rect x="676" y="344" width="228" height="52" rx="6" fill="rgba(45,49,66,0.05)" stroke="rgba(45,49,66,0.25)"
+            stroke-width="1.2" />
+          <text x="790" y="362" fill="#7a8399" font-size="12" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.10em">BẢN GHI A</text>
+          <text x="790" y="387" fill="#2d3142" font-size="17" font-weight="700" font-family="'Geist Mono', monospace"
+            text-anchor="middle">web → .10 ✓</text>
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="672" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="690" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="790" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web</text>
+          <text x="790" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.10</text>
+          <text x="790" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER MOI</text>
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="1012" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="1030" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="1120" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web-cu</text>
+          <text x="1120" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.11</text>
+          <text x="1120" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER CU</text>
+        </g>
+        <g class="kb8">
+          <line x1="184" y1="264" x2="224" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="368" y1="264" x2="408" y2="264" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <line x1="184" y1="376" x2="660" y2="376" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="320" y="348" width="160" height="20" rx="2" fill="#f5f5f5" />
+          <text x="400" y="363" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">NOERROR · .11 ✓</text>
+          <path d="M 96 216 V 100 Q 96 92 104 92 H 660" fill="none" stroke="#eb6c36" stroke-width="1.8"
+            marker-end="url(#arrow-accent)" />
+          <rect x="324" y="64" width="112" height="20" rx="2" fill="#f5f5f5" />
+          <text x="380" y="79" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.04em">HTTP 200</text>
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="40" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="112" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">curl</text>
+          <text x="112" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">getaddrinfo()</text>
+          <text x="112" y="300" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">→ .10</text>
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="224" y="216" width="144" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"
+            stroke-width="1.6" />
+          <text x="296" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">/etc/hosts</text>
+          <text x="296" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">files</text>
+          <text x="296" y="300" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">sạch</text>
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="#f5f5f5" />
+          <rect x="408" y="216" width="144" height="96" rx="8" fill="rgba(235,108,54,0.08)" stroke="#eb6c36"
+            stroke-width="1.6" />
+          <text x="480" y="248" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">nscd</text>
+          <text x="480" y="274" fill="#4f5d75" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">cache hosts</text>
+          <text x="480" y="300" fill="#eb6c36" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">web → .10 cũ</text>
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="216" width="260" height="196" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="672" y="228" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="690" y="242" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">DNS</text>
+          <text x="790" y="280" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">dns</text>
+          <text x="790" y="306" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.53</text>
+          <text x="790" y="330" fill="#4f5d75" font-size="14" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">dnsmasq · lab.local</text>
+          <rect x="676" y="344" width="228" height="52" rx="6" fill="rgba(45,49,66,0.05)" stroke="rgba(45,49,66,0.25)"
+            stroke-width="1.2" />
+          <text x="790" y="362" fill="#7a8399" font-size="12" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.10em">BẢN GHI A</text>
+          <text x="790" y="387" fill="#2d3142" font-size="17" font-weight="700" font-family="'Geist Mono', monospace"
+            text-anchor="middle">web → .11 (mới)</text>
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="660" y="40" width="260" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="672" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="690" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="790" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web</text>
+          <text x="790" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.10</text>
+          <text x="790" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER MOI</text>
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#f5f5f5" />
+          <rect x="1000" y="40" width="240" height="104" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+          <rect x="1012" y="52" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)"
+            stroke-width="1.2" />
+          <text x="1030" y="66" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle" letter-spacing="0.08em">WEB</text>
+          <text x="1120" y="90" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif"
+            text-anchor="middle">web-cu</text>
+          <text x="1120" y="116" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace"
+            text-anchor="middle">172.28.6.11</text>
+          <text x="1120" y="138" fill="#4f5d75" font-size="14" font-weight="600" font-family="'Geist Mono', monospace"
+            text-anchor="middle">SERVER CU</text>
+        </g>
+
+        <!-- ============ LEGEND ============ -->
+        <line x1="20" y1="444" x2="1260" y2="444" stroke="rgba(45,49,66,0.12)" stroke-width="1" />
+        <text x="20" y="470" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace"
+          letter-spacing="0.14em">CHÚ GIẢI</text>
+        <line x1="116" y1="465" x2="144" y2="465" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+        <text x="156" y="470" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif">truy vấn
+          tên (NSS / DNS)</text>
+        <line x1="344" y1="465" x2="372" y2="465" stroke="#2e5aa8" stroke-width="1.8" marker-end="url(#arrow-link)" />
+        <text x="384" y="470" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif">HTTP tới
+          đúng máy</text>
+        <line x1="540" y1="465" x2="568" y2="465" stroke="#eb6c36" stroke-width="1.8" marker-end="url(#arrow-accent)" />
+        <text x="580" y="470" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif">đường đi
+          sai / ổ bệnh</text>
+        <circle cx="768" cy="465" r="9" fill="#f5f5f5" stroke="#eb6c36" stroke-width="2" />
+        <line x1="764" y1="461" x2="772" y2="469" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" />
+        <line x1="772" y1="461" x2="764" y2="469" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" />
+        <text x="788" y="470" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif">không ai
+          trả lời</text>
+        <rect x="936" y="458" width="24" height="14" rx="2" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.30)"
+          stroke-width="1.2" stroke-dasharray="4,3" />
+        <text x="972" y="470" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif">địa chỉ
+          không có máy</text>
+      </svg>
