@@ -1,0 +1,67 @@
+# ==============================================================================
+# TAP 10 - ASYMMETRIC ROUTING  (2 router stateful THAT giua client va server)
+#
+#                      +--[ fw-a  .251 / .251 ]--+
+#   LAN client         |                         |        LAN server
+#   172.28.8.0/24 ----+                         +---- 172.28.18.0/24
+#   client .20         |                         |        server .10
+#                      +--[ fw-b  .252 / .252 ]--+
+#
+# Client di ra bang fw-a (route tinh). Server tra loi bang fw-a (KHOE) hoac
+# fw-b (BENH) tuy route tinh tren server. Moi router giu bang conntrack RIENG,
+# khong dong bo voi nhau -> fw-b khong bao gio thay SYN cua ket noi.
+# (Ban cu chi co 1 server tu chan SYN-ACK bang iptables: tai hien trieu chung,
+#  khong phai co che. Ban nay la co che that.)
+# ==============================================================================
+services:
+  fw-a:
+    build: ./fw
+    container_name: lab08-fw-a
+    hostname: fw-a
+    init: true
+    privileged: true          # sysctl net.netfilter.* (tcp_loose) tren Docker Desktop
+    sysctls:
+      - net.ipv4.ip_forward=1
+    networks:
+      lan-client: { ipv4_address: 172.28.8.251 }
+      lan-server: { ipv4_address: 172.28.18.251 }
+
+  fw-b:
+    build: ./fw
+    container_name: lab08-fw-b
+    hostname: fw-b
+    init: true
+    privileged: true
+    sysctls:
+      - net.ipv4.ip_forward=1
+    networks:
+      lan-client: { ipv4_address: 172.28.8.252 }
+      lan-server: { ipv4_address: 172.28.18.252 }
+
+  server:
+    build: ./server
+    container_name: lab08-server
+    hostname: server
+    cap_add: [NET_ADMIN]      # doi route tinh (nguon cua ca benh)
+    networks:
+      lan-server: { ipv4_address: 172.28.18.10 }
+    depends_on: [fw-a, fw-b]
+
+  client:
+    build: ./client
+    container_name: lab08-client
+    hostname: client
+    cap_add: [NET_ADMIN]
+    command: sleep infinity
+    init: true
+    networks:
+      lan-client: { ipv4_address: 172.28.8.20 }
+    depends_on: [fw-a, fw-b, server]
+
+networks:
+  lan-client:
+    driver: bridge
+    ipam: { config: [ { subnet: 172.28.8.0/24 } ] }
+  lan-server:
+    driver: bridge
+    ipam: { config: [ { subnet: 172.28.18.0/24 } ] }

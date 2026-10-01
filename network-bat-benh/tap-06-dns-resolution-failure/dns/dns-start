@@ -1,6 +1,6 @@
 #!/bin/sh
 # Khoi dong (hoac khoi dong lai) dnsmasq trong container dns.
-# dnsmasq KHONG chay o PID 1: container chay `sleep infinity`, nho vay KB3 co the
+# dnsmasq KHONG chay o PID 1: container chay `sleep infinity`, nho vay MR1 co the
 # giet dnsmasq de mo cong 53 ma container van song — dung nhu mot may chu that
 # co dich vu chet nhung may van bat.
 pkill -x dnsmasq 2>/dev/null

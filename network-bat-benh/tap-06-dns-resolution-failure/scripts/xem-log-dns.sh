@@ -6,13 +6,13 @@
 # `docker exec` (xem dns/dns-start) nen no khong phai PID 1 cua container —
 # `docker compose logs` khong bat duoc dong nao. Log nam trong file.
 #
-# Day la cong cu tach KB2 khoi KB5: cung mot trieu chung phia client, khac nhau
+# Day la cong cu tach KB2 khoi MR3: cung mot trieu chung phia client, khac nhau
 # o cho man hinh nay co dong query hay khong.
 # ==============================================================================
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/lib.sh
-echo "📖 Dang doc $LOG_DNS trong container $DNS  (Ctrl-C de thoat)"
-echo "   query[...] = client hoi | forwarded = chuyen tiep di | is <IP> = da tra loi"
+echo "📖 Đang đọc $LOG_DNS trong container $DNS  (Ctrl-C để thoát)"
+echo "   query[...] = client hỏi | forwarded = chuyển tiếp đi | is <IP> = đã trả lời"
 echo "--------------------------------------------------------------------------"
 docker exec $DNS tail -n 20 -f $LOG_DNS

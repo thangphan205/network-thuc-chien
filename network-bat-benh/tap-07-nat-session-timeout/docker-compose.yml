@@ -1,0 +1,79 @@
+# ==============================================================================
+# TAP 09 - NAT SESSION TIMEOUT  (topology 3 tang: client -- GATEWAY NAT -- server)
+#
+#   LAN CLIENT   172.28.7.0/24   --+
+#                                  |--[ gateway: ip_forward=1, MASQUERADE, conntrack ]--+
+#   WAN SERVER   172.28.17.0/24  --+                                                   |
+#
+# Vi sao tach gateway rieng thay vi client<->server 2 container (ban cu)?
+#   Ngoai doi, NAT/stateful firewall la MOT THIET BI THU BA, khong phai ban
+#   than server. Toan bo bai hoc cua tap nay (bang conntrack bi xoa sau idle)
+#   chi dung neu no thuc su song o mot thiet bi trung gian: client va server
+#   khong biet gi ve chuyen do, chi co gateway moi biet.
+# ==============================================================================
+services:
+  # ---------------------------------------------------------------------------
+  # GATEWAY: 2 chan, dong vai NAT Gateway / Stateful Firewall doanh nghiep.
+  # Bang conntrack cua no chinh la O BENH cua ca tap nay.
+  # ---------------------------------------------------------------------------
+  gateway:
+    build: ./gateway
+    container_name: lab07-gateway
+    hostname: gateway
+    init: true
+    # privileged: can de sysctl net.netfilter.* NGAY LUC CHAY trong netns cua
+    # container (Docker Desktop mount /proc/sys read-only voi container thuong).
+    privileged: true
+    sysctls:
+      - net.ipv4.ip_forward=1
+    networks:
+      lan-client:
+        ipv4_address: 172.28.7.254
+      lan-server:
+        ipv4_address: 172.28.17.254
+
+  # ---------------------------------------------------------------------------
+  # SERVER: nginx that, sau lung gateway. Khong biet gi ve conntrack -- dung
+  # de chung minh "server khoe 100%" khong lien quan gi toi ca benh nay.
+  # ---------------------------------------------------------------------------
+  server:
+    build: ./server
+    container_name: lab07-server
+    hostname: server
+    cap_add:
+      - NET_ADMIN      # can de dat route tinh ve LAN client
+    networks:
+      lan-server:
+        ipv4_address: 172.28.17.10
+    depends_on:
+      - gateway
+
+  # ---------------------------------------------------------------------------
+  # CLIENT: nan nhan. Moi kich ban deu do tu day.
+  # ---------------------------------------------------------------------------
+  client:
+    build: ./client
+    container_name: lab07-client
+    hostname: client
+    cap_add:
+      - NET_ADMIN      # can de dat route tinh ve LAN server
+    command: sleep infinity
+    init: true
+    networks:
+      lan-client:
+        ipv4_address: 172.28.7.20
+    depends_on:
+      - gateway
+      - server
+
+networks:
+  lan-client:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.7.0/24
+  lan-server:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.17.0/24

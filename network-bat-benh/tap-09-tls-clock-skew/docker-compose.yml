@@ -1,0 +1,114 @@
+# ==============================================================================
+# Lab tap 09 — TLS Clock Skew & Cac Loi Chung Chi Nhin Giong Het Nhau
+#
+#                          172.28.9.0/24
+#   [client .20]            [web-server .10]          [ntp .30]
+#   curl openssl            nginx 443                 chronyd (nguon gio that)
+#   faketime tcpdump        serve 1 trong 6 cert
+#   chronyc iptables
+#
+# Vi sao co container `ntp`?
+#   Ca benh cua tap nay la LECH GIO. Muon day "vi sao dong ho lech" thi phai co
+#   mot nguon gio that de doi chieu — va phai chan duoc duong toi no (MR5).
+#   Dung NTP server NGOAI Internet thi lab chet khi may rut mang, va moi hoc vien
+#   se thay mot ket qua khac nhau. Nguon gio nam trong lab -> ket qua giong nhau
+#   tren moi may.
+#
+# Vi sao client KHONG duoc cap CAP_SYS_TIME?
+#   Container dung chung dong ho kernel voi host. Doi gio trong container la doi
+#   gio MAY THAT cua hoc vien. Ca tap nay gia lap lech gio bang `faketime`
+#   (LD_PRELOAD, chi anh huong dung tien trinh curl) — khong bao gio dung tay vao
+#   dong ho that. Xem client/Dockerfile.
+# ==============================================================================
+services:
+  # ----------------------------------------------------------------------------
+  # Sinh TOAN BO chung chi luc `up`. Chay xong la thoat (khong phai dich vu).
+  #
+  # Vi sao sinh runtime ma khong commit cert vao git?
+  #   Cert commit san se het han that vao mot ngay nao do -> lab tro thanh "bom
+  #   hen gio", nam sau hoc vien clone ve la hong ma khong hieu vi sao.
+  #   Sinh runtime: cert "hop le" luon con han, cert "het han" co notAfter co
+  #   dinh trong qua khu. Lab dung o bat ky thoi diem nao.
+  # ----------------------------------------------------------------------------
+  certgen:
+    build: ./certgen
+    image: lab09-certgen
+    container_name: lab09-certgen
+    volumes:
+      - ./nginx/ssl:/certs
+
+  # ----------------------------------------------------------------------------
+  # Seed nginx.conf = trang thai KHOE (cert hop le) moi lan `up`.
+  # nginx.conf duoc gitignore nen chay kich ban khong lam ban cay git.
+  # ----------------------------------------------------------------------------
+  config-init:
+    image: alpine:3.23
+    container_name: lab09-config-init
+    volumes:
+      - ./nginx:/nginx
+    command: sh -c "cp /nginx/conf/good.conf /nginx/nginx.conf"
+
+  web-server:
+    build: ./web
+    image: lab09-web-server
+    container_name: lab09-web-server
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    ports:
+      - "8443:443"
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+      config-init:
+        condition: service_completed_successfully
+    networks:
+      lab-net:
+        ipv4_address: 172.28.9.10
+
+  # ----------------------------------------------------------------------------
+  # Nguon gio that cua lab. `local stratum 8` = tu nhan minh la nguon dong bo
+  # hop le, khong can Internet.
+  # ----------------------------------------------------------------------------
+  ntp:
+    build: ./ntp
+    container_name: lab09-ntp
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+    init: true
+    networks:
+      lab-net:
+        ipv4_address: 172.28.9.30
+
+  client:
+    build: ./client
+    container_name: lab09-client
+    # Gio hien thi theo gio VN (GMT+7). Cert van in GMT; epoch/lech gio khong doi.
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+    init: true
+    # NET_ADMIN: MR5 chan UDP 123 bang iptables; tcpdump bat goi trong container.
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./nginx/ssl:/etc/ssl/lab:ro
+    # Tro thang ten mien vao web-server. Khong co dong nay thi moi lenh curl deu
+    # phai go --resolve, va hoc vien se copy nham sang moi truong that.
+    extra_hosts:
+      - "secure.local:172.28.9.10"
+      - "other.local:172.28.9.10"
+    networks:
+      lab-net:
+        ipv4_address: 172.28.9.20
+    depends_on:
+      - web-server
+      - ntp
+
+networks:
+  lab-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.9.0/24

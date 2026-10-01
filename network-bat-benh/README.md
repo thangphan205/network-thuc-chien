@@ -23,14 +23,14 @@ Series này là **thực chiến** — mỗi tập giả định bạn đã bi�
 
 | Công cụ (Debug Mạng A-Z) | Tầng | Dùng để | Xuất hiện ở ca bệnh |
 | :--- | :---: | :--- | :--- |
-| **`ping`** | L3 | Kiểm tra reachability, phân biệt lỗi L3 vs L4+ | 01, 02, 04, 05, 10 |
+| **`ping`** | L3 | Kiểm tra reachability, phân biệt lỗi L3 vs L4+ | 01, 02, 04, 05, 08 |
 | **`mtr`** | L3 | Soi từng hop, mất gói trên đường đi | (nền tảng định tuyến) |
-| **`netcat` (nc)** | L4 | Test cổng mở/đóng, bắt tay TCP thủ công | 01, 07 |
-| **`ss`** | L4 | Soi socket đang LISTEN, bind `127.0.0.1` vs `0.0.0.0` | 03, 09 |
+| **`netcat` (nc)** | L4 | Test cổng mở/đóng, bắt tay TCP thủ công | 01, 09 |
+| **`ss`** | L4 | Soi socket đang LISTEN, bind `127.0.0.1` vs `0.0.0.0` | 03, 07 |
 | **`dig`** | L7 | Hỏi **thẳng** nameserver — bỏ qua `/etc/hosts` và `nscd`. Ubuntu 24.04+: dùng `dig @<IP DNS thật>` để vượt cả bộ đệm `systemd-resolved` | 06 |
 | **`getent hosts`** | L7 | Đi **đúng đường ứng dụng đi** (`hosts` → cache → DNS). Lệch với `dig` = thủ phạm nằm trên máy client | 06 |
 | **`curl`** | L7 | Test HTTP/HTTPS, đọc mã trạng thái & verbose | hầu hết các tập |
-| **`openssl`** | L5/6 | Soi chuỗi chứng chỉ, hạn cert, bắt tay TLS | 07, 08 |
+| **`openssl`** | L5/6 | Soi chuỗi chứng chỉ, hạn cert, bắt tay TLS | 09, 10 |
 | **`tcpdump`** | L2–L4 | Bắt gói tin (mở bằng Wireshark), soi cờ TCP/ICMP | mọi tập có bước bắt gói |
 | **`iperf3`** | L4 | Đo băng thông, tìm nghẽn throughput | (nền tảng hiệu năng) |
 
@@ -70,12 +70,12 @@ Series này là **thực chiến** — mỗi tập giả định bạn đã bi�
 | **02** | `FW-REJECT` | **Ping thông nhưng Web báo Connection Refused tức thì** | L4 — TCP RST / Active REJECT | [📂 `tap-02-firewall-reject`](./tap-02-firewall-reject) |
 | **03** | `BIND-LOCAL` | **Đứng tại server vào được Web, máy khác cùng mạng thì không** | L4 — Socket Bind `127.0.0.1` vs `0.0.0.0` | [📂 `tap-03-bind-localhost`](./tap-03-bind-localhost) |
 | **04** | `MTU-HOLE` | **Ping gói nhỏ OK, Web tải nửa chừng thì đơ (Treo trang)** | L3/L4 — Path MTU Discovery Blackhole | [📂 `tap-04-mtu-blackhole`](./tap-04-mtu-blackhole) |
-| **05** | `ARP-STALE` | **Đổi IP máy chủ xong cả mạng nội bộ mất kết nối** | L2 — Stale ARP Cache / Gratuitous ARP | [📂 `tap-05-arp-stale-cache`](./tap-05-arp-stale-cache) |
-| **06** | `DNS-RESOLVE` | **Ping IP được nhưng gõ Tên miền thì chết — và 3 ca vẫn ra HTTP 200 từ nhầm máy** | L7 — DNS Resolver, `/etc/hosts`, bộ đệm | [📂 `tap-06-dns-resolution-failure`](./tap-06-dns-resolution-failure) |
-| **07** | `TLS-CLOCK` | **Vào web HTTPS bị báo lỗi Chứng chỉ không hợp lệ** | L5/L6 — TLS Handshake & Clock Skew | [📂 `tap-07-tls-clock-skew`](./tap-07-tls-clock-skew) |
-| **08** | `TLS-CHAIN` | **Máy tính vào web bình thường, điện thoại/curl báo lỗi SSL** | L5/L6 — Thiếu Intermediate CA Cert | [📂 `tap-08-tls-missing-intermediate-ca`](./tap-08-tls-missing-intermediate-ca) |
-| **09** | `NAT-TIMEOUT` | **App đang dùng bình thường cứ sau 5 phút là bị ngắt kết nối** | L4 — NAT Session Idle Timeout | [📂 `tap-09-nat-session-timeout`](./tap-09-nat-session-timeout) |
-| **10** | `ASYM-ROUTING` | **Ping 2 chiều thông suốt nhưng SSH/HTTP vừa vào là rớt** | L3 — Asymmetric Routing qua Stateful FW | [📂 `tap-10-asymmetric-routing`](./tap-10-asymmetric-routing) |
+| **05** | `VIP-NOGARP` | **Failover HA thành công nhưng dịch vụ vẫn chết — client khác subnet, ROUTER ôm MAC đã chết** | L2 — Stale ARP Cache / Gratuitous ARP | [📂 `tap-05-vip-failover-garp`](./tap-05-vip-failover-garp) |
+| **06** | `DNS-RESOLVE` | **Ping IP được nhưng gõ Tên miền thì chết — và có ca vẫn ra HTTP 200 từ nhầm máy** | L7 — DNS Resolver, `/etc/hosts`, bộ đệm | [📂 `tap-06-dns-resolution-failure`](./tap-06-dns-resolution-failure) |
+| **07** | `NAT-TIMEOUT` | **App đang dùng bình thường cứ sau 5 phút là bị ngắt kết nối** | L4 — NAT Session Idle Timeout | [📂 `tap-07-nat-session-timeout`](./tap-07-nat-session-timeout) |
+| **08** | `ASYM-ROUTING` | **Ping 2 chiều thông suốt nhưng SSH/HTTP vừa vào là rớt** | L3 — Asymmetric Routing qua Stateful FW | [📂 `tap-08-asymmetric-routing`](./tap-08-asymmetric-routing) |
+| **09** | `TLS-CLOCK` | **Chứng chỉ báo "hết hạn" nhưng nó còn hạn tới 2028 — và `openssl` bảo OK trong khi `curl` từ chối** | L5/L6 — TLS Handshake, Clock Skew & Xác thực chứng chỉ | [📂 `tap-09-tls-clock-skew`](./tap-09-tls-clock-skew) |
+| **10** | `TLS-CHAIN` | **Máy tính vào web bình thường, điện thoại/curl báo lỗi SSL** | L5/L6 — Thiếu Intermediate CA Cert | [📂 `tap-10-tls-missing-intermediate-ca`](./tap-10-tls-missing-intermediate-ca) |
 
 ---
 
@@ -100,7 +100,9 @@ docker compose up -d --build
 ./scripts/2-fix.sh
 ```
 
-> **Lưu ý cấu hình:** Chứng chỉ TLS (Tập 07, 08) và file `nginx/nginx.conf` được **sinh tự động lúc `docker compose up`** (không commit vào repo), nên chạy lab **không làm bẩn cây git** và cert không bao giờ hết hạn. Mọi gói tool (`curl`, `dig`, `tcpdump`...) đã **bake sẵn trong image** — không cần Internet giữa chừng.
+> **Lưu ý — các tập nhiều kịch bản (05-10):** các tập này dùng cấu trúc khác: chạy `./scripts/0-setup.sh` để dựng lab về trạng thái chuẩn (chạy lại bất cứ lúc nào để reset), rồi chạy từng kịch bản đánh số. Danh sách kịch bản nằm trong `kich-ban.md` của tập; từ tập 06 mỗi buổi học chỉ cần KB1 + 1-2 ca chính, các ca còn lại nằm trong `scripts/mo-rong/`. Sau **mỗi** kịch bản phải chạy lại `0-setup.sh`. Các tập này **không có** `1-fault.sh` / `2-fix.sh`.
+
+> **Lưu ý cấu hình:** Chứng chỉ TLS (Tập 09, 10) và file `nginx/nginx.conf` được **sinh tự động lúc `docker compose up`** (không commit vào repo), nên chạy lab **không làm bẩn cây git** và cert không bao giờ hết hạn. Mọi gói tool (`curl`, `dig`, `tcpdump`...) đã **bake sẵn trong image** — không cần Internet giữa chừng.
 
 ### 🦈 Bắt gói tin bằng Wireshark trên **mọi hệ điều hành**
 

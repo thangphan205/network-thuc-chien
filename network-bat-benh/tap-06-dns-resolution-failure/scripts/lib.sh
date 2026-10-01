@@ -15,7 +15,7 @@ IP_DNS=172.28.6.53
 IP_WEB=172.28.6.10
 IP_WEB_CU=172.28.6.11
 IP_CLIENT=172.28.6.20
-IP_MA=172.28.6.99          # IP khong co may nao — dung cho KB2 va KB6 phan 2
+IP_MA=172.28.6.99          # IP khong co may nao — dung cho KB2 va MR4 phan 2
 
 TEN=web.lab.local          # ten mien chinh cua lab
 ZONE=/etc/dnsmasq/zone-hosts
@@ -49,7 +49,7 @@ nap_lai_dns() { docker exec $DNS dns-start >/dev/null 2>&1 || true; }
 # ⚠️ /etc/hosts cung bi Docker bind-mount tu host giong /etc/resolv.conf, nen
 #    `sed -i` that bai voi "Device or resource busy" (no ghi file tam roi rename).
 #    Ma loi do bi nuot mat trong `|| true` -> 0-setup TUONG la da don sach trong
-#    khi dong xau van con, va KB7 ro ri sang moi kich ban sau no. Phai ghi TAI CHO.
+#    khi dong xau van con, va KB3 ro ri sang moi kich ban sau no. Phai ghi TAI CHO.
 # ------------------------------------------------------------------------------
 xoa_hosts_lab() {
     docker exec $CLIENT sh -c "grep -v '[[:space:]]$TEN\$' /etc/hosts > /tmp/h; cat /tmp/h > /etc/hosts"
@@ -72,7 +72,7 @@ doi_ban_ghi() {
 # dnsmasq duoc khoi dong bang `docker exec` (xem dns/dns-start) nen no KHONG
 # phai PID 1 — `docker compose logs dns` bat duoc SO KHONG dong. Log nam trong
 # file cua container. Day la cong cu tach KB2 (log TRONG: goi chua tung toi noi)
-# khoi KB5 (log CO query: goi toi noi, server moi la ben khong tra loi duoc).
+# khoi MR3 (log CO query: goi toi noi, server moi la ben khong tra loi duoc).
 # ------------------------------------------------------------------------------
 xoa_log_dns() { docker exec $DNS sh -c ": > $LOG_DNS" 2>/dev/null || true; }
 log_dns()     { docker exec $DNS tail -n "${1:-15}" $LOG_DNS 2>/dev/null || true; }
@@ -99,7 +99,7 @@ dem_query_o_server() {
 #    unreachable (net.ipv4.icmp_ratelimit, mac dinh 1 goi/giay). Neu ta ban 4-5
 #    lan dig lien tiep vao mot cong DA DONG, goi ICMP thu 2 tro di bi kernel
 #    chan lai — va "connection refused" bong bien thanh "timed out". Ca benh
-#    KB3 se doi mat thanh KB2 mot cach ngau nhien. Mot lan dig, doc moi thu tu
+#    MR1 se doi mat thanh KB2 mot cach ngau nhien. Mot lan dig, doc moi thu tu
 #    do ra: vua nhanh vua tat dinh.
 # ------------------------------------------------------------------------------
 dig_full() {
@@ -110,7 +110,7 @@ dig_full() {
 }
 
 _lay()      { echo "$1" | sed -n "$2" | head -1; }
-dig_status_tu()   { local v; v=$(_lay "$1" 's/.*status: \([A-Z]*\).*/\1/p'); echo "${v:-KHONG-TRA-LOI}"; }
+dig_status_tu()   { local v; v=$(_lay "$1" 's/.*status: \([A-Z]*\).*/\1/p'); echo "${v:-KHÔNG-TRẢ-LỜI}"; }
 dig_qtime_tu()    { _lay "$1" 's/^;; Query time: \([0-9]*\) msec.*/\1/p'; }
 dig_wall_tu()     { _lay "$1" 's/^;; WALL: \([0-9]*\) msec.*/\1/p'; }
 dig_loi_tu()      { echo "$1" | grep -m1 -E 'communications error|network unreachable' | sed 's/^;; *//' || true; }
@@ -118,7 +118,7 @@ dig_loi_tu()      { echo "$1" | grep -m1 -E 'communications error|network unreac
 dig_ip_tu()       { echo "$1" | awk '$4=="A" && $5 ~ /^[0-9.]+$/ {print $5; exit}' || true; }
 
 # IP ma UNG DUNG that su dung: di qua NSS (/etc/hosts -> nscd -> DNS).
-# Khac biet giua ham nay va dig_ip_tu chinh la o benh cua KB7 va KB8.
+# Khac biet giua ham nay va dig_ip_tu chinh la o benh cua KB3 va MR5.
 ip_theo_nss() { docker exec $CLIENT getent hosts "${1:-$TEN}" 2>/dev/null | awk '{print $1}' | head -1 || true; return 0; }
 
 # Goi HTTP that. In 3 truong ngan cach boi "|": http_code | ip_da_ket_noi | exit
@@ -159,15 +159,15 @@ in_chu_ky() {
     q=$(dem_query_o_server)
 
     echo "  dig status      : ${st}"
-    if [ "$st" = "KHONG-TRA-LOI" ]; then
-        echo "  dig bao loi     : $(dig_loi_tu "$raw")"
-        echo "  dig bo cuoc sau : ${wall:-?} ms   <- dong ho ngoai; KHONG co cau tra loi nao"
+    if [ "$st" = "KHÔNG-TRẢ-LỜI" ]; then
+        echo "  dig báo lỗi     : $(dig_loi_tu "$raw")"
+        echo "  dig bỏ cuộc sau : ${wall:-?} ms   <- đồng hồ ngoài; KHÔNG có câu trả lời nào"
     else
-        echo "  dig Query time  : ${qt:-?} ms   <- server dap trong bao lau"
+        echo "  dig Query time  : ${qt:-?} ms   <- server đáp trong bao lâu"
     fi
-    echo "  IP theo dig     : ${d:-(khong ra)}       <- su that phia DNS server"
-    echo "  IP theo NSS/app : ${n:-(khong ra)}       <- IP ung dung THAT SU dung"
-    echo "  curl            : http_code=${code} exit=${rc} ket noi toi ${rip:-(khong toi dau)}"
-    echo "  trang nhan duoc : ${page:-(khong co)}"
-    echo "  query toi server: ${q}   <- 0 nghia la goi tin CHUA TUNG toi duoc DNS server"
+    echo "  IP theo dig     : ${d:-(không ra)}       <- sự thật phía DNS server"
+    echo "  IP theo NSS/app : ${n:-(không ra)}       <- IP ứng dụng THẬT SỰ dùng"
+    echo "  curl            : http_code=${code} exit=${rc} kết nối tới ${rip:-(không tới đâu)}"
+    echo "  trang nhận được : ${page:-(không có)}"
+    echo "  query tới server: ${q}   <- 0 nghĩa là gói tin CHƯA TỪNG tới được DNS server"
 }

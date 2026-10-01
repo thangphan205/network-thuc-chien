@@ -5,7 +5,7 @@ FROM debian:12-slim
 # Tap nay day ve resolver, ma resolver la mot phan cua libc — doi libc la doi
 # hanh vi. Ba dieu duoi day DA DUOC DO trong chinh lab nay, khong phai suy doan:
 #
-#   1. /etc/hosts de len DNS (KB7): musl va glibc GIONG NHAU. Alpine co ship file
+#   1. /etc/hosts de len DNS (KB3): musl va glibc GIONG NHAU. Alpine co ship file
 #      /etc/nsswitch.conf, nhung musl BO QUA no — ep "hosts: dns" thi musl VAN
 #      doc /etc/hosts. Voi glibc, doi dong do la doi that.
 #
@@ -16,7 +16,7 @@ FROM debian:12-slim
 #      cham" ma khong ai doi gi ve mang.
 #
 #   3. search/ndots: glibc thu tung hau to trong `search` theo thu tu, va mot
-#      cau tra loi NXDOMAIN dut khoat se lam no DUNG LAI (xem KB5).
+#      cau tra loi NXDOMAIN dut khoat se lam no DUNG LAI (xem MR3).
 #
 # Hoc vien gap Ubuntu/RHEL ngoai doi, nen lab phai khop glibc.
 # ==============================================================================
@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         dnsutils curl iproute2 iputils-ping tcpdump nscd procps ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# nscd = bo dem DNS nam NGAY TREN MAY CLIENT. Mac dinh KHONG chay; chi KB8 bat len.
+# nscd = bo dem DNS nam NGAY TREN MAY CLIENT. Mac dinh KHONG chay; chi MR5 bat len.
 #   - Thieu 2 thu muc runtime nay, nscd thoat ngay voi "child exited with status 1".
 #   - TTL 60 giay: du lau de quan sat "sua roi ma van sai", du ngan de xem no het
 #     han ngay trong buoi hoc.

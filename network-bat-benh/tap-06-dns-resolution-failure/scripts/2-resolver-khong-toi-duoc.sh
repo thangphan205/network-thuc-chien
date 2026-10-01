@@ -14,18 +14,18 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/lib.sh
 
-echo "🚨 KB2 — tro /etc/resolv.conf sang $IP_MA (khong co may nao o dia chi do)..."
+echo "🚨 KB2 — trỏ /etc/resolv.conf sang $IP_MA (không có máy nào ở địa chỉ đó)..."
 xoa_log_dns
 dat_resolv "$IP_MA"
 
-buoc "CHU KY: TIMEOUT"
+buoc "CHU KỲ: TIMEOUT"
 in_chu_ky
 echo ""
-echo "👉 Doc chu ky:"
-echo "   • dig mat ~2000 ms roi bo cuoc  -> khong ai TRA LOI. (timeout:1 attempts:2 = 2 lan cho 1s)"
-echo "   • curl bao exit 28 'Resolving timed out' — CHU Y: khong phai exit 6."
-echo "     Rat de nham voi 'server cham'. Nhung 3 giay do la mat o khau PHAN GIAI,"
-echo "     TCP chua he duoc mo."
-echo "   • query toi server = 0  -> goi tin CHUA TUNG toi duoc DNS server."
-echo "     Day la diem tach KB2 khoi KB5 (xem 5-forwarder-chet.sh): KB5 co trieu"
-echo "     chung y het, nhung ben server log CO dong query."
+echo "👉 Đọc chu kỳ:"
+echo "   • dig mất ~2000 ms rồi bỏ cuộc  -> không ai TRẢ LỜI. (timeout:1 attempts:2 = 2 lần chờ 1s)"
+echo "   • curl báo exit 28 'Resolving timed out' — CHÚ Ý: không phải exit 6."
+echo "     Rất dễ nhầm với 'server chậm'. Nhưng 3 giây đó là mất ở khâu PHÂN GIẢI,"
+echo "     TCP chưa hề được mở."
+echo "   • query tới server = 0  -> gói tin CHƯA TỪNG tới được DNS server."
+echo "     Đây là điểm tách KB2 khỏi MR3 (xem mr3-forwarder-chet.sh): MR3 có triệu"
+echo "     chứng y hệt, nhưng bên server log CÓ dòng query."

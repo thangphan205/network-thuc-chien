@@ -1,6 +1,6 @@
 FROM alpine:3.20
 # Bake san cong cu de khong phai `apk add` giua luc quay demo
-RUN apk add --no-cache dnsmasq bind-tools tcpdump
+RUN apk add --no-cache dnsmasq bind-tools tcpdump tzdata
 
 # Ban CHUAN cua cau hinh + zone. Script `0-setup.sh` chep 2 file nay de len ban
 # dang chay moi lan reset, nen moi kich ban deu xuat phat tu cung mot diem.

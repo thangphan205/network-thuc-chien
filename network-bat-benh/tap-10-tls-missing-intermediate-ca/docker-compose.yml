@@ -1,0 +1,131 @@
+# ==============================================================================
+# Lab tap 10 — Thieu Intermediate CA: Chuoi Tin Cay Dut O Dau?
+#
+#                          172.28.10.0/24
+#   [client .20]            [web-server .10]          [aia .30]
+#   curl openssl            nginx 443                 nginx 80
+#   tcpdump                 serve 1 trong 6 CHUOI     serve intermediateCA.der
+#   ca-certificates
+#
+# Vi sao co container `aia`?
+#   Ca tap mo dau bang canh "may tinh vao duoc, dien thoai bao loi". Co che lam
+#   nen canh do la AIA fetching: trinh duyet doc URL trong cert, TU TAI cert
+#   trung gian con thieu ve, roi tu va lai chuoi. Khong co may chu phuc vu file
+#   do thi khong the dien lai canh mo dau — chi noi mieng duoc thoi.
+#   Dat trong lab (khong tro ra Internet) de moi hoc vien thay cung mot ket qua
+#   va lab chay duoc khi rut mang.
+#
+# Vi sao client la mot container rieng chu khong dung curl cua may that?
+#   macOS ship LibreSSL, Linux ship OpenSSL. Hai ban in ma verify va so depth
+#   theo dinh dang KHAC NHAU — ma so depth lai la thu ca tap nay dua vao. Chay
+#   trong container thi moi hoc vien doc duoc dung mot man hinh.
+# ==============================================================================
+services:
+  # ----------------------------------------------------------------------------
+  # Sinh TOAN BO chung chi luc `up`. Chay xong la thoat (khong phai dich vu).
+  # ----------------------------------------------------------------------------
+  certgen:
+    build: ./certgen
+    image: lab10-certgen
+    container_name: lab10-certgen
+    volumes:
+      - ./nginx/ssl:/certs
+
+  # ----------------------------------------------------------------------------
+  # Seed nginx.conf = trang thai KHOE (chuoi day du) moi lan `up`.
+  # nginx.conf duoc gitignore nen chay kich ban khong lam ban cay git.
+  # ----------------------------------------------------------------------------
+  config-init:
+    image: alpine:3.23
+    container_name: lab10-config-init
+    volumes:
+      - ./nginx:/nginx
+    command: sh -c "cp /nginx/conf/good.conf /nginx/nginx.conf"
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+
+  web-server:
+    image: nginx:1.29-alpine
+    container_name: lab10-web-server
+    # MR1 dat mot chuoi dao nguoc -> nginx TU CHOI khoi dong. Do la chu ky cua
+    # ca benh, khong phai su co cua lab. `restart: no` de container nam yen o
+    # trang thai loi cho hoc vien doc log, thay vi quay vong lien tuc.
+    restart: "no"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    ports:
+      - "8444:443"
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+      config-init:
+        condition: service_completed_successfully
+    networks:
+      lab-net:
+        ipv4_address: 172.28.10.10
+
+  # ----------------------------------------------------------------------------
+  # May chu AIA. Chi phuc vu DUNG MOT file: intermediateCA.der.
+  # ----------------------------------------------------------------------------
+  aia:
+    image: nginx:1.29-alpine
+    container_name: lab10-aia
+    volumes:
+      - ./aia/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/ssl:/certs:ro
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+    networks:
+      lab-net:
+        ipv4_address: 172.28.10.30
+
+  client:
+    build: ./client
+    container_name: lab10-client
+    init: true
+    # NET_ADMIN: tcpdump bat goi tin ngay trong container (chay giong nhau tren
+    # macOS/Windows/Linux — goi cua lab khong bao gio ra khoi bridge).
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./nginx/ssl:/etc/ssl/lab:ro
+    # Tro thang ten mien vao container. Khong co dong nay thi moi lenh curl deu
+    # phai go --resolve, va hoc vien se mang thoi quen do ra moi truong that.
+    extra_hosts:
+      - "app.chain.local:172.28.10.10"
+      - "aia.lab.local:172.28.10.30"
+    networks:
+      lab-net:
+        ipv4_address: 172.28.10.20
+    depends_on:
+      - web-server
+      - aia
+
+  # ----------------------------------------------------------------------------
+  # Client thu hai — Debian + image Node chinh thuc. Dung cho MR7.
+  # Cung mot lab, cung mot CA, khac cach image duoc dong goi -> khac ket qua.
+  # ----------------------------------------------------------------------------
+  client-node:
+    build: ./client-node
+    container_name: lab10-client-node
+    init: true
+    volumes:
+      - ./nginx/ssl:/etc/ssl/lab:ro
+    extra_hosts:
+      - "app.chain.local:172.28.10.10"
+      - "aia.lab.local:172.28.10.30"
+    networks:
+      lab-net:
+        ipv4_address: 172.28.10.21
+    depends_on:
+      - web-server
+
+networks:
+  lab-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.10.0/24

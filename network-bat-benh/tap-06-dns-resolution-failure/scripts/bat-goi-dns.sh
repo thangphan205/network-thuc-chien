@@ -16,11 +16,11 @@ GIAY=${1:-12}
 TEN_HOI=${2:-$TEN}
 FILE="dns-$(date +%H%M%S).pcap"
 
-echo "🦈 Bat goi tin UDP/TCP cong 53 trong $CLIENT trong $GIAY giay..."
+echo "🦈 Bắt gói tin UDP/TCP cổng 53 trong $CLIENT trong $GIAY giây..."
 docker exec -d $CLIENT sh -c "tcpdump -i eth0 -w /tmp/cap.pcap 'port 53' 2>/dev/null"
 sleep 1
 
-echo "   Dang sinh luu luong: dig $TEN_HOI + curl http://$TEN_HOI/"
+echo "   Đang sinh lưu lượng: dig $TEN_HOI + curl http://$TEN_HOI/"
 docker exec $CLIENT dig "$TEN_HOI" >/dev/null 2>&1 || true
 docker exec $CLIENT curl -s -o /dev/null --connect-timeout 3 --max-time 5 "http://$TEN_HOI/" >/dev/null 2>&1 || true
 
@@ -30,12 +30,12 @@ sleep 1
 docker cp "$CLIENT:/tmp/cap.pcap" "./$FILE" >/dev/null
 
 echo ""
-echo "✅ Da luu: $(pwd)/$FILE"
-echo "   So goi: $(docker exec $CLIENT sh -c 'tcpdump -r /tmp/cap.pcap 2>/dev/null | wc -l' | tr -d ' ')"
+echo "✅ Đã lưu: $(pwd)/$FILE"
+echo "   Số gói: $(docker exec $CLIENT sh -c 'tcpdump -r /tmp/cap.pcap 2>/dev/null | wc -l' | tr -d ' ')"
 echo ""
-echo "👉 Mo bang Wireshark, dat display filter:  dns"
-echo "   • Chi thay 'Standard query', khong thay 'query response' -> khong ai tra loi (KB2/KB5)."
-echo "   • Thay 'query response ... No such name'                 -> NXDOMAIN (KB4)."
-echo "   • Thay 'query response A $IP_WEB_CU'                     -> co tra loi, nhung SAI IP (KB6)."
-echo "   • KHONG thay goi nao ca                                  -> ung dung khong he hoi DNS"
-echo "                                                               (/etc/hosts hoac cache — KB7/KB8)."
+echo "👉 Mở bằng Wireshark, đặt display filter:  dns"
+echo "   • Chỉ thấy 'Standard query', không thấy 'query response' -> không ai trả lời (KB2/MR3)."
+echo "   • Thấy 'query response ... No such name'                 -> NXDOMAIN (MR2)."
+echo "   • Thấy 'query response A $IP_WEB_CU'                     -> có trả lời, nhưng SAI IP (MR4)."
+echo "   • KHÔNG thấy gói nào cả                                  -> ứng dụng không hề hỏi DNS"
+echo "                                                               (/etc/hosts hoặc cache — KB3/MR5)."

@@ -7,12 +7,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/lib.sh
 
-echo "✅ KB1 — trang thai binh thuong (khong kich hoat loi nao)."
+echo "✅ KB1 — trạng thái bình thường (không kích hoạt lỗi nào)."
 xoa_log_dns
-buoc "CHU KY CUA NGUOI KHOE"
+buoc "CHU KỲ CỦA NGƯỜI KHỎE"
 in_chu_ky
 echo ""
-echo "👉 Ghi nho 3 con so nay, moi ca benh sau se lam lech dung mot trong so chung:"
-echo "   • dig tra loi trong ~1 ms       -> server SONG va tra loi NGAY."
-echo "   • IP theo dig == IP theo NSS    -> khong ai chen ngang giua DNS va ung dung."
-echo "   • trang nhan duoc = SERVER MOI  -> dung dia chi, dung may."
+echo "👉 Ghi nhớ 3 con số này, mỗi ca bệnh sau sẽ làm lệch đúng một trong số chúng:"
+echo "   • dig trả lời trong ~1 ms       -> server SỐNG và trả lời NGAY."
+echo "   • IP theo dig == IP theo NSS    -> không ai chen ngang giữa DNS và ứng dụng."
+echo "   • trang nhận được = SERVER MỚI  -> đúng địa chỉ, đúng máy."

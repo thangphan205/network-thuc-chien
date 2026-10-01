@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tập 09 · Kiến trúc lab TLS Clock Skew</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --color-paper: #f5f5f5;
+      --color-ink: #2d3142;
+      --color-muted: #4f5d75;
+      --color-soft: #7a8399;
+      --color-rule: rgba(45, 49, 66, 0.12);
+      --color-accent: #eb6c36;
+      --color-accent-tint: rgba(235, 108, 54, 0.08);
+      --color-link: #2e5aa8;
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', 'Times New Roman', serif;
+      --font-mono: 'Geist Mono', ui-monospace, Menlo, monospace;
+    }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      overflow: hidden;
+    }
+
+    .stage {
+      position: relative;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 1.25rem 1.75rem 1.5rem;
+      overflow: hidden;
+    }
+
+    /* ── Tab inputs — absolute so they leave no layout footprint ── */
+    .tabin {
+      position: absolute;
+      opacity: 0;
+      width: 1px;
+      height: 1px;
+      pointer-events: none;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    .header {
+      flex: none;
+      margin-bottom: 0.5rem;
+    }
+
+    .header-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.25rem;
+    }
+
+    h1 {
+      font-family: var(--font-sans);
+      font-size: clamp(2rem, 2.6vw + 0.5rem, 2.75rem);
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      line-height: 1.1;
+    }
+
+    /* ── Diagram — takes all remaining height ────────────────────── */
+    .diagram {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .diagram svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Per-scenario SVG layers */
+    .kb1,
+    .kb2,
+    .kb3 {
+      display: none;
+    }
+
+    #t1:checked~.diagram .kb1,
+    #t2:checked~.diagram .kb2,
+    #t3:checked~.diagram .kb3 {
+      display: inline;
+    }
+
+    /* ── Tab bar ────────────────────────────────────────────────── */
+    .tabbar {
+      flex: none;
+      display: flex;
+      gap: 0.5rem;
+      margin: 0.5rem 0 0.75rem;
+    }
+
+    .tabbar label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--color-rule);
+      border-radius: 6px;
+      background: #ffffff;
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--color-soft);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .tabbar label .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: rgba(45, 49, 66, 0.20);
+      flex: none;
+    }
+
+    #t1:checked~.tabbar label[for="t1"],
+    #t2:checked~.tabbar label[for="t2"],
+    #t3:checked~.tabbar label[for="t3"] {
+      border-color: var(--color-accent);
+      background: var(--color-accent-tint);
+      color: var(--color-ink);
+    }
+
+    #t1:checked~.tabbar label[for="t1"] .dot,
+    #t2:checked~.tabbar label[for="t2"] .dot,
+    #t3:checked~.tabbar label[for="t3"] .dot {
+      background: var(--color-accent);
+    }
+
+    #t1:focus-visible~.tabbar label[for="t1"],
+    #t2:focus-visible~.tabbar label[for="t2"],
+    #t3:focus-visible~.tabbar label[for="t3"] {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+
+    /* ── Panels ─────────────────────────────────────────────────── */
+    .panels {
+      flex: none;
+    }
+
+    .panel {
+      display: none;
+      gap: 1.5rem;
+      background: #ffffff;
+      border: 1px solid var(--color-rule);
+      border-radius: 6px;
+      padding: 1rem 1.25rem;
+    }
+
+    #t1:checked~.panels .pane1,
+    #t2:checked~.panels .pane2,
+    #t3:checked~.panels .pane3 {
+      display: flex;
+    }
+
+    .cmd {
+      flex: 0 0 38%;
+      border-right: 1px solid rgba(45, 49, 66, 0.08);
+      padding-right: 1.25rem;
+    }
+
+    .cmd .file {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--color-soft);
+      margin-bottom: 0.4rem;
+    }
+
+    .cmd code {
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+      line-height: 1.45;
+      color: var(--color-ink);
+      word-break: break-word;
+    }
+
+    .panel ul {
+      list-style: none;
+      color: var(--color-muted);
+      font-size: 1.0625rem;
+      line-height: 1.45;
+      align-self: center;
+    }
+
+    .panel li {
+      margin-bottom: 0.3rem;
+      padding-left: 1.5rem;
+      position: relative;
+    }
+
+    .panel li:last-child {
+      margin-bottom: 0;
+    }
+
+    .panel li::before {
+      content: '—';
+      position: absolute;
+      left: 0;
+      color: rgba(45, 49, 66, 0.28);
+    }
+
+    .panel code {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: var(--color-ink);
+    }
+
+    .panel strong {
+      color: var(--color-ink);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="stage">
+
+    <input class="tabin" type="radio" name="kb" id="t1" checked>
+    <input class="tabin" type="radio" name="kb" id="t2">
+    <input class="tabin" type="radio" name="kb" id="t3">
+
+    <div class="header">
+      <p class="header-eyebrow">Network Bắt Bệnh · Tập 09</p>
+      <h1>Chứng chỉ "hết hạn" mà vẫn còn hạn — lab TLS</h1>
+    </div>
+
+    <div class="diagram">
+      <svg viewBox="0 0 1280 480" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" role="img"
+        aria-labelledby="lab09-topo-title lab09-topo-desc">
+        <title id="lab09-topo-title">Kiến trúc lab TLS Clock Skew</title>
+        <desc id="lab09-topo-desc">LAN phẳng 172.28.9.0/24: client Alpine 172.28.9.20 bắt tay TLS tới web-server nginx
+          172.28.9.10 cổng 443 và tự kiểm tra cert theo ba phép: thời hạn so với đồng hồ của chính nó, chuỗi tin cậy so
+          với trust store, tên miền so với SAN. chronyd trên client hỏi giờ ntp 172.28.9.30 qua UDP 123. Ba tab (khỏe, cert hết hạn thật,
+          đồng hồ client sai) cho thấy phép kiểm tra nào trượt trong từng kịch bản, cùng chữ ký chẩn đoán: mã openssl verify, exit code curl, độ lệch
+          giờ và thủ phạm.
+        </desc>
+
+        <defs>
+          <marker id="arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 9 3.5, 0 7" fill="#4f5d75" />
+          </marker>
+          <marker id="arrow-accent" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 9 3.5, 0 7" fill="#eb6c36" />
+          </marker>
+          <marker id="arrow-link" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 9 3.5, 0 7" fill="#2e5aa8" />
+          </marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5" />
+        <text x="20" y="36" fill="#7a8399" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.10em">172.28.9.0/24 · MỘT LAN PHẲNG, KHÔNG ROUTER</text>
+        <rect x="20" y="56" width="580" height="376" rx="8" fill="rgba(79,93,117,0.06)" stroke="rgba(79,93,117,0.35)" stroke-width="1.2" />
+        <rect x="368" y="62" width="224" height="18" rx="2" fill="#f5f5f5" />
+        <text x="586" y="76" fill="rgba(45,49,66,0.55)" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.08em">CLIENT · 172.28.9.20 · ALPINE</text>
+        <rect x="226" y="96" width="168" height="96" rx="8" fill="#f5f5f5" /><rect x="226" y="96" width="168" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1.6" />
+        <text x="310.0" y="128" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">trust store</text>
+        <text x="310.0" y="152" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">Lab09 Root CA</text>
+        <rect x="40" y="96" width="168" height="96" rx="8" fill="#f5f5f5" /><rect x="40" y="96" width="168" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1.6" />
+        <text x="124.0" y="128" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">đồng hồ</text>
+        <text x="124.0" y="152" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">giờ tiến trình thấy</text>
+        <rect x="412" y="96" width="168" height="96" rx="8" fill="#f5f5f5" /><rect x="412" y="96" width="168" height="96" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1.6" />
+        <text x="496.0" y="128" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">curl</text>
+        <text x="496.0" y="152" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">openssl s_client</text>
+        <rect x="40" y="212" width="540" height="132" rx="8" fill="#ffffff" stroke="rgba(45,49,66,0.25)" stroke-width="1.2" />
+        <text x="52" y="230" fill="#7a8399" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.10em">CLIENT TỰ KIỂM TRA CERT LÚC BẮT TAY</text>
+        <rect x="46" y="240" width="170" height="94" rx="6" fill="rgba(45,49,66,0.04)" stroke="rgba(45,49,66,0.18)" stroke-width="1.2" />
+        <text x="131.0" y="262" fill="#2d3142" font-size="12" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">THỜI HẠN</text>
+        <text x="131.0" y="284" fill="#4f5d75" font-size="11" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">notBefore ≤ giờ ≤ notAfter</text>
+        <rect x="226" y="240" width="170" height="94" rx="6" fill="rgba(45,49,66,0.04)" stroke="rgba(45,49,66,0.18)" stroke-width="1.2" />
+        <text x="311.0" y="262" fill="#2d3142" font-size="12" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CHUỖI TIN CẬY</text>
+        <text x="311.0" y="284" fill="#4f5d75" font-size="11" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">issuer ∈ trust store</text>
+        <rect x="406" y="240" width="170" height="94" rx="6" fill="rgba(45,49,66,0.04)" stroke="rgba(45,49,66,0.18)" stroke-width="1.2" />
+        <text x="491.0" y="262" fill="#2d3142" font-size="12" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">TÊN MIỀN</text>
+        <text x="491.0" y="284" fill="#4f5d75" font-size="11" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">SAN = tên đang gõ</text>
+        <rect x="40" y="356" width="168" height="60" rx="8" fill="#f5f5f5" /><rect x="40" y="356" width="168" height="60" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1.6" />
+        <text x="124.0" y="382" fill="#2d3142" font-size="18" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">chronyd</text>
+        <text x="124.0" y="403" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">NTP client</text>
+        <rect x="700" y="56" width="300" height="236" rx="8" fill="#f5f5f5" /><rect x="700" y="56" width="300" height="236" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+        <rect x="712" y="68" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)" stroke-width="1.2" /><text x="730.0" y="82" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WEB</text>
+        <text x="870.0" y="88" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">web-server</text>
+        <text x="870.0" y="112" fill="#2d3142" font-size="14" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">172.28.9.10 · nginx :443</text>
+        <rect x="714" y="128" width="272" height="150" rx="6" fill="rgba(45,49,66,0.04)" stroke="rgba(45,49,66,0.25)" stroke-width="1.2" />
+        <text x="850.0" y="148" fill="#7a8399" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.10em">CERT ĐANG SERVE</text>
+        <rect x="700" y="332" width="300" height="100" rx="8" fill="#f5f5f5" /><rect x="700" y="332" width="300" height="100" rx="8" fill="#ffffff" stroke="#2d3142" stroke-width="1.6" />
+        <rect x="712" y="344" width="36" height="20" rx="3" fill="transparent" stroke="rgba(45,49,66,0.45)" stroke-width="1.2" /><text x="730.0" y="358" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NTP</text>
+        <text x="870.0" y="372" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">ntp</text>
+        <text x="870.0" y="396" fill="#2d3142" font-size="15" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">172.28.9.30</text>
+        <text x="870.0" y="418" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">chronyd · stratum 8</text>
+        <rect x="1040" y="56" width="220" height="376" rx="8" fill="#ffffff" stroke="rgba(45,49,66,0.25)" stroke-width="1.2" />
+        <text x="1056" y="82" fill="#7a8399" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.10em">CHỮ KÝ CHẨN ĐOÁN</text>
+        <text x="1056" y="116" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.04em">openssl verify</text>
+        <text x="1056" y="212" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.04em">curl</text>
+        <line x1="1056" y1="190" x2="1244" y2="190" stroke="rgba(45,49,66,0.10)" stroke-width="1" />
+        <text x="1056" y="268" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.04em">lệch giờ</text>
+        <line x1="1056" y1="246" x2="1244" y2="246" stroke="rgba(45,49,66,0.10)" stroke-width="1" />
+        <text x="1056" y="324" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.04em">thủ phạm</text>
+        <line x1="1056" y1="302" x2="1244" y2="302" stroke="rgba(45,49,66,0.10)" stroke-width="1" />
+        <text x="1056" y="380" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.04em">chữa</text>
+        <line x1="1056" y1="358" x2="1244" y2="358" stroke="rgba(45,49,66,0.10)" stroke-width="1" />
+
+        <!-- ============ PER-SCENARIO LAYERS ============ -->
+        <g class="kb1">
+          <text x="124.0" y="178" fill="#2d3142" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">giờ thật</text>
+          <text x="310.0" y="178" fill="#4f5d75" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">CA lab đã cài</text>
+          <text x="496.0" y="178" fill="#2e5aa8" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">HTTP 200</text>
+          <line x1="600" y1="120" x2="700" y2="120" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="627.6" y="96" width="44.8" height="19" rx="2" fill="#f5f5f5" /><text x="650.0" y="110" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.03em">:443</text>
+          <line x1="700" y1="168" x2="600" y2="168" stroke="#2e5aa8" stroke-width="1.8" marker-end="url(#arrow-link)" />
+          <rect x="627.6" y="174" width="44.8" height="19" rx="2" fill="#f5f5f5" /><text x="650.0" y="188" fill="#2e5aa8" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.03em">cert</text>
+          <text x="850.0" y="174" fill="#2d3142" font-size="17" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">server.crt</text>
+          <text x="730" y="200" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">notBefore</text>
+          <text x="970" y="200" fill="#2d3142" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">lúc dựng lab</text>
+          <text x="730" y="222" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">notAfter</text>
+          <text x="970" y="222" fill="#2d3142" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">+825 ngày (~2028)</text>
+          <text x="730" y="244" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">SAN</text>
+          <text x="970" y="244" fill="#2d3142" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">secure.local</text>
+          <text x="730" y="266" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">issuer</text>
+          <text x="970" y="266" fill="#2d3142" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">Lab09 Root CA</text>
+          <text x="131.0" y="316" fill="#2f7d4f" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">✓ đạt</text>
+          <text x="311.0" y="316" fill="#2f7d4f" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">✓ đạt</text>
+          <text x="491.0" y="316" fill="#2f7d4f" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">✓ đạt</text>
+          <line x1="208" y1="386.0" x2="700" y2="386.0" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="375.3" y="364.0" width="69.39999999999999" height="19" rx="2" fill="#f5f5f5" /><text x="410" y="378.0" fill="#4f5d75" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.03em">UDP 123</text>
+          <text x="1056" y="152" fill="#2f7d4f" font-size="30" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">0</text>
+          <text x="1056" y="174" fill="#4f5d75" font-size="12" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">ok</text>
+          <text x="1056" y="238" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">200</text>
+          <text x="1056" y="294" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">~0 giây</text>
+          <text x="1056" y="350" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist', sans-serif" text-anchor="start">—</text>
+          <text x="1056" y="406" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist', sans-serif" text-anchor="start">—</text>
+        </g>
+        <g class="kb2">
+          <text x="124.0" y="178" fill="#2d3142" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">giờ thật</text>
+          <text x="310.0" y="178" fill="#4f5d75" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">CA lab đã cài</text>
+          <text x="496.0" y="178" fill="#eb6c36" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">exit 60</text>
+          <line x1="600" y1="120" x2="700" y2="120" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="627.6" y="96" width="44.8" height="19" rx="2" fill="#f5f5f5" /><text x="650.0" y="110" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.03em">:443</text>
+          <line x1="700" y1="168" x2="600" y2="168" stroke="#eb6c36" stroke-width="1.8" marker-end="url(#arrow-accent)" />
+          <rect x="627.6" y="174" width="44.8" height="19" rx="2" fill="#f5f5f5" /><text x="650.0" y="188" fill="#eb6c36" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.03em">cert</text>
+          <text x="850.0" y="174" fill="#2d3142" font-size="17" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">expired.crt</text>
+          <text x="730" y="200" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">notBefore</text>
+          <text x="970" y="200" fill="#2d3142" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">2023-01-01</text>
+          <text x="730" y="222" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">notAfter</text>
+          <text x="970" y="222" fill="#eb6c36" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">2024-01-01</text>
+          <text x="730" y="244" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">SAN</text>
+          <text x="970" y="244" fill="#2d3142" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">secure.local</text>
+          <text x="730" y="266" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">issuer</text>
+          <text x="970" y="266" fill="#2d3142" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">Lab09 Root CA</text>
+          <rect x="46" y="240" width="170" height="94" rx="6" fill="rgba(235,108,54,0.07)" stroke="#eb6c36" stroke-width="1.6" />
+          <text x="131.0" y="262" fill="#2d3142" font-size="12" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">THỜI HẠN</text>
+          <text x="131.0" y="284" fill="#4f5d75" font-size="11" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">notBefore ≤ giờ ≤ notAfter</text>
+          <text x="131.0" y="316" fill="#eb6c36" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">✗ code 10</text>
+          <text x="311.0" y="316" fill="#2f7d4f" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">✓ đạt</text>
+          <text x="491.0" y="316" fill="#2f7d4f" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">✓ đạt</text>
+          <line x1="208" y1="386.0" x2="700" y2="386.0" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="375.3" y="364.0" width="69.39999999999999" height="19" rx="2" fill="#f5f5f5" /><text x="410" y="378.0" fill="#4f5d75" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.03em">UDP 123</text>
+          <text x="1056" y="152" fill="#eb6c36" font-size="30" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">10</text>
+          <text x="1056" y="174" fill="#eb6c36" font-size="12" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">certificate has expired</text>
+          <text x="1056" y="238" fill="#eb6c36" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">exit 60</text>
+          <text x="1056" y="294" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">+0 giây</text>
+          <text x="1056" y="350" fill="#eb6c36" font-size="16" font-weight="700" font-family="'Geist', sans-serif" text-anchor="start">SERVER</text>
+          <text x="1056" y="406" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist', sans-serif" text-anchor="start">thay cert mới</text>
+        </g>
+        <g class="kb3">
+          <text x="124.0" y="178" fill="#eb6c36" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">2035-01-01</text>
+          <text x="310.0" y="178" fill="#4f5d75" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">CA lab đã cài</text>
+          <text x="496.0" y="178" fill="#eb6c36" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">exit 60</text>
+          <rect x="40" y="96" width="168" height="96" rx="8" fill="none" /><rect x="40" y="96" width="168" height="96" rx="8" fill="rgba(235,108,54,0.06)" stroke="#eb6c36" stroke-width="1.6" />
+          <line x1="600" y1="120" x2="700" y2="120" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="627.6" y="96" width="44.8" height="19" rx="2" fill="#f5f5f5" /><text x="650.0" y="110" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.03em">:443</text>
+          <line x1="700" y1="168" x2="600" y2="168" stroke="#2e5aa8" stroke-width="1.8" marker-end="url(#arrow-link)" />
+          <rect x="627.6" y="174" width="44.8" height="19" rx="2" fill="#f5f5f5" /><text x="650.0" y="188" fill="#2e5aa8" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.03em">cert</text>
+          <text x="850.0" y="174" fill="#2d3142" font-size="17" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">server.crt</text>
+          <text x="730" y="200" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">notBefore</text>
+          <text x="970" y="200" fill="#2d3142" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">lúc dựng lab</text>
+          <text x="730" y="222" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">notAfter</text>
+          <text x="970" y="222" fill="#2d3142" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">+825 ngày (~2028)</text>
+          <text x="730" y="244" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">SAN</text>
+          <text x="970" y="244" fill="#2d3142" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">secure.local</text>
+          <text x="730" y="266" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">issuer</text>
+          <text x="970" y="266" fill="#2d3142" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">Lab09 Root CA</text>
+          <rect x="46" y="240" width="170" height="94" rx="6" fill="rgba(235,108,54,0.07)" stroke="#eb6c36" stroke-width="1.6" />
+          <text x="131.0" y="262" fill="#2d3142" font-size="12" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">THỜI HẠN</text>
+          <text x="131.0" y="284" fill="#4f5d75" font-size="11" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">notBefore ≤ giờ ≤ notAfter</text>
+          <text x="131.0" y="316" fill="#eb6c36" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">✗ code 10</text>
+          <text x="311.0" y="316" fill="#2f7d4f" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">✓ đạt</text>
+          <text x="491.0" y="316" fill="#2f7d4f" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">✓ đạt</text>
+          <line x1="208" y1="386.0" x2="700" y2="386.0" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+          <rect x="375.3" y="364.0" width="69.39999999999999" height="19" rx="2" fill="#f5f5f5" /><text x="410" y="378.0" fill="#4f5d75" font-size="13" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.03em">UDP 123</text>
+          <text x="1056" y="152" fill="#eb6c36" font-size="30" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">10</text>
+          <text x="1056" y="174" fill="#eb6c36" font-size="12" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">certificate has expired</text>
+          <text x="1056" y="238" fill="#eb6c36" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">exit 60</text>
+          <text x="1056" y="294" fill="#eb6c36" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">+8 năm 99 ngày</text>
+          <text x="1056" y="350" fill="#eb6c36" font-size="16" font-weight="700" font-family="'Geist', sans-serif" text-anchor="start">CLIENT</text>
+          <text x="1056" y="406" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist', sans-serif" text-anchor="start">đồng bộ NTP</text>
+        </g>
+
+        <!-- ============ LEGEND ============ -->
+        <line x1="20" y1="444" x2="1260" y2="444" stroke="rgba(45,49,66,0.12)" stroke-width="1" />
+        <text x="20" y="470" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.14em">CHÚ GIẢI</text>
+        <line x1="116" y1="465" x2="144" y2="465" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+        <text x="156" y="470" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">kết nối / truy vấn</text>
+        <line x1="310" y1="465" x2="338" y2="465" stroke="#2e5aa8" stroke-width="1.8" marker-end="url(#arrow-link)" />
+        <text x="350" y="470" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">cert đạt / phiên sống</text>
+        <line x1="530" y1="465" x2="558" y2="465" stroke="#eb6c36" stroke-width="1.8" marker-end="url(#arrow-accent)" />
+        <text x="570" y="470" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">ổ bệnh</text>
+        <circle cx="672" cy="465" r="9" fill="#f5f5f5" stroke="#eb6c36" stroke-width="2" /><line x1="666.78" y1="459.78" x2="677.22" y2="470.22" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" /><line x1="677.22" y1="459.78" x2="666.78" y2="470.22" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" />
+        <text x="690" y="470" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">bị chặn / bị từ chối</text>
+        <text x="870" y="470" fill="#2f7d4f" font-size="15" font-weight="700" font-family="'Geist', sans-serif" text-anchor="start">✓</text>
+        <text x="888" y="470" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">phép kiểm tra đạt</text>
+        <text x="1040" y="470" fill="#eb6c36" font-size="15" font-weight="700" font-family="'Geist', sans-serif" text-anchor="start">✗</text>
+        <text x="1058" y="470" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">phép kiểm tra trượt</text>
+      </svg>
+    </div>
+
+    <nav class="tabbar">
+      <label for="t1"><span class="dot"></span>KB1 Khỏe</label>
+      <label for="t2"><span class="dot"></span>KB2 Hết hạn</label>
+      <label for="t3"><span class="dot"></span>KB3 Lệch giờ</label>
+    </nav>
+
+    <div class="panels">
+      <section class="panel pane1">
+        <div class="cmd">
+          <span class="file">scripts/1-binh-thuong.sh</span>
+          <code>curl https://secure.local/</code>
+        </div>
+        <ul>
+          <li><code>openssl verify 0 (ok)</code> và <code>curl</code> 200 — hai góc nhìn đồng ý</li>
+          <li>Lệch giờ ~0 giây — mọi kết luận về thời hạn từ đây đáng tin</li>
+          <li>Ghi lại <code>notBefore</code>/<code>notAfter</code> — mốc so sánh cho các tab sau</li>
+        </ul>
+      </section>
+      <section class="panel pane2">
+        <div class="cmd">
+          <span class="file">scripts/2-cert-het-han.sh</span>
+          <code>nginx serve expired.crt   # notAfter 2024-01-01</code>
+        </div>
+        <ul>
+          <li><code>verify 10</code> <em>certificate has expired</em>, <code>curl</code> exit <strong>60</strong></li>
+          <li>Lệch giờ <strong>+0 giây</strong> → hai đồng hồ khớp → <code>notAfter</code> là sự thật</li>
+          <li>Chữa: thay cert. Đồng bộ NTP ở đây vô ích</li>
+        </ul>
+      </section>
+      <section class="panel pane3">
+        <div class="cmd">
+          <span class="file">scripts/3-client-lech-gio.sh</span>
+          <code>faketime &quot;2035-01-01&quot; curl https://secure.local/</code>
+        </div>
+        <ul>
+          <li>Cert <strong>còn hạn</strong> — vẫn ra <code>verify 10</code>, giống hệt KB2 từng chữ</li>
+          <li>Lệch giờ <strong>+8 năm 99 ngày</strong> — thứ DUY NHẤT tách được KB3 khỏi KB2</li>
+          <li>Lùi về 2020 → <code>verify 9</code>, giống ca "cert chưa hiệu lực". Chữa: NTP, <strong>đừng</strong> thay cert</li>
+        </ul>
+      </section>
+    </div>
+
+  </div>
+</body>
+
+</html>
