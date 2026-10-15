@@ -1,6 +1,6 @@
 #!/bin/sh
 # Dung dnsmasq -> cong UDP 53 dong han. Kernel se tra ve ICMP port unreachable,
-# khac han voi "khong ai tra loi". Day la chu ky cua MR1.
+# khac han voi "khong ai tra loi". Day la chu ky cua KB3.
 pkill -x dnsmasq 2>/dev/null
 i=0
 while pgrep -x dnsmasq >/dev/null 2>&1 && [ $i -lt 20 ]; do sleep 0.1; i=$((i+1)); done

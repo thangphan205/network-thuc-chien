@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# MR3 — RESOLVER SONG NHUNG CAM VOI MOT VUNG.  Chu ky: dig "timed out" giong KB2.
+# KB4 — DNS LOCAL SONG, DUONG RA UPSTREAM CHET.  Chu ky: dig "timed out" giong KB2.
+#
+# Ngoai doi day la ca "ping 8.8.8.8 duoc, dig ten ngoai chet, ten noi bo van 0 ms":
+# DNS noi bo song, nhung forwarder/upstream (AD, DNS chi nhanh, ISP) khong tra loi.
+# Lab dung vung `noi-bo.local` -> .99 de mo phong dung ket qua do.
 #
 # Tinh huong ngoai doi: DNS noi bo cua cong ty chuyen tiep vung `noi-bo.local`
 # len mot may chu khac (AD, DNS chi nhanh). May do chet. Resolver van song, van
@@ -13,12 +17,12 @@
 #    PHIA SERVER moi tra loi: log co dong query hay khong.
 # ==============================================================================
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/.."
 source scripts/lib.sh
 
 TEN_NB=db.noi-bo.local
 
-echo "🚨 MR3 — cấu hình dnsmasq chuyển tiếp vùng noi-bo.local sang $IP_MA (máy đã chết)..."
+echo "🚨 KB4 — cấu hình dnsmasq chuyển tiếp vùng noi-bo.local sang $IP_MA (máy đã chết)..."
 docker exec $DNS sh -c "cp /etc/dnsmasq/dnsmasq.conf.default $CONF && printf 'server=/noi-bo.local/%s\n' '$IP_MA' >> $CONF"
 nap_lai_dns
 sleep 1
@@ -36,18 +40,22 @@ echo "👉 Đọc chu kỳ:"
 echo "   • dig: 'communications error to $IP_DNS#53: timed out', bỏ cuộc sau ~2000 ms."
 echo "     Đặt cạnh KB2 thì hai màn hình dig GIỐNG NHAU từng chữ (chỉ khác địa chỉ IP)."
 echo "   • 'query tới server' > 0 — ĐÂY LÀ ĐIỂM TÁCH BỆNH. Gói tin ĐÃ TỚI NƠI."
-echo "     Log server ghi rõ: nhận câu hỏi -> 'forwarded ... to $IP_MA' -> rồi tắc."
-echo "     Ở KB2 con số này là 0: câu hỏi chưa bao giờ rời khỏi client."
+echo "     Log server ghi rõ: nhận câu hỏi -> 'forwarded ... to $IP_MA' -> KHÔNG có dòng"
+echo "     'reply' nào -> rồi tắc. Ở KB2 con số này là 0: câu hỏi chưa bao giờ tới server."
+echo "     (Nếu log có CẢ 'query' lẫn 'reply' mà client vẫn timeout thì gói trả lời bị chặn"
+echo "      trên đường VỀ — firewall/rp_filter — không phải KB4.)"
 echo ""
-echo "🔎 Chi tiết đáng chú ý — curl lại KHÔNG giống KB2:"
-echo "     KB2: curl exit 28 sau ~3000 ms   (không nameserver nào trả lời bất cứ gì)"
-echo "     MR3: curl exit  6 sau ~2000 ms   (có một câu trả lời DỨT KHOÁT ở đâu đó)"
+echo "🔎 Chi tiết đáng chú ý — thời gian của curl khác KB2:"
+echo "     KB2: curl trần ~3,8 s, exit 6   (cả 2 tên đều im lặng: 2 s + 2 s)"
+echo "     KB4: curl trần ~2,0 s, exit 6   (tên thứ nhất im lặng 2 s, tên thứ hai ra ngay)"
 echo "   Vì sao? Ứng dụng KHÔNG chỉ hỏi một tên. Với 'search lab.local' trong"
 echo "   /etc/resolv.conf, glibc hỏi lần lượt:"
-echo "       1. $TEN_NB           -> chuyển tiếp sang máy chết -> im lặng"
+echo "       1. $TEN_NB           -> chuyển tiếp sang máy chết -> im lặng 2 s"
 echo "       2. $TEN_NB.lab.local -> thuộc vùng lab.local -> NXDOMAIN NGAY"
-echo "   Nhận được NXDOMAIN dứt khoát, glibc dừng lại và báo 'không tìm thấy'."
 echo "   Còn dig thì chỉ hỏi ĐÚNG cái tên bạn gõ, không nối thêm hậu tố nào."
+echo "   Lưu ý: curl của lab có --connect-timeout 3 nên KB2 bị cắt ở exit 28 còn KB4"
+echo "   kịp kết thúc ở exit 6. Đó là hệ quả của timeout trong script, KHÔNG phải"
+echo "   chữ ký bền — đừng dùng exit code để tách KB2 và KB4."
 echo ""
 echo "🔑 Hai bài học:"
 echo "   1. 'DNS timeout' ở client CHƯA nói lên điều gì. Phải hỏi tiếp: gói tin có"

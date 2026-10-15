@@ -10,11 +10,11 @@
 #           KHONG qua nscd. Day la "su that phia DNS server".
 #   NSS   : IP ma UNG DUNG that su dung (getent -> /etc/hosts -> nscd -> DNS).
 #           DIG != NSS  =>  thu pham nam TREN MAY NAY, khong phai o DNS server
-#           (KB3 /etc/hosts, MR5 bo dem).
+#           (KB7 /etc/hosts, KB8 bo dem).
 #   HTTP  : ma tra ve + IP that su ket noi toi, hoac ma loi cua curl.
 #   TRANG : tieu de trang -> biet dang noi chuyen voi may NAO.
 #           DIG == NSS, HTTP 200, ma TRANG sai  =>  DNS tra loi dung DINH DANG
-#           nhung SAI DIA CHI (MR4).
+#           nhung SAI DIA CHI (KB6).
 #
 # ⚠️ Moi vong chi goi dig MOT lan va curl MOT lan. Khi dang co benh, moi lenh
 #    deu phai cho het timeout — goi lap lai se lam mot vong dai hon 10 giay va

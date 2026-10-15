@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# KB3 — /etc/hosts DE LEN DNS.  Chu ky: dig DUNG nhung ung dung di SAI.
+# KB7 — /etc/hosts DE LEN DNS.  Chu ky: dig DUNG nhung ung dung di SAI.
 #
 # Tinh huong ngoai doi: ai do them mot dong vao /etc/hosts hoi debug thang truoc
 # roi quen xoa. Hoac cong cu trien khai ghi vao do. DNS server hoan toan vo can.
@@ -14,7 +14,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/lib.sh
 
-echo "🚨 KB3 — thêm một dòng để quên trong /etc/hosts của client..."
+echo "🚨 KB7 — thêm một dòng để quên trong /etc/hosts của client..."
 xoa_log_dns
 them_hosts "$IP_WEB_CU"
 echo "   /etc/hosts hiện có:"
@@ -30,9 +30,9 @@ echo ""
 echo "👉 Đọc chu kỳ:"
 echo "   • IP theo dig     = $IP_WEB  (dig hỏi thẳng server — server trả ĐÚNG)"
 echo "   • IP theo NSS/app = $IP_WEB_CU  (ứng dụng đọc /etc/hosts TRƯỚC)"
-echo "   • Hai dòng này LỆCH NHAU. Đó là toàn bộ chẩn đoán của KB3."
-echo "   • curl 200 nhưng vào SERVER CŨ — giống hệt MR4-A về triệu chứng bên ngoài,"
-echo "     nhưng khác hẳn ở chỗ: MR4 sửa trên DNS SERVER, KB3 sửa trên MÁY CLIENT."
+echo "   • Hai dòng này LỆCH NHAU. Đó là toàn bộ chẩn đoán của KB7."
+echo "   • curl 200 nhưng vào SERVER CŨ — giống hệt KB6-A về triệu chứng bên ngoài,"
+echo "     nhưng khác hẳn ở chỗ: KB6 sửa trên DNS SERVER, KB7 sửa trên MÁY CLIENT."
 echo ""
 echo "🔑 Bài học: nếu bạn chỉ dùng dig để kiểm tra, bạn sẽ kết luận 'DNS ổn' và"
 echo "   đóng ticket. Lệnh đúng để kiểm tra là getent hosts <tên> — nó đi đúng"

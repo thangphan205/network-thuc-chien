@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# MR5 — BO DEM GIU IP CU.  ⭐ Chu ky: "sua roi ma van sai".
+# KB8 — BO DEM GIU IP CU.  ⭐ Chu ky: "sua roi ma van sai".
 #
 # Tinh huong ngoai doi: ban chuyen server, sua ban ghi A, dig kiem tra thay dung
 # IP moi. Nhung ung dung tren may van vao dia chi cu. Ban restart ung dung —
@@ -12,10 +12,10 @@
 # du lieu MOI trong khi ung dung van an du lieu CU. Hai cong cu, hai su that.
 # ==============================================================================
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/.."
 source scripts/lib.sh
 
-# ./scripts/mo-rong/mr5-cache-cu.sh --chua  -> chi chay phan chua roi thoat
+# ./scripts/8-cache-cu.sh --chua  -> chi chay phan chua roi thoat
 if [ "${1:-}" = "--chua" ]; then
     echo "🩺 Xóa bộ đệm hosts của nscd..."
     docker exec $CLIENT nscd -i hosts >/dev/null 2>&1 || true
@@ -26,7 +26,12 @@ if [ "${1:-}" = "--chua" ]; then
     exit 0
 fi
 
-echo "🚨 MR5 — bật nscd (bộ đệm DNS của hệ thống) và nạp tên vào cache..."
+echo "🚨 KB8 — dựng cảnh trước khi chuyển server: $TEN đang trỏ SERVER CŨ ($IP_WEB_CU)..."
+# TTL ban ghi 60 luc ham cache, khong thi nscd chi giu 30 s (xem dat_local_ttl)
+dat_local_ttl 60
+doi_ban_ghi "$TEN" "$IP_WEB_CU"
+sleep 1
+echo "🚨 Bật nscd (bộ đệm DNS của hệ thống) và nạp tên vào cache..."
 docker exec $CLIENT sh -c "pkill -x nscd 2>/dev/null; rm -f /var/db/nscd/* 2>/dev/null; nscd" >/dev/null 2>&1 || true
 sleep 1
 docker exec $CLIENT sh -c 'pgrep -x nscd >/dev/null && echo "   nscd đang chạy, TTL hosts = 60 giây"'
@@ -39,18 +44,19 @@ docker exec $CLIENT sh -c "curl -s -o /dev/null --max-time 3 'http://$TEN/'" >/d
 echo "   Đã nạp vào cache: $TEN -> $(ip_theo_nss)"
 
 echo ""
-echo "🚨 Bây giờ đổi bản ghi trên DNS server sang $IP_WEB_CU (như vừa chuyển server)..."
+echo "🚨 Bây giờ chuyển server: đổi bản ghi trên DNS server sang $IP_WEB (SERVER MỚI)..."
 xoa_log_dns
-doi_ban_ghi "$TEN" "$IP_WEB_CU"
+dat_local_ttl 30
+doi_ban_ghi "$TEN" "$IP_WEB"
 sleep 1
 
 buoc "CHU KỲ: dig thấy IP MỚI, ứng dụng vẫn dùng IP CŨ"
 in_chu_ky
 echo ""
 echo "👉 Đọc chu kỳ:"
-echo "   • IP theo dig     = $IP_WEB_CU  (MỚI — DNS server đã cập nhật xong)"
-echo "   • IP theo NSS/app = $IP_WEB  (CŨ — nscd vẫn đang giữ kết quả trước đó)"
-echo "   • Hai dòng LỆCH NHAU, giống KB3. Nhưng ở KB3 /etc/hosts có dòng thừa,"
+echo "   • IP theo dig     = $IP_WEB  (MỚI — DNS server đã cập nhật xong)"
+echo "   • IP theo NSS/app = $IP_WEB_CU  (CŨ — nscd vẫn đang giữ kết quả trước đó)"
+echo "   • Hai dòng LỆCH NHAU, giống KB7. Nhưng ở KB7 /etc/hosts có dòng thừa,"
 echo "     còn ở đây /etc/hosts SẠCH:"
 docker exec $CLIENT sh -c "grep -c 'lab.local' /etc/hosts 2>/dev/null; true" | head -1 | sed 's/^/       số dòng lab.local trong \/etc\/hosts: /'
 echo "     -> không phải hosts. Thủ phạm là BỘ ĐỆM."
@@ -67,7 +73,7 @@ echo "  --- CÁCH CHỮA (chưa chạy — để bạn tự chạy và tự quan
 echo "     docker exec $CLIENT nscd -i hosts        # xóa bộ đệm hosts NGAY"
 echo "     (hoặc chờ hết 60 giây TTL, hoặc: pkill nscd)"
 echo ""
-echo "     Chạy sẵn bằng:  ./scripts/mo-rong/mr5-cache-cu.sh --chua"
+echo "     Chạy sẵn bằng:  ./scripts/8-cache-cu.sh --chua"
 echo ""
 echo "  --- NẾU CLIENT THẬT CỦA BẠN KHÔNG PHẢI DEBIAN NHƯ LAB NÀY ---"
 echo "     Lab dùng nscd để minh họa. Ngoài đời, lớp đệm tùy hệ điều hành:"
@@ -92,7 +98,7 @@ echo "     ⚠️  Xóa bộ đệm hệ điều hành CHƯA đủ nếu ứng d
 echo "        Chrome: chrome://net-internals/#dns -> Clear host cache; Java: khởi động lại JVM."
 echo ""
 echo "  ℹ️  Ca bệnh được GIỮ NGUYÊN để bạn chạy ./scripts/test.sh và thấy nó tự"
-echo "     chẩn đoán ra MR5. Chạy ./scripts/0-setup.sh để reset."
+echo "     chẩn đoán ra KB8. Chạy ./scripts/0-setup.sh để reset."
 
 echo ""
 echo "🔑 Bài học:"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# MR4 — DNS TRA LOI THANH CONG NHUNG TRA SAI DIA CHI.  ⭐ Ca dat gia nhat.
+# KB6 — DNS TRA LOI THANH CONG NHUNG TRA SAI DIA CHI.  ⭐ Ca dat gia nhat.
 #
 # Tinh huong ngoai doi: doi server, ban ghi A cu chua duoc cap nhat (hoac cap
 # nhat roi nhung ai do rollback). `dig` xanh muot, `ping` thong, khong mot dong
@@ -11,10 +11,10 @@
 #   B. Dia chi cu khong con may  -> curl treo roi exit 28 (connect timeout).
 # ==============================================================================
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/.."
 source scripts/lib.sh
 
-echo "🚨 MR4-A — sửa bản ghi A: $TEN -> $IP_WEB_CU (server CŨ, vẫn đang bật)..."
+echo "🚨 KB6-A — sửa bản ghi A: $TEN -> $IP_WEB_CU (server CŨ, vẫn đang bật)..."
 xoa_log_dns
 doi_ban_ghi "$TEN" "$IP_WEB_CU"
 sleep 1
@@ -31,7 +31,7 @@ echo "     bước chẩn đoán duy nhất có giá trị. Không lệnh mạng
 echo "     bạn phải BIẾT địa chỉ đúng là bao nhiêu."
 
 echo ""
-echo "🚨 MR4-B — sửa bản ghi A: $TEN -> $IP_MA (địa chỉ không còn máy nào)..."
+echo "🚨 KB6-B — sửa bản ghi A: $TEN -> $IP_MA (địa chỉ không còn máy nào)..."
 xoa_log_dns
 doi_ban_ghi "$TEN" "$IP_MA"
 sleep 1
@@ -45,5 +45,5 @@ echo "   • curl exit 28 nhưng lần này là CONNECT timeout, không phải r
 echo "     Phân biệt bằng curl -v: nó in 'Trying $IP_MA:80...' rồi mới treo."
 echo "     Nếu là KB2, curl chưa bao giờ in được dòng 'Trying' nào."
 echo ""
-echo "🔑 Bài học chung của MR4: 'dig chạy tốt' KHÔNG đồng nghĩa 'DNS đúng'."
+echo "🔑 Bài học chung của KB6: 'dig chạy tốt' KHÔNG đồng nghĩa 'DNS đúng'."
 echo "   Câu hỏi phải hỏi là: dig trả về ĐÚNG IP không?"

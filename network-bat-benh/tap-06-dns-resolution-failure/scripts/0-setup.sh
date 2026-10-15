@@ -10,17 +10,19 @@ cd "$(dirname "$0")/.."
 source scripts/lib.sh
 
 echo "🔧 [1/5] Khởi động toàn bộ lab..."
-docker compose up -d --build >/dev/null
+docker compose up -d --build >/dev/null 2>&1
 
 echo "🔧 [2/5] Dọn sạch dấu vết của cảnh trước..."
 # Reset phai dut khoat: cac kich ban truoc co the de lai
-#   - zone bi sua (MR4, MR5)          - forwarder chet trong dnsmasq.conf (MR3)
-#   - dnsmasq bi giet (MR1)           - dong de trong /etc/hosts (KB3)
-#   - nscd dang cache IP cu (MR5)     - resolv.conf tro IP ma (KB2)
+#   - zone bi sua (KB6, KB8)          - forwarder chet trong dnsmasq.conf (KB4)
+#   - dnsmasq bi giet (KB3)           - dong de trong /etc/hosts (KB7)
+#   - nscd dang cache IP cu (KB8)     - resolv.conf tro IP ma (KB2)
+#   - vung cua-hang.local va dong /etc/hosts cua ca bi an (ca-bi-an.sh)
 docker exec $DNS sh -c "cp /etc/dnsmasq/dnsmasq.conf.default $CONF; cp /etc/dnsmasq/zone-hosts.default $ZONE"
 xoa_hosts_lab
+xoa_hosts_lab "$TEN_BI_AN"
 docker exec $CLIENT sh -c "pkill -x nscd 2>/dev/null; rm -f /var/run/nscd/* /var/db/nscd/* 2>/dev/null; true" || true
-# web-cu co the dang bi dung tu MR4 phan 2
+# web-cu co the dang bi dung tu KB6 phan 2
 docker start $WEB_CU >/dev/null 2>&1 || true
 docker start $WEB    >/dev/null 2>&1 || true
 

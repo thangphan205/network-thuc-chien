@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# MR2 — NXDOMAIN.  Chu ky: server TRA LOI, va cau tra loi la "ten do khong ton tai".
+# KB5 — NXDOMAIN.  Chu ky: server TRA LOI, va cau tra loi la "ten do khong ton tai".
 #
 # Tinh huong ngoai doi: go sai ten mien, quen tao ban ghi A cho dich vu moi, hoac
 # ai do xoa nham mot dong trong zone.
@@ -8,11 +8,11 @@
 # Diem quan trong: day KHONG phai su co mang. Moi thu o L2/L3/L4 deu hoan hao.
 # ==============================================================================
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/.."
 source scripts/lib.sh
 
 TEN_SAI=wed.lab.local     # go nham 'web' thanh 'wed'
-echo "🚨 MR2 — hỏi một tên KHÔNG có trong zone: $TEN_SAI"
+echo "🚨 KB5 — hỏi một tên KHÔNG có trong zone: $TEN_SAI"
 xoa_log_dns
 
 buoc "CHU KỲ: NXDOMAIN"
@@ -26,7 +26,7 @@ echo "   • dig status = NXDOMAIN và mất ~1 ms. NHANH = server SỐNG, ĐÃ 
 echo "     Đối lập hoàn toàn với KB2 (2000 ms, không ai trả lời)."
 echo "   • query tới server > 0, log server ghi rõ 'is NXDOMAIN'."
 echo "     Bạn có bằng chứng hai chiều: client hỏi, server đáp."
-echo "   • curl báo exit 6 — GIỐNG HỆT MR1, nhưng dig nói hai chuyện khác hẳn."
+echo "   • curl báo exit 6 — GIỐNG HỆT KB3, nhưng dig nói hai chuyện khác hẳn."
 echo ""
 echo "ℹ️  Ghi chú kỹ thuật: dnsmasq trả NXDOMAIN với AUTHORITY: 0 (không kèm SOA),"
 echo "    đúng như một resolver đệm/chuyển tiếp. Một máy chủ CÓ THẨM QUYỀN thật"

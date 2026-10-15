@@ -15,9 +15,13 @@ IP_DNS=172.28.6.53
 IP_WEB=172.28.6.10
 IP_WEB_CU=172.28.6.11
 IP_CLIENT=172.28.6.20
-IP_MA=172.28.6.99          # IP khong co may nao — dung cho KB2 va MR4 phan 2
+IP_MA=172.28.6.99          # IP khong co may nao — dung cho KB2 va KB6 phan 2
 
 TEN=web.lab.local          # ten mien chinh cua lab
+# Ten cua bai tu bat benh (ca-bi-an.sh). Co y KHONG trung ten nao cua KB2-KB8 de
+# ten mien khong goi y ca benh; vung rieng ngoai lab.local de dung duoc ca KB4.
+TEN_BI_AN=api.cua-hang.local
+VUNG_BI_AN=cua-hang.local
 ZONE=/etc/dnsmasq/zone-hosts
 CONF=/etc/dnsmasq/dnsmasq.conf
 LOG_DNS=/var/log/dnsmasq.log
@@ -49,14 +53,18 @@ nap_lai_dns() { docker exec $DNS dns-start >/dev/null 2>&1 || true; }
 # ⚠️ /etc/hosts cung bi Docker bind-mount tu host giong /etc/resolv.conf, nen
 #    `sed -i` that bai voi "Device or resource busy" (no ghi file tam roi rename).
 #    Ma loi do bi nuot mat trong `|| true` -> 0-setup TUONG la da don sach trong
-#    khi dong xau van con, va KB3 ro ri sang moi kich ban sau no. Phai ghi TAI CHO.
+#    khi dong xau van con, va KB7 ro ri sang moi kich ban sau no. Phai ghi TAI CHO.
+#
+#   xoa_hosts_lab [ten]      them_hosts <ip> [ten]      (ten mac dinh: $TEN)
 # ------------------------------------------------------------------------------
 xoa_hosts_lab() {
-    docker exec $CLIENT sh -c "grep -v '[[:space:]]$TEN\$' /etc/hosts > /tmp/h; cat /tmp/h > /etc/hosts"
+    local ten="${1:-$TEN}"
+    docker exec $CLIENT sh -c "grep -v '[[:space:]]$ten\$' /etc/hosts > /tmp/h; cat /tmp/h > /etc/hosts"
 }
 them_hosts() {
-    xoa_hosts_lab
-    docker exec $CLIENT sh -c "printf '%s %s\n' '$1' '$TEN' >> /etc/hosts"
+    local ten="${2:-$TEN}"
+    xoa_hosts_lab "$ten"
+    docker exec $CLIENT sh -c "printf '%s %s\n' '$1' '$ten' >> /etc/hosts"
 }
 
 # Sua mot ban ghi A trong zone roi nap lai. vd: doi_ban_ghi web.lab.local 172.28.6.11
@@ -67,12 +75,25 @@ doi_ban_ghi() {
 }
 
 # ------------------------------------------------------------------------------
+# Doi local-ttl (TTL cua ban ghi zone) trong conf dang chay. KHONG nap lai —
+# lenh doi_ban_ghi ngay sau do se nap.
+#
+# ⚠️ Dung cho KB8: nscd giu ban ghi hosts trong thoi gian NHO HON giua
+#    positive-time-to-live (60 s) va TTL cua ban ghi DNS (local-ttl=30). Muon
+#    cache song dung 60 s thi luc ham cache phai nang TTL ban ghi len, roi tra
+#    ve 30 truoc khi doi IP de dig khong lo mot TTL bat thuong.
+# ------------------------------------------------------------------------------
+dat_local_ttl() {
+    docker exec $DNS sh -c "sed 's/^local-ttl=.*/local-ttl=$1/' $CONF > /tmp/c; cp /tmp/c $CONF"
+}
+
+# ------------------------------------------------------------------------------
 # GOC NHIN PHIA SERVER.
 #
 # dnsmasq duoc khoi dong bang `docker exec` (xem dns/dns-start) nen no KHONG
 # phai PID 1 — `docker compose logs dns` bat duoc SO KHONG dong. Log nam trong
 # file cua container. Day la cong cu tach KB2 (log TRONG: goi chua tung toi noi)
-# khoi MR3 (log CO query: goi toi noi, server moi la ben khong tra loi duoc).
+# khoi KB4 (log CO query: goi toi noi, server moi la ben khong tra loi duoc).
 # ------------------------------------------------------------------------------
 xoa_log_dns() { docker exec $DNS sh -c ": > $LOG_DNS" 2>/dev/null || true; }
 log_dns()     { docker exec $DNS tail -n "${1:-15}" $LOG_DNS 2>/dev/null || true; }
@@ -81,6 +102,14 @@ log_dns()     { docker exec $DNS tail -n "${1:-15}" $LOG_DNS 2>/dev/null || true
 # `set -e` trong kich ban se giet script ngay tai day.
 dem_query_o_server() {
     docker exec $DNS sh -c "grep -c 'query\[' $LOG_DNS 2>/dev/null; true" 2>/dev/null | head -1 | tr -d '\r'
+    return 0
+}
+
+# So dong log server TRA LOI dung ten $1 (dang "<ten> is <ip|NXDOMAIN>": reply/config/zone-hosts).
+# Khop nguyen ten + khoang trang nen khong dem nham "<ten>.lab.local is ...". Dung o buoc 6 cua
+# test.sh de tach KB4 (co query/forwarded, KHONG co tra loi) khoi mat goi chieu VE (co tra loi).
+dem_tra_loi_ten() {
+    docker exec $DNS sh -c "grep -c -F ' $1 is ' $LOG_DNS 2>/dev/null; true" 2>/dev/null | head -1 | tr -d '\r'
     return 0
 }
 
@@ -99,7 +128,7 @@ dem_query_o_server() {
 #    unreachable (net.ipv4.icmp_ratelimit, mac dinh 1 goi/giay). Neu ta ban 4-5
 #    lan dig lien tiep vao mot cong DA DONG, goi ICMP thu 2 tro di bi kernel
 #    chan lai — va "connection refused" bong bien thanh "timed out". Ca benh
-#    MR1 se doi mat thanh KB2 mot cach ngau nhien. Mot lan dig, doc moi thu tu
+#    KB3 se doi mat thanh KB2 mot cach ngau nhien. Mot lan dig, doc moi thu tu
 #    do ra: vua nhanh vua tat dinh.
 # ------------------------------------------------------------------------------
 dig_full() {
@@ -109,8 +138,12 @@ dig_full() {
     return 0
 }
 
+# Gia tri dig_status_tu tra ve khi dig khong nhan duoc cau tra loi nao (timeout/refused).
+# Moi noi so sanh phai dung bien nay, KHONG go lai chuoi.
+KHONG_TL="KHÔNG-TRẢ-LỜI"
+
 _lay()      { echo "$1" | sed -n "$2" | head -1; }
-dig_status_tu()   { local v; v=$(_lay "$1" 's/.*status: \([A-Z]*\).*/\1/p'); echo "${v:-KHÔNG-TRẢ-LỜI}"; }
+dig_status_tu()   { local v; v=$(_lay "$1" 's/.*status: \([A-Z]*\).*/\1/p'); echo "${v:-$KHONG_TL}"; }
 dig_qtime_tu()    { _lay "$1" 's/^;; Query time: \([0-9]*\) msec.*/\1/p'; }
 dig_wall_tu()     { _lay "$1" 's/^;; WALL: \([0-9]*\) msec.*/\1/p'; }
 dig_loi_tu()      { echo "$1" | grep -m1 -E 'communications error|network unreachable' | sed 's/^;; *//' || true; }
@@ -118,7 +151,7 @@ dig_loi_tu()      { echo "$1" | grep -m1 -E 'communications error|network unreac
 dig_ip_tu()       { echo "$1" | awk '$4=="A" && $5 ~ /^[0-9.]+$/ {print $5; exit}' || true; }
 
 # IP ma UNG DUNG that su dung: di qua NSS (/etc/hosts -> nscd -> DNS).
-# Khac biet giua ham nay va dig_ip_tu chinh la o benh cua KB3 va MR5.
+# Khac biet giua ham nay va dig_ip_tu chinh la o benh cua KB7 va KB8.
 ip_theo_nss() { docker exec $CLIENT getent hosts "${1:-$TEN}" 2>/dev/null | awk '{print $1}' | head -1 || true; return 0; }
 
 # Goi HTTP that. In 3 truong ngan cach boi "|": http_code | ip_da_ket_noi | exit
@@ -159,7 +192,7 @@ in_chu_ky() {
     q=$(dem_query_o_server)
 
     echo "  dig status      : ${st}"
-    if [ "$st" = "KHÔNG-TRẢ-LỜI" ]; then
+    if [ "$st" = "$KHONG_TL" ]; then
         echo "  dig báo lỗi     : $(dig_loi_tu "$raw")"
         echo "  dig bỏ cuộc sau : ${wall:-?} ms   <- đồng hồ ngoài; KHÔNG có câu trả lời nào"
     else

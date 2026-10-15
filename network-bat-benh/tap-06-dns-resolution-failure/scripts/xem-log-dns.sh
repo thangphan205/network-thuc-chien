@@ -6,7 +6,7 @@
 # `docker exec` (xem dns/dns-start) nen no khong phai PID 1 cua container —
 # `docker compose logs` khong bat duoc dong nao. Log nam trong file.
 #
-# Day la cong cu tach KB2 khoi MR3: cung mot trieu chung phia client, khac nhau
+# Day la cong cu tach KB2 khoi KB4: cung mot trieu chung phia client, khac nhau
 # o cho man hinh nay co dong query hay khong.
 # ==============================================================================
 set -euo pipefail

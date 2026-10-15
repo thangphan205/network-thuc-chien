@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# MR1 — RESOLVER TU CHOI.  Chu ky: CONNECTION REFUSED.
+# KB3 — RESOLVER TU CHOI.  Chu ky: CONNECTION REFUSED.
 #
 # Tinh huong ngoai doi: may DNS van song, van ping duoc, nhung tien trinh named/
 # dnsmasq da chet (het RAM, crash sau khi update, quen enable sau reboot).
@@ -9,10 +9,10 @@
 # tu choi ngay). Cung mot muc tieu khong phuc vu duoc, hai chu ky khac han nhau.
 # ==============================================================================
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/.."
 source scripts/lib.sh
 
-echo "🚨 MR1 — giết tiến trình dnsmasq (container dns VẪN SỐNG)..."
+echo "🚨 KB3 — giết tiến trình dnsmasq (container dns VẪN SỐNG)..."
 xoa_log_dns
 docker exec $DNS dns-stop
 echo "   Kiểm chứng máy vẫn sống: $(docker exec $CLIENT ping -c1 -W1 $IP_DNS >/dev/null 2>&1 && echo 'ping tới DNS server: THÔNG' || echo 'ping: KHÔNG THÔNG')"
@@ -27,7 +27,7 @@ echo "   • curl báo exit 6 'Could not resolve host' — KHÁC KB2 (exit 28)."
 echo "   • ping tới DNS server VẪN THÔNG. Máy sống, DỊCH VỤ chết."
 echo "     Nếu monitoring của bạn chỉ ping máy DNS thì nó đang báo màu xanh."
 echo ""
-echo "⚠️  CHÚ Ý 1: MR1 và MR2 cho curl CÙNG MỘT câu 'Could not resolve host' (exit 6)"
+echo "⚠️  CHÚ Ý 1: KB3 và KB5 cho curl CÙNG MỘT câu 'Could not resolve host' (exit 6)"
 echo "    trong khi nguyên nhân khác hẳn nhau. curl KHÔNG đủ để chẩn đoán — phải dig."
 echo ""
 echo "⚠️  CHÚ Ý 2 (bẫy thực địa): nếu bạn bắn dig LIÊN TỤC nhiều lần trong 1 giây,"
