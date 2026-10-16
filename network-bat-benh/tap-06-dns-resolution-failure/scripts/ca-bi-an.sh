@@ -42,6 +42,58 @@ xoa_ban_ghi_bi_an() {
     docker exec $DNS sh -c "grep -v '[[:space:]]$TEN_BI_AN[[:space:]]' $ZONE > /tmp/z; cp /tmp/z $ZONE"
 }
 
+# Xac nhan CA BENH bang CHU KY quan sat duoc, khong chi dua vao ma thoat cua lenh
+# gay benh. Moi kiem tra deu im lang va log DNS se duoc xoa ngay sau do, nen hoc
+# vien khong nhan them manh moi nao ve ca vua duoc gieo.
+xac_nhan_ca_bi_an() {
+    local raw st dip nss ns q a code rip rc
+
+    case "$CA" in
+        2)
+            ns=$(docker exec $CLIENT sh -c "awk '/^nameserver/{print \$2; exit}' /etc/resolv.conf" 2>/dev/null | tr -d '\r')
+            raw=$(dig_full "$TEN_BI_AN")
+            st=$(dig_status_tu "$raw")
+            [ "$ns" = "$IP_MA" ] && [ "$st" = "$KHONG_TL" ]
+            ;;
+        3)
+            docker exec $DNS true >/dev/null 2>&1 && \
+                ! docker exec $DNS pgrep -x dnsmasq >/dev/null 2>&1
+            ;;
+        4)
+            raw=$(dig_full "$TEN_BI_AN")
+            st=$(dig_status_tu "$raw")
+            q=$(dem_query_o_server)
+            a=$(dem_tra_loi_ten "$TEN_BI_AN")
+            [ "$st" = "$KHONG_TL" ] && [ "${q:-0}" -gt 0 ] && [ "${a:-0}" = "0" ]
+            ;;
+        5)
+            raw=$(dig_full "$TEN_BI_AN")
+            [ "$(dig_status_tu "$raw")" = "NXDOMAIN" ]
+            ;;
+        6A)
+            dip=$(ip_theo_dig "$TEN_BI_AN")
+            IFS='|' read -r code rip rc <<<"$(curl_thu "$TEN_BI_AN")"
+            [ "$dip" = "$IP_WEB_CU" ] && [ "$code" = "200" ] && [ "$rip" = "$IP_WEB_CU" ] && [ "$rc" = "0" ]
+            ;;
+        6B)
+            [ "$(ip_theo_dig "$TEN_BI_AN")" = "$IP_MA" ]
+            ;;
+        7)
+            dip=$(ip_theo_dig "$TEN_BI_AN")
+            nss=$(ip_theo_nss "$TEN_BI_AN")
+            [ "$dip" = "$IP_WEB" ] && [ "$nss" = "$IP_WEB_CU" ]
+            ;;
+        8)
+            docker exec $CLIENT pgrep -x nscd >/dev/null 2>&1 || return 1
+            dip=$(ip_theo_dig "$TEN_BI_AN")
+            nss=$(ip_theo_nss "$TEN_BI_AN")
+            IFS='|' read -r code rip rc <<<"$(curl_thu "$TEN_BI_AN")"
+            [ "$dip" = "$IP_WEB" ] && [ "$nss" = "$IP_WEB_CU" ] && \
+                [ "$code" = "200" ] && [ "$rip" = "$IP_WEB_CU" ] && [ "$rc" = "0" ]
+            ;;
+    esac
+}
+
 # --- Gay benh. Moi output deu nuot: man hinh KHONG duoc lo ca nao -------------
 {
 case "$CA" in
@@ -77,6 +129,17 @@ case "$CA" in
 esac
 } >/dev/null 2>&1
 sleep 1
+
+# Bo log cua buoc setup/gay benh de validator chi doc dung probe cua chinh no.
+xoa_log_dns
+
+if ! xac_nhan_ca_bi_an; then
+    ./scripts/0-setup.sh >/dev/null 2>&1 || true
+    echo "❌ Không gieo được ca bệnh ổn định. Lab đã được đưa về trạng thái sạch; hãy chạy lại."
+    exit 1
+fi
+
+# Validator co the tu tao query/log de doc chu ky; xoa het truoc khi giao lab.
 xoa_log_dns
 
 cat <<PHIEU
