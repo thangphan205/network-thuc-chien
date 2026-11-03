@@ -1,0 +1,52 @@
+# ==============================================================================
+# TAP 07 - KB3: TRAN BANG NAT TREN CISCO IOL
+#
+#   may-loi   192.168.1.10 --e0/1--+
+#                                 R1 --e0/3-- server 203.0.113.10
+#   nhan-vien 192.168.2.10 --e0/2--+
+#
+# R1 chay PAT cho ca 2 LAN, gioi han 100 ban dich theo ACL LAN (r1.partial.cfg).
+# Can may Linux x86_64 va image vrnetlab/cisco_iol: xem huong dan trong README.
+# ==============================================================================
+name: lab07-cisco
+prefix: __lab-name
+
+mgmt:
+  network: lab07-cisco-mgmt
+  ipv4-subnet: 172.28.77.0/24
+
+topology:
+  nodes:
+    r1:
+      kind: cisco_iol
+      image: vrnetlab/cisco_iol:17.12.01
+      mgmt-ipv4: 172.28.77.11
+      startup-config: ./r1.partial.cfg
+
+    may-loi:
+      kind: linux
+      image: nicolaka/netshoot:v0.13
+      mgmt-ipv4: 172.28.77.21
+      exec:
+        - ip addr add 192.168.1.10/24 dev eth1
+        - ip route replace 203.0.113.0/24 via 192.168.1.1
+
+    nhan-vien:
+      kind: linux
+      image: nicolaka/netshoot:v0.13
+      mgmt-ipv4: 172.28.77.22
+      exec:
+        - ip addr add 192.168.2.10/24 dev eth1
+        - ip route replace 203.0.113.0/24 via 192.168.2.1
+
+    server:
+      kind: linux
+      image: nginx:1.29-alpine
+      mgmt-ipv4: 172.28.77.30
+      exec:
+        - ip addr add 203.0.113.10/24 dev eth1
+
+  links:
+    - endpoints: ["r1:eth1", "may-loi:eth1"]
+    - endpoints: ["r1:eth2", "nhan-vien:eth1"]
+    - endpoints: ["r1:eth3", "server:eth1"]

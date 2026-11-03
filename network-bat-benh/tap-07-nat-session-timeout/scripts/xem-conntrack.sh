@@ -19,7 +19,7 @@ while true; do
     echo " nf_conntrack_max                     = $(docker exec $GATEWAY sysctl -n net.netfilter.nf_conntrack_max 2>/dev/null)"
     echo ""
     echo " ------------------------------------------------------------"
-    echo " Bảng conntrack — các phiên port 80/tcp:"
+    echo " Bảng conntrack — phiên ESTABLISHED port 80 (số sau '6' là giây còn lại):"
     xem_conntrack_80 | sed 's/^/   /'
     echo ""
     echo " (làm mới mỗi ${NHIP}s — Ctrl+C để dừng)"

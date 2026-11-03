@@ -1,81 +1,91 @@
-# 🩺 Ca Bệnh 07: NAT Session Timeout — Kết Nối Cứ Sau Vài Phút Không Dùng Là Đứt
+# 🩺 Ca Bệnh 07: Bảng NAT — Phiên Cũ Đứt Sau Idle, Phiên Mới Không Mở Được
 
 > **Hồ sơ ca bệnh:**
-> * **Hiện tượng:** Ứng dụng kết nối Database (Connection Pool), SSH session hoặc WebSocket chạy ổn định khi liên tục có dữ liệu. Nhưng để máy nghỉ (idle) vài phút, khi gõ lệnh tiếp theo thì màn hình đơ cứng vài chục giây rồi báo **`Connection reset by peer`** hoặc **`Broken pipe`**.
-> * **Bản chất lỗi:** **NAT / Stateful Firewall Session Idle Timeout ở Tầng 4.** Thiết bị trung gian (AWS NAT Gateway, Cisco, Fortinet…) giữ một **bảng conntrack**, mỗi dòng là một phiên và mỗi dòng có **đồng hồ riêng**. Không thấy gói nào trong X giây → dòng bị **xoá khỏi bảng**, không báo cho ai.
-> * **Chỗ khiến ca này khó lần:** "Đứt sau idle" **không phải một bệnh**. NAT xoá phiên và **server tự đóng kết nối** cho ra **cùng một triệu chứng** (`1/2` phản hồi) nhưng thủ phạm hoàn toàn khác nhau. Và cùng một cú "hết hạn", TCP và UDP có **ba số phận khác nhau**.
+> * **Hiện tượng 1:** SSH, Connection Pool hay WebSocket đang chạy ổn, để nghỉ vài phút rồi dùng lại thì đơ cứng. Ping và kết nối mới vẫn bình thường.
+> * **Hiện tượng 2:** Đang dùng bình thường, cả công ty bỗng không mở được kết nối mới, ping ra ngoài cũng chết. Phiên đang mở từ trước thì vẫn chạy.
+> * **Bản chất lỗi:** NAT/Stateful Firewall giữ một **bảng**, mỗi dòng là một phiên và có **đồng hồ riêng**. Dòng bị xoá quá sớm thì **phiên cũ chết** (NAT timeout). Bảng hết chỗ thì **phiên mới chết** (tràn bảng).
+> * **Chỗ khiến ca này khó lần:** Cả hai đều không có thông báo. KB2 không có gói RST nào, KB3 không có dòng syslog `%NAT` nào. Không đọc đúng chỗ thì không biết.
 
-> 🧪 **Buổi học chỉ cần 2 ca chính — bệnh và thuốc:**
+> 🧪 **Hai kịch bản phổ biến nhất, tách nhau bằng một câu hỏi: phiên cũ chết hay phiên mới chết?**
 >
-> | KB | Ca | 2 GET / idle 7s | Ý nghĩa |
-> | :-- | :--- | :--: | :--- |
-> | KB1 | Khoẻ (mốc so sánh) | 2/2 | — |
-> | **KB2** | **NAT xoá phiên, im lặng** | **1/2** | gateway DROP hẳn, không một gói RST |
-> | **KB3** | **TCP keepalive chữa đúng** | 2/2 | chữa bằng cách giữ phiên "sống" trước khi NAT xoá |
->
-> 📂 Các ca khác (NAT "tha" gói giữa chừng, UDP tự làm mới, server tự đóng, keepalive sai liều) vẫn chạy được, nằm trong [`scripts/mo-rong/`](./scripts/mo-rong/) — để học tiếp, không nằm trong luồng chính.
->
-> 👉 Chi tiết từng kịch bản: [**kich-ban.md**](./kich-ban.md)
+> | KB | Ca | Phiên cũ | Phiên mới | Ping | Lab |
+> | :-- | :--- | :--: | :--: | :--: | :--- |
+> | KB1 | Khỏe (mốc so sánh) | 2/2 | 200 | thông | Docker |
+> | **KB2** | **NAT session timeout** | **1/2** | 200 | thông | Docker, mọi máy |
+> | **KB3** | **Tràn bảng NAT** | 2/2 | **000** | **mất 100%** | Cisco IOL, cần máy x86_64 |
 
 ---
 
 ## 🔬 Sơ đồ Kiến trúc Lab
 
-```text
-   LAN client 172.28.7.0/24        WAN server 172.28.17.0/24
+> Sơ đồ đầy đủ theo từng kịch bản: mở [`so-do-kien-truc.html`](./so-do-kien-truc.html) bằng trình duyệt.
 
-  +-----------+     +-----------------------------+     +-----------+
-  | client    |     |  gateway  (NAT that)        |     | server    |
-  | .20       |---->| .254 lan     .254 wan       |---->| .10       |
-  | nc socat  |     |  ip_forward + MASQUERADE    |     | nginx :80 |
-  | tcpdump   |<----|  conntrack  <-- O BENH      |<----| udp echo:9|
-  +-----------+     +-----------------------------+     +-----------+
-```
+**KB2 — lab Docker:**
 
-* **Gateway là một container riêng, không phải server.** Ngoài đời NAT/firewall là **thiết bị thứ ba** — client và server không biết gì về chuyện nó xoá phiên. Bản cũ của tập này để server tự đóng vai firewall; bản này tách ra đúng như thực tế.
-* **Mọi số liệu conntrack nằm ở gateway** (`nf_conntrack_tcp_timeout_established`, `tcp_loose`, `udp_timeout`). Gateway chạy `privileged` để ghi được sysctl `net.netfilter.*` trong netns của nó (bắt buộc trên Docker Desktop).
-* **Timeout ép xuống 5 giây** để demo nhanh; ngoài đời là 350s (AWS NAT Gateway) đến vài giờ. Cơ chế giống hệt.
-* **Route tĩnh đặt lại mỗi lần `0-setup.sh`** vì `ip route` chỉ sống trong netns đang chạy (giống tập 05).
+![Sơ đồ mạng KB2: client qua gateway có bảng conntrack tới server](./images/so-do-mang-kb2.png)
 
-> 🔑 Cả tập gói trong một câu: **"đứt sau idle" chưa nói gì về thủ phạm — phải hỏi tiếp: có gói FIN không, và entry conntrack còn hay mất?**
+* **Gateway là một container riêng.** Ngoài đời NAT/firewall là **thiết bị thứ ba**: client và server không biết nó vừa xoá phiên.
+* **Timeout ép xuống 10 giây** để demo nhanh. AWS NAT Gateway là 350 giây, còn mặc định của Linux là 5 ngày. Cơ chế giống hệt.
+* **Lab đặt `nf_conntrack_tcp_loose=0`**, trong khi mặc định của Linux là **1**. Với giá trị 1, kernel nhặt lại gói giữa chừng thành phiên mới, nên cùng phép thử ra **2/2** và không có bệnh. Lab đặt 0 để gateway xử lý chặt như một stateful firewall. Vì vậy một NAT Linux tự dựng để mặc định sẽ khó tái hiện KB2 theo cách này.
+
+**KB3 — lab Cisco (containerlab):**
+
+![Sơ đồ mạng KB3: may-loi và nhan-vien qua R1 tới server, bảng NAT đầy](./images/so-do-mang-kb3.png)
+
+* **Giới hạn 100 là đặt để demo nhanh** bằng `ip nat translation max-entries list LAN 100`. Giới hạn ngoài đời lớn hơn rất nhiều, nhưng cách đọc chữ ký giống nhau.
+* **Image IOL không có trong repo** vì lấy từ Cisco CML. Không có image thì bạn vẫn học được KB3 qua bảng chữ ký bên dưới.
+
+> 🔑 Cả tập gói trong một câu: **một bảng, hai kiểu chết: dòng mất sớm thì phiên cũ chết, hết chỗ thì phiên mới chết.**
 
 ---
 
 ## 🚀 Hướng Dẫn Thực Hành
 
-### Bước 1: Dựng lab
+### KB1 + KB2: NAT session timeout (Docker)
 
 ```bash
 cd network-bat-benh/tap-07-nat-session-timeout
 ./scripts/0-setup.sh
 ```
 
-`0-setup.sh` **idempotent** — chạy lại bất cứ lúc nào để reset sạch, và **tự khẳng định** trạng thái khoẻ (2/2) trước khi trả quyền cho bạn.
+`0-setup.sh` **idempotent** — chạy lại bất cứ lúc nào để reset sạch, và **tự khẳng định** trạng thái khỏe (2/2).
 
 > **Quy tắc bất di bất dịch: sau MỖI kịch bản, chạy lại `./scripts/0-setup.sh`.**
 
-Hai terminal nên mở sẵn:
-
 ```bash
 # Terminal 1 — chạy kịch bản
-./scripts/2-nat-xoa-im-lang.sh
+./scripts/1-binh-thuong.sh          # mốc so sánh: 2/2
+./scripts/2-nat-xoa-im-lang.sh      # ⭐ NAT xoá phiên          → 1/2, im lặng
+./scripts/2b-keepalive-cuu-song.sh  # thuốc: TCP keepalive      → 2/2
 
-# Terminal 2 — góc nhìn bảng conntrack của gateway (nơi phá án)
+# Terminal 2 — góc nhìn bảng conntrack của gateway
 ./scripts/xem-conntrack.sh
 ```
 
-### Bước 2: Chạy một ca bệnh và đọc chữ ký
+### KB3: Tràn bảng NAT (Cisco IOL)
+
+Cần máy **Linux x86_64** có Docker. Máy ARM, gồm cả Mac Apple Silicon, không chạy được IOL. Build image một lần từ binary IOL trong Cisco CML:
 
 ```bash
-./scripts/1-binh-thuong.sh          # mốc so sánh: 2/2
-./scripts/2-nat-xoa-im-lang.sh      # ⭐ NAT xoá phiên          → 1/2, im lặng
-./scripts/3-keepalive-cuu-song.sh    # ⭐ chữa đúng: TCP keepalive → 2/2
-./scripts/test.sh                   # chạy cả 7 KB (kể cả ca mở rộng), tự khẳng định chữ ký
+git clone --depth 1 https://github.com/srl-labs/vrnetlab.git
+cp x86_64_crb_linux-adventerprisek9-ms.iol vrnetlab/cisco/iol/cisco_iol-17.12.01.bin
+cd vrnetlab/cisco/iol && make docker-image
 ```
 
-> 👉 **Chạy KB2 rồi MR3 liền nhau.** Toàn bộ bài học nằm ở chỗ con số trên màn hình **giống hệt** (1/2) còn thủ phạm thì trái ngược.
+> Tên file chỉ quyết định tag image. Binary dùng để đo trong tập này có tag `17.12.01` nhưng `show version` là **17.15.1**. Đổi image thì chạy `./scripts/test.sh` trước khi dùng, vì hành vi bộ đếm thay đổi theo bản IOS.
 
-> ⚠️ Các phép thử đều tốn thời gian thật (idle 7 giây + chờ timeout của client). `test.sh` chạy vài phút — bình thường.
+Chạy kịch bản. Có sẵn `containerlab` thì script dùng luôn, không thì tự chạy image `ghcr.io/srl-labs/clab`:
+
+```bash
+cd network-bat-benh/tap-07-nat-session-timeout/cisco
+./scripts/0-setup.sh                # dựng lại lab từ đầu, chạy trước mỗi lần demo
+./scripts/3-tran-bang-nat.sh        # ⭐ bảng đầy                → phiên mới 000
+./scripts/3b-gioi-han-theo-may.sh   # thuốc: giới hạn theo máy   → nhan-vien 200
+./scripts/test.sh                   # khẳng định toàn bộ chữ ký
+./scripts/don-dep.sh                # xoá lab, giữ image
+```
+
+Terminal 2: `./scripts/xem-bang-nat.sh` để xem bảng NAT của R1 đầy dần.
 
 ---
 
@@ -83,49 +93,80 @@ Hai terminal nên mở sẵn:
 
 Toàn bộ số liệu dưới đây **đo trong chính lab này**:
 
-| KB | Kịch bản | established timeout | loose | **2 GET / idle** | Thủ phạm | Chữa |
-| :-- | :--- | :--: | :--: | :--: | :--- | :--- |
-| KB1 | mặc định kernel | 432000s | 0 | 2/2 | — | — |
-| KB2 | **NAT xoá phiên** | 5s | 0 | **1/2** | **GATEWAY** | TCP keepalive (KB3) |
-| KB3 | keepalive đúng liều | 5s | 0 | 2/2 | — | (là thuốc) |
-| MR1 | NAT "tha" giữa chừng | 5s | **1** | **2/2** | may rủi | keepalive, không dựa vào loose |
-| MR2 | UDP hết hạn | udp 5s | — | 8/8 byte | — (tự làm mới) | — |
-| MR3 | **server tự đóng** | 432000s | 0 | **1/2** | **SERVER** | tăng `keepalive_timeout` |
-| MR4 | keepalive sai liều | 5s | 0 | 1/2 | cấu hình | `keepidle` < timeout NAT |
-
-Cặp dễ nhầm nhất — và cách tách:
-
-| | KB2 (NAT xoá) | MR3 (server tự đóng) |
+| | KB2 — NAT timeout | KB3 — Tràn bảng |
 | :--- | :--- | :--- |
-| Gói tin lúc đóng | **KHÔNG CÓ GÌ** | **CÓ FIN** đúng giao thức |
-| conntrack sau đó | entry **biến mất** | entry còn, `state=CLOSE` |
-| Client | chờ hết **timeout riêng** | đóng **ngay** |
+| Phiên đang mở | **chết sau idle** (1/2) | vẫn sống (2/2) |
+| Kết nối mới | 200 | **000** |
+| Ping | thông | **mất 100%** |
+| Ai bị | phiên idle lâu hơn timeout | mọi máy dùng chung bảng |
+| Client thấy gì | treo tới hết timeout của nó | kết nối mới treo tới hết timeout của nó |
+| Bằng chứng | entry biến mất khỏi `conntrack -L` | `used` bằng `max allowed`, `missed` tăng |
+| Thuốc | TCP keepalive | giới hạn theo máy, tìm máy gây lỗi |
 
-**Ba số phận của một phiên hết hạn:**
+**KB3 đọc ở đâu — `show ip nat statistics`:**
 
-* **TCP, `loose=0`** → gói kế tiếp là `INVALID` → **DROP im lặng** (KB2).
-* **TCP, `loose=1`** → kernel "nhặt" gói vào làm entry mới → **vẫn sống**, nhưng chỉ khi cổng dịch cũ còn trống — **may rủi, không phải thuốc** (MR1).
-* **UDP** → không có khái niệm `INVALID`; gói kế tiếp thành `NEW` và được NAT lại, thường **cùng cổng** → ứng dụng **không hề biết** (MR2).
+```text
+Total active translations: 100 (0 static, 100 dynamic; 100 extended)
+nat-limit statistics:
+ max entry: max allowed 0, used 0, missed 0
+ acl LAN: max allowed 100, used 100, missed 58
+```
+
+Sau khi chữa, đọc dòng `host`:
+
+```text
+Total active translations: 20 (0 static, 20 dynamic; 20 extended)
+ acl LAN: max allowed 100, used 0, missed 58
+ host 192.168.1.10: max allowed 20, used 20, missed 130
+```
+
+Bảng này có vài điểm dễ đọc nhầm:
+
+* **`missed` cộng dồn:** `clear ip nat translation *` không reset bộ đếm này.
+* **Bản dịch tính theo `host` không cộng vào `acl LAN`:** nên sau khi chữa, `acl LAN` chỉ còn `used 0`.
+* **Các loại giới hạn không giống nhau.** Đo trên IOL 17.15.1:
+
+| Lệnh | Có chặn không | Bộ đếm `used` / `missed` |
+| :--- | :--: | :--- |
+| `max-entries list LAN 100` | ✅ | ✅ đếm đúng |
+| `max-entries host <ip> 20` | ✅ | ✅ đếm đúng |
+| `max-entries 100` | ✅ | ❌ luôn `used 0, missed 0` |
+| `max-entries all-host 20` | ❌ bảng lên tới 150 | không có |
+
+> Đây là hành vi của bản IOL này, không phải của mọi thiết bị Cisco. Trên thiết bị khác, kiểm tra lại trước khi tin vào một bộ đếm bằng 0.
+
+**Ngoài đời triệu chứng KB2 còn tuỳ thiết bị:** Linux drop im lặng nên client treo tới hết timeout của nó. AWS NAT Gateway thì trả **RST** cho gói đến sau khi phiên hết hạn, nên ứng dụng thấy `Connection reset by peer`.
 
 ---
 
-## 🧭 Quy Trình Debug "Đứt Sau Idle" — 4 Bước, Đúng Thứ Tự
+## 🧭 Quy Trình Debug — Bắt Đầu Từ Một Câu Hỏi
 
-```
-1. Đứt sau bao lâu idle?        -> con số đó so với: timeout NAT/firewall? keepalive_timeout của server?
-2. Có gói FIN/RST không?        -> tcpdump ở CẢ HAI đầu: có FIN = ứng dụng/server đóng (MR3)
-                                                          im lặng  = NAT/firewall xoá (KB2)
-3. Entry conntrack còn không?   -> conntrack -L trên gateway: còn (CLOSE) hay biến mất?
-4. Đã bật keepalive chưa?       -> nếu rồi: keepidle có NHỎ HƠN timeout NAT không? (MR4)
+```text
+1. Phiên CŨ chết hay phiên MỚI chết?
+     - Phiên cũ chết sau idle, kết nối mới vẫn chạy   -> nhánh TIMEOUT
+     - Kết nối mới chết, ping chết, phiên cũ còn sống -> nhánh TRÀN BẢNG
+
+Nhánh TIMEOUT
+2. Có gói FIN/RST không?       -> tcpdump ở CẢ HAI đầu: có FIN = server/app đóng
+                                                        im lặng = NAT/firewall xoá
+3. Entry còn trong bảng?       -> Linux: conntrack -L
+4. Đã bật keepalive chưa?      -> nếu rồi: keepidle có NHỎ HƠN timeout NAT không?
+
+Nhánh TRÀN BẢNG
+2. Bảng có đầy thật không?     -> show ip nat statistics: used = max allowed, missed tăng
+3. Ai đang chiếm chỗ?          -> show ip nat translations, đếm theo IP bên trong
+4. Vì sao máy đó nhiều flow?   -> app rò rỉ socket, quét mạng, malware
 ```
 
-> ⚠️ **Bước 2 là bước hay bị bỏ nhất.** Nghe "đứt sau idle" là nghĩ ngay đến NAT rồi đi chỉnh sysctl — trong khi thủ phạm là `keepalive_timeout` của nginx.
+> ⚠️ **Đừng khởi động lại thiết bị trước khi đọc thống kê.** Việc đó xoá sạch bảng nên mạng chạy lại được một lúc, nhưng nguyên nhân vẫn còn và bằng chứng đã mất.
 
 ---
 
-## 🩹 Ba Đơn Thuốc (đã verify bằng KB3/MR4)
+## 🩹 Đơn Thuốc
 
-1. **TCP Keepalive ở tầng ứng dụng / Database Pool** — `keepalive: true`, interval **nhỏ hơn** timeout của gateway (HikariCP, SQLAlchemy, GORM, Knex).
+**KB2 — NAT session timeout**
+
+1. **TCP Keepalive ở ứng dụng / Database Pool** — interval **nhỏ hơn** timeout của gateway (HikariCP, SQLAlchemy, GORM, Knex).
 2. **SSH client** — `~/.ssh/config`:
    ```ssh
    Host *
@@ -139,9 +180,20 @@ Cặp dễ nhầm nhất — và cách tách:
    sysctl -w net.ipv4.tcp_keepalive_probes=3
    ```
 
-> ⚠️ **Liều lượng quyết định tất cả** (MR4): bật keepalive nhưng `keepidle` lớn hơn timeout NAT thì vẫn chết y như không bật. Ngoài đời bạn thường không biết con số của NAT — đặt 30–60 giây là an toàn với hầu hết thiết bị.
->
-> `tcp_keepalive_*` chỉ áp dụng cho socket **có bật `SO_KEEPALIVE`**. Bật sysctl mà ứng dụng không bật option trên socket thì không có tác dụng.
+> ⚠️ **Liều lượng quyết định tất cả:** `keepidle` lớn hơn timeout NAT thì vẫn chết như không bật. Đây là bẫy mặc định: Linux để `tcp_keepalive_time=7200` (2 giờ), lớn hơn hẳn 350 giây của AWS NAT Gateway, nên chỉ bật `SO_KEEPALIVE` mà không chỉnh số là chưa đủ. `tcp_keepalive_*` cũng chỉ áp dụng cho socket **có bật `SO_KEEPALIVE`**.
+
+**KB3 — Tràn bảng NAT**
+
+1. **Khoanh vùng ngay** — giới hạn máy gây lỗi để người khác dùng lại được:
+   ```
+   ip nat translation max-entries host 192.168.1.10 20
+   ```
+   Giải phóng bảng bằng `clear ip nat translation *` sẽ **cắt luôn mọi phiên đang chạy**. Trên production, ưu tiên xoá theo từng máy.
+2. **Chữa gốc** — tìm vì sao máy đó tạo nhiều flow: app rò rỉ socket, không dùng lại connection, malware.
+3. **Rút ngắn đời của bản dịch** — `ip nat translation udp-timeout`, `tcp-timeout`. Trên Cisco, timeout mặc định 24 giờ khiến bản dịch không còn dùng vẫn giữ chỗ rất lâu. Bước này chưa được đo riêng trong lab.
+4. **Đặt cảnh báo** — router không ghi syslog `%NAT` khi đầy, nên phải giám sát tỷ lệ `used / max allowed` và `missed`.
+
+> Bệnh họ hàng trên cloud: **cạn cổng SNAT**. Bảng chưa đầy mà kết nối tới **cùng một đích** vẫn lỗi, đích khác thì không. AWS NAT Gateway giới hạn 55.000 kết nối đồng thời trên mỗi IP tới mỗi đích.
 
 ---
 
@@ -149,27 +201,33 @@ Cặp dễ nhầm nhất — và cách tách:
 
 | Script | Việc |
 | :--- | :--- |
-| `0-setup.sh` | Reset lab về trạng thái khoẻ. Chạy sau mỗi kịch bản. |
-| `1-binh-thuong.sh`, `2-nat-xoa-im-lang.sh`, `3-keepalive-cuu-song.sh` | 3 kịch bản luồng chính |
-| `mo-rong/3,4,5,7-….sh` | 4 ca mở rộng — xem [kich-ban.md](./kich-ban.md) |
-| `xem-conntrack.sh` | Góc nhìn bảng conntrack của gateway (terminal 2) |
-| `test.sh` | Chạy cả 7 kịch bản (kể cả ca mở rộng), khẳng định từng chữ ký |
-| `lib.sh` | Hằng số + hàm dùng chung |
+| `scripts/0-setup.sh` | Reset lab Docker về trạng thái khỏe. Chạy sau mỗi kịch bản. |
+| `scripts/1-binh-thuong.sh` | KB1: mốc so sánh |
+| `scripts/2-nat-xoa-im-lang.sh`, `2b-keepalive-cuu-song.sh` | KB2: bệnh và thuốc |
+| `scripts/xem-conntrack.sh` | Góc nhìn bảng conntrack của gateway |
+| `scripts/test.sh` | Chạy KB1, KB2 và thuốc, khẳng định từng chữ ký |
+| `cisco/scripts/0-setup.sh` | Dựng lại lab Cisco từ đầu |
+| `cisco/scripts/3-tran-bang-nat.sh`, `3b-gioi-han-theo-may.sh` | KB3: bệnh và thuốc |
+| `cisco/scripts/xem-bang-nat.sh` | Góc nhìn bảng NAT của R1 |
+| `cisco/scripts/test.sh` | Khẳng định chữ ký KB3 (khoảng 1 phút) |
+| `cisco/scripts/don-dep.sh` | Xoá lab Cisco, giữ image |
 
 ---
 
 ## 📝 Câu Hỏi Ôn Tập
 
-1. Ứng dụng báo `Broken pipe` sau khi idle. Bạn được gõ **một** lệnh để biết thủ phạm là NAT hay server. Lệnh đó là gì và bạn đọc gì?
-2. Vì sao cùng một NAT timeout ngắn, TCP đứt còn UDP lại "vẫn chạy"?
-3. `tcp_loose=1` làm ca bệnh biến mất. Có nên bật nó trên production không? Vì sao?
-4. Đã bật keepalive mà vẫn đứt. Bạn kiểm tra điều gì đầu tiên?
-5. Bạn không có quyền vào NAT Gateway của nhà mạng. Kể ra cách chữa bạn **có thể** làm.
+1. Người dùng báo "mạng chập chờn". Câu hỏi đầu tiên nào tách được KB2 khỏi KB3, và vì sao?
+2. Cùng phép thử KB2, vì sao gateway đặt `tcp_loose=0` ra 1/2 còn Linux để mặc định lại ra 2/2?
+3. Khi bảng đầy, vì sao phiên cũ vẫn chạy còn ping lại chết?
+4. `show ip nat statistics` báo `max entry: used 0, missed 0` nhưng kết nối mới vẫn chết. Có nên kết luận NAT không có lỗi không?
+5. Tăng timeout lên thật lớn chữa được KB2. Vì sao cách đó có thể gây ra KB3?
+6. Bạn không có quyền vào NAT Gateway của nhà mạng. Với KB2, kể ra cách chữa bạn **có thể** làm.
 
 ---
 
 ## 🧹 Dọn dẹp Lab
 
 ```bash
-docker compose down -v
+docker compose down -v              # lab Docker
+./cisco/scripts/don-dep.sh          # lab Cisco
 ```

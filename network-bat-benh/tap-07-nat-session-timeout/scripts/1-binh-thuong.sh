@@ -13,9 +13,8 @@ source scripts/lib.sh
 buoc "KB1 — trạng thái khỏe (chưa đụng gì)"
 echo "  nf_conntrack_tcp_timeout_established = $(doc_tcp_timeout)s (mặc định kernel)"
 echo ""
-echo "  Mở 1 kết nối TCP -> GET #1 -> idle 7s -> GET #2 trên CHÍNH kết nối đó:"
-N=$(hai_get_qua_idle 7)
+echo "  Mở 1 kết nối TCP -> GET #1 -> idle 12s -> GET #2 trên CHÍNH kết nối đó:"
+N=$(hai_get_qua_idle 12)
 echo "  👉 Số phản hồi HTTP 200 nhận được: ${N}/2"
 echo ""
-echo "  Session còn nguyên trong conntrack của gateway:"
-xem_conntrack_80 | sed 's/^/     /'
+echo "  Đồng hồ 5 ngày còn xa mới hết, nên idle 12 giây không ảnh hưởng gì. Ghi nhớ mốc 2/2."

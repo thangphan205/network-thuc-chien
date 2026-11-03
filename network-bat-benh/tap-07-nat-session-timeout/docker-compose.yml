@@ -1,5 +1,5 @@
 # ==============================================================================
-# TAP 09 - NAT SESSION TIMEOUT  (topology 3 tang: client -- GATEWAY NAT -- server)
+# TAP 07 - NAT SESSION TIMEOUT (KB2; tran bang NAT o cisco/)  (topology 3 tang: client -- GATEWAY NAT -- server)
 #
 #   LAN CLIENT   172.28.7.0/24   --+
 #                                  |--[ gateway: ip_forward=1, MASQUERADE, conntrack ]--+
