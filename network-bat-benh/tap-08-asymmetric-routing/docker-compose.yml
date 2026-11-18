@@ -1,5 +1,5 @@
 # ==============================================================================
-# TAP 10 - ASYMMETRIC ROUTING  (2 router stateful THAT giua client va server)
+# TAP 08 - ASYMMETRIC ROUTING  (2 router stateful THAT giua client va server)
 #
 #                      +--[ fw-a  .251 / .251 ]--+
 #   LAN client         |                         |        LAN server

@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="10 30 1260 434" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" role="img"
+        aria-labelledby="lab08-topo-title lab08-topo-desc">
+        <title id="lab08-topo-title">Kiến trúc lab Asymmetric Routing</title>
+        <desc id="lab08-topo-desc">Hai LAN: client Alpine 172.28.8.20 ở LAN 172.28.8.0/24, server nginx 172.28.18.10 ở LAN
+          172.28.18.0/24. Hai router stateful fw-a (.251 ở cả hai LAN) và fw-b (.252) nằm song song giữa hai LAN, mỗi cái
+          giữ bảng conntrack riêng, không đồng bộ. Client luôn đi ra qua fw-a. Ba tab: khỏe (server về qua fw-a, curl 200),
+          bất đối xứng (server về qua fw-b, fw-b chưa thấy SYN nên DROP SYN-ACK là gói INVALID, curl 000 dù ping thông),
+          chữa bằng SNAT tại fw-a (server trả lời về 172.28.18.251 cùng LAN, đường về tự đối xứng, curl 200 nhưng nginx mất
+          IP thật của client).
+        </desc>
+
+        <defs>
+          <style>@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500;600;700&amp;display=swap');.kb2{display:none}.kb3{display:none}.kb1{display:inline}</style>
+          <marker id="arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 9 3.5, 0 7" fill="#4f5d75" />
+          </marker>
+          <marker id="arrow-accent" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 9 3.5, 0 7" fill="#eb6c36" />
+          </marker>
+          <marker id="arrow-link" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 9 3.5, 0 7" fill="#2e5aa8" />
+          </marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5" />
+
+        <!-- ============ ZONES ============ -->
+        <rect x="20" y="40" width="540" height="372" rx="8" fill="rgba(79,93,117,0.06)" stroke="rgba(79,93,117,0.35)" stroke-width="1.2" />
+        <text x="36" y="62" fill="rgba(45,49,66,0.55)" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.08em">LAN CLIENT · 172.28.8.0/24</text>
+        <rect x="720" y="40" width="540" height="372" rx="8" fill="rgba(79,93,117,0.06)" stroke="rgba(79,93,117,0.35)" stroke-width="1.2" />
+        <text x="1244" y="62" fill="rgba(45,49,66,0.55)" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.08em">LAN SERVER · 172.28.18.0/24</text>
+
+        <!-- ============ CABLES (LAN segments) ============ -->
+        <g fill="none" stroke="rgba(45,49,66,0.20)" stroke-width="2.4" stroke-linejoin="round">
+          <path d="M280 214 H390 V130 H500" />
+          <path d="M280 242 H390 V330 H500" />
+          <path d="M780 130 H890 V214 H1000" />
+          <path d="M780 330 H890 V242 H1000" />
+        </g>
+
+        <!-- ============ NODES ============ -->
+        <!-- client -->
+        <rect x="60" y="176" width="220" height="104" rx="8" fill="#f5f5f5" /><rect x="60" y="176" width="220" height="104" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1.6" />
+        <text x="170" y="210" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">client</text>
+        <text x="170" y="234" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">.20 · Alpine · curl</text>
+        <text x="170" y="260" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">đi ra → fw-a .251</text>
+
+        <!-- server -->
+        <rect x="1000" y="176" width="220" height="104" rx="8" fill="#f5f5f5" /><rect x="1000" y="176" width="220" height="104" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1.6" />
+        <text x="1110" y="210" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">server</text>
+        <text x="1110" y="234" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">.10 · nginx :80</text>
+
+        <!-- fw-a -->
+        <rect x="500" y="64" width="280" height="132" rx="8" fill="#f5f5f5" /><rect x="500" y="64" width="280" height="132" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1.6" />
+        <text x="640" y="96" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">fw-a</text>
+        <text x="514" y="96" fill="#4f5d75" font-size="15" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start">.251</text>
+        <text x="766" y="96" fill="#4f5d75" font-size="15" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">.251</text>
+        <text x="640" y="118" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">stateful · conntrack riêng</text>
+        <line x1="514" y1="132" x2="766" y2="132" stroke="rgba(45,49,66,0.12)" stroke-width="1" />
+
+        <!-- fw-b -->
+        <rect x="500" y="264" width="280" height="132" rx="8" fill="#f5f5f5" /><rect x="500" y="264" width="280" height="132" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1.6" />
+        <text x="640" y="296" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">fw-b</text>
+        <text x="514" y="296" fill="#4f5d75" font-size="15" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start">.252</text>
+        <text x="766" y="296" fill="#4f5d75" font-size="15" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">.252</text>
+        <text x="640" y="318" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">stateful · conntrack riêng</text>
+        <line x1="514" y1="332" x2="766" y2="332" stroke="rgba(45,49,66,0.12)" stroke-width="1" />
+
+        <!-- no state sync between fw-a and fw-b -->
+        <line x1="640" y1="196" x2="640" y2="264" stroke="#7a8399" stroke-width="1.4" stroke-dasharray="5 4" />
+        <rect x="552" y="221" width="176" height="19" rx="2" fill="#f5f5f5" />
+        <text x="640" y="235" fill="#7a8399" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.03em">KHÔNG đồng bộ state</text>
+
+        <!-- readout boxes -->
+        <rect x="60" y="300" width="220" height="92" rx="6" fill="#ffffff" stroke="rgba(45,49,66,0.25)" stroke-width="1.2" />
+        <text x="72" y="318" fill="#7a8399" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.10em">ĐO TỪ CLIENT</text>
+        <text x="72" y="348" fill="#7a8399" font-size="14" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">ping</text>
+        <text x="72" y="378" fill="#7a8399" font-size="14" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">curl</text>
+
+        <rect x="1000" y="300" width="220" height="92" rx="6" fill="#ffffff" stroke="rgba(45,49,66,0.25)" stroke-width="1.2" />
+        <text x="1012" y="318" fill="#7a8399" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.10em">NGINX THẤY NGUỒN</text>
+
+        <!-- ============ KB1 — symmetric ============ -->
+        <g class="kb1">
+          <g fill="none" stroke-width="1.8" stroke-linejoin="round">
+            <path d="M280 206 H382 V122 H498" stroke="#4f5d75" marker-end="url(#arrow)" />
+            <path d="M780 122 H898 V206 H998" stroke="#4f5d75" marker-end="url(#arrow)" />
+            <path d="M1000 222 H882 V138 H782" stroke="#2e5aa8" marker-end="url(#arrow-link)" />
+            <path d="M500 138 H398 V222 H282" stroke="#2e5aa8" marker-end="url(#arrow-link)" />
+          </g>
+          <rect x="420" y="101" width="42" height="18" rx="2" fill="#f5f5f5" /><text x="441" y="114" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">SYN</text>
+          <rect x="818" y="101" width="42" height="18" rx="2" fill="#f5f5f5" /><text x="839" y="114" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">SYN</text>
+          <rect x="414" y="143" width="62" height="18" rx="2" fill="#f5f5f5" /><text x="445" y="156" fill="#2e5aa8" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">SYN-ACK</text>
+          <rect x="804" y="143" width="62" height="18" rx="2" fill="#f5f5f5" /><text x="835" y="156" fill="#2e5aa8" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">SYN-ACK</text>
+
+          <text x="640" y="158" fill="#2e5aa8" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">ESTABLISHED</text>
+          <text x="640" y="180" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">thấy đủ SYN và SYN-ACK</text>
+          <text x="640" y="358" fill="#4f5d75" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">0 session · 0 INVALID</text>
+          <text x="640" y="380" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">không thấy gì — mốc so sánh</text>
+
+          <text x="1110" y="260" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">về → fw-a .251</text>
+          <text x="268" y="348" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="end">THÔNG</text>
+          <text x="268" y="378" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="end">200</text>
+          <text x="1012" y="350" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">172.28.8.20</text>
+          <text x="1012" y="376" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">IP thật của client</text>
+        </g>
+
+        <!-- ============ KB2 — asymmetric, both stateful ============ -->
+        <g class="kb2">
+          <g fill="none" stroke-width="1.8" stroke-linejoin="round">
+            <path d="M280 206 H382 V122 H498" stroke="#4f5d75" marker-end="url(#arrow)" />
+            <path d="M780 122 H898 V206 H998" stroke="#4f5d75" marker-end="url(#arrow)" />
+            <path d="M1000 242 H890 V330 H792" stroke="#eb6c36" stroke-width="2.2" />
+          </g>
+          <rect x="420" y="101" width="42" height="18" rx="2" fill="#f5f5f5" /><text x="441" y="114" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">SYN</text>
+          <rect x="818" y="101" width="42" height="18" rx="2" fill="#f5f5f5" /><text x="839" y="114" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">SYN</text>
+          <rect x="806" y="309" width="62" height="18" rx="2" fill="#f5f5f5" /><text x="837" y="322" fill="#eb6c36" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">SYN-ACK</text>
+          <circle cx="780" cy="330" r="10" fill="#f5f5f5" stroke="#eb6c36" stroke-width="2" /><line x1="774.3" y1="324.3" x2="785.7" y2="335.7" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" /><line x1="785.7" y1="324.3" x2="774.3" y2="335.7" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" />
+
+          <text x="640" y="158" fill="#eb6c36" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">SYN_SENT [UNREPLIED]</text>
+          <text x="640" y="180" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">thấy SYN, chờ SYN-ACK mãi</text>
+          <rect x="500" y="264" width="280" height="132" rx="8" fill="none" stroke="#eb6c36" stroke-width="1.8" />
+          <text x="640" y="358" fill="#eb6c36" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">0 session · INVALID ↑</text>
+          <text x="640" y="380" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">SYN-ACK của phiên lạ → DROP</text>
+
+          <text x="1110" y="260" fill="#eb6c36" font-size="13" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">về → fw-b .252</text>
+          <text x="268" y="348" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="end">THÔNG</text>
+          <text x="268" y="378" fill="#eb6c36" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="end">000</text>
+          <text x="1012" y="350" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">—</text>
+          <text x="1012" y="376" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">bắt tay chưa bao giờ xong</text>
+        </g>
+
+        <!-- ============ KB3 — SNAT at fw-a ============ -->
+        <g class="kb3">
+          <g fill="none" stroke-width="1.8" stroke-linejoin="round">
+            <path d="M280 206 H382 V122 H498" stroke="#4f5d75" marker-end="url(#arrow)" />
+            <path d="M780 122 H898 V206 H998" stroke="#4f5d75" marker-end="url(#arrow)" />
+            <path d="M1000 222 H882 V138 H782" stroke="#2e5aa8" marker-end="url(#arrow-link)" />
+            <path d="M500 138 H398 V222 H282" stroke="#2e5aa8" marker-end="url(#arrow-link)" />
+          </g>
+          <rect x="400" y="101" width="82" height="18" rx="2" fill="#f5f5f5" /><text x="441" y="114" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">src .20</text>
+          <rect x="794" y="101" width="90" height="18" rx="2" fill="#f5f5f5" /><text x="839" y="114" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">src .251</text>
+          <rect x="404" y="143" width="82" height="18" rx="2" fill="#f5f5f5" /><text x="445" y="156" fill="#2e5aa8" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">dst .20</text>
+          <rect x="790" y="143" width="90" height="18" rx="2" fill="#f5f5f5" /><text x="835" y="156" fill="#2e5aa8" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">dst .251</text>
+
+          <text x="640" y="158" fill="#2e5aa8" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">MASQUERADE .20 → .251</text>
+          <text x="640" y="180" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">ESTABLISHED · thấy đủ 2 chiều</text>
+          <text x="640" y="358" fill="#4f5d75" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">0 session · 0 INVALID</text>
+          <text x="640" y="380" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">route .252 còn, không dùng tới</text>
+
+          <text x="1110" y="260" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">về → fw-b .252 (giữ nguyên)</text>
+          <text x="268" y="348" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="end">THÔNG</text>
+          <text x="268" y="378" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="end">200</text>
+          <text x="1012" y="350" fill="#eb6c36" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">172.28.18.251</text>
+          <text x="1012" y="376" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">fw-a — mất IP thật client</text>
+        </g>
+
+        <!-- ============ LEGEND ============ -->
+        <line x1="20" y1="424" x2="1260" y2="424" stroke="rgba(45,49,66,0.12)" stroke-width="1" />
+        <text x="20" y="450" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.14em">CHÚ GIẢI</text>
+        <line x1="116" y1="445" x2="144" y2="445" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+        <text x="156" y="450" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">gói đi (SYN)</text>
+        <line x1="270" y1="445" x2="298" y2="445" stroke="#2e5aa8" stroke-width="1.8" marker-end="url(#arrow-link)" />
+        <text x="310" y="450" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">gói về · phiên sống</text>
+        <line x1="460" y1="445" x2="488" y2="445" stroke="#eb6c36" stroke-width="2.2" />
+        <text x="500" y="450" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">gói về lệch đường</text>
+        <circle cx="652" cy="445" r="9" fill="#f5f5f5" stroke="#eb6c36" stroke-width="2" /><line x1="646.8" y1="439.8" x2="657.2" y2="450.2" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" /><line x1="657.2" y1="439.8" x2="646.8" y2="450.2" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" />
+        <text x="670" y="450" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">DROP · ctstate INVALID</text>
+        <line x1="856" y1="445" x2="884" y2="445" stroke="rgba(45,49,66,0.20)" stroke-width="2.4" />
+        <text x="896" y="450" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">LAN segment</text>
+        <line x1="1006" y1="445" x2="1034" y2="445" stroke="#7a8399" stroke-width="1.4" stroke-dasharray="5 4" />
+        <text x="1046" y="450" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">conntrack không đồng bộ</text>
+      </svg>

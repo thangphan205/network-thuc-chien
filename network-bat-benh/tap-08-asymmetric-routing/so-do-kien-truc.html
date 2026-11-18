@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tập 08 · Kiến trúc lab Asymmetric Routing</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --color-paper: #f5f5f5;
+      --color-ink: #2d3142;
+      --color-muted: #4f5d75;
+      --color-soft: #7a8399;
+      --color-rule: rgba(45, 49, 66, 0.12);
+      --color-accent: #eb6c36;
+      --color-accent-tint: rgba(235, 108, 54, 0.08);
+      --color-link: #2e5aa8;
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', 'Times New Roman', serif;
+      --font-mono: 'Geist Mono', ui-monospace, Menlo, monospace;
+    }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      overflow: hidden;
+    }
+
+    .stage {
+      position: relative;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 1.25rem 1.75rem 1.5rem;
+      overflow: hidden;
+    }
+
+    /* ── Tab inputs — absolute so they leave no layout footprint ── */
+    .tabin {
+      position: absolute;
+      opacity: 0;
+      width: 1px;
+      height: 1px;
+      pointer-events: none;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    .header {
+      flex: none;
+      margin-bottom: 0.5rem;
+    }
+
+    .header-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.25rem;
+    }
+
+    h1 {
+      font-family: var(--font-sans);
+      font-size: clamp(2rem, 2.6vw + 0.5rem, 2.75rem);
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      line-height: 1.1;
+    }
+
+    /* ── Diagram — takes all remaining height ────────────────────── */
+    .diagram {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .diagram svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Per-scenario SVG layers */
+    .kb1,
+    .kb2,
+    .kb3 {
+      display: none;
+    }
+
+    #t1:checked~.diagram .kb1,
+    #t2:checked~.diagram .kb2,
+    #t3:checked~.diagram .kb3 {
+      display: inline;
+    }
+
+    /* ── Tab bar ────────────────────────────────────────────────── */
+    .tabbar {
+      flex: none;
+      display: flex;
+      gap: 0.5rem;
+      margin: 0.5rem 0 0.75rem;
+    }
+
+    .tabbar label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--color-rule);
+      border-radius: 6px;
+      background: #ffffff;
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--color-soft);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .tabbar label .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: rgba(45, 49, 66, 0.20);
+      flex: none;
+    }
+
+    #t1:checked~.tabbar label[for="t1"],
+    #t2:checked~.tabbar label[for="t2"],
+    #t3:checked~.tabbar label[for="t3"] {
+      border-color: var(--color-accent);
+      background: var(--color-accent-tint);
+      color: var(--color-ink);
+    }
+
+    #t1:checked~.tabbar label[for="t1"] .dot,
+    #t2:checked~.tabbar label[for="t2"] .dot,
+    #t3:checked~.tabbar label[for="t3"] .dot {
+      background: var(--color-accent);
+    }
+
+    #t1:focus-visible~.tabbar label[for="t1"],
+    #t2:focus-visible~.tabbar label[for="t2"],
+    #t3:focus-visible~.tabbar label[for="t3"] {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+
+    /* ── Panels ─────────────────────────────────────────────────── */
+    .panels {
+      flex: none;
+    }
+
+    .panel {
+      display: none;
+      gap: 1.5rem;
+      background: #ffffff;
+      border: 1px solid var(--color-rule);
+      border-radius: 6px;
+      padding: 1rem 1.25rem;
+    }
+
+    #t1:checked~.panels .pane1,
+    #t2:checked~.panels .pane2,
+    #t3:checked~.panels .pane3 {
+      display: flex;
+    }
+
+    .cmd {
+      flex: 0 0 38%;
+      border-right: 1px solid rgba(45, 49, 66, 0.08);
+      padding-right: 1.25rem;
+    }
+
+    .cmd .file {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--color-soft);
+      margin-bottom: 0.4rem;
+    }
+
+    .cmd code {
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+      line-height: 1.45;
+      color: var(--color-ink);
+      word-break: break-word;
+    }
+
+    .panel ul {
+      list-style: none;
+      color: var(--color-muted);
+      font-size: 1.0625rem;
+      line-height: 1.45;
+      align-self: center;
+    }
+
+    .panel li {
+      margin-bottom: 0.3rem;
+      padding-left: 1.5rem;
+      position: relative;
+    }
+
+    .panel li:last-child {
+      margin-bottom: 0;
+    }
+
+    .panel li::before {
+      content: '—';
+      position: absolute;
+      left: 0;
+      color: rgba(45, 49, 66, 0.28);
+    }
+
+    .panel code {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: var(--color-ink);
+    }
+
+    .panel strong {
+      color: var(--color-ink);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="stage">
+
+    <input class="tabin" type="radio" name="kb" id="t1" checked>
+    <input class="tabin" type="radio" name="kb" id="t2">
+    <input class="tabin" type="radio" name="kb" id="t3">
+
+    <div class="header">
+      <p class="header-eyebrow">Network Bắt Bệnh · Tập 08</p>
+      <h1>Ping thông, web chết — lab Asymmetric Routing</h1>
+    </div>
+
+    <div class="diagram">
+      <svg viewBox="10 30 1260 434" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" role="img"
+        aria-labelledby="lab08-topo-title lab08-topo-desc">
+        <title id="lab08-topo-title">Kiến trúc lab Asymmetric Routing</title>
+        <desc id="lab08-topo-desc">Hai LAN: client Alpine 172.28.8.20 ở LAN 172.28.8.0/24, server nginx 172.28.18.10 ở LAN
+          172.28.18.0/24. Hai router stateful fw-a (.251 ở cả hai LAN) và fw-b (.252) nằm song song giữa hai LAN, mỗi cái
+          giữ bảng conntrack riêng, không đồng bộ. Client luôn đi ra qua fw-a. Ba tab: khỏe (server về qua fw-a, curl 200),
+          bất đối xứng (server về qua fw-b, fw-b chưa thấy SYN nên DROP SYN-ACK là gói INVALID, curl 000 dù ping thông),
+          chữa bằng SNAT tại fw-a (server trả lời về 172.28.18.251 cùng LAN, đường về tự đối xứng, curl 200 nhưng nginx mất
+          IP thật của client).
+        </desc>
+
+        <defs>
+          <marker id="arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 9 3.5, 0 7" fill="#4f5d75" />
+          </marker>
+          <marker id="arrow-accent" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 9 3.5, 0 7" fill="#eb6c36" />
+          </marker>
+          <marker id="arrow-link" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+            <polygon points="0 0, 9 3.5, 0 7" fill="#2e5aa8" />
+          </marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5" />
+
+        <!-- ============ ZONES ============ -->
+        <rect x="20" y="40" width="540" height="372" rx="8" fill="rgba(79,93,117,0.06)" stroke="rgba(79,93,117,0.35)" stroke-width="1.2" />
+        <text x="36" y="62" fill="rgba(45,49,66,0.55)" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.08em">LAN CLIENT · 172.28.8.0/24</text>
+        <rect x="720" y="40" width="540" height="372" rx="8" fill="rgba(79,93,117,0.06)" stroke="rgba(79,93,117,0.35)" stroke-width="1.2" />
+        <text x="1244" y="62" fill="rgba(45,49,66,0.55)" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.08em">LAN SERVER · 172.28.18.0/24</text>
+
+        <!-- ============ CABLES (LAN segments) ============ -->
+        <g fill="none" stroke="rgba(45,49,66,0.20)" stroke-width="2.4" stroke-linejoin="round">
+          <path d="M280 214 H390 V130 H500" />
+          <path d="M280 242 H390 V330 H500" />
+          <path d="M780 130 H890 V214 H1000" />
+          <path d="M780 330 H890 V242 H1000" />
+        </g>
+
+        <!-- ============ NODES ============ -->
+        <!-- client -->
+        <rect x="60" y="176" width="220" height="104" rx="8" fill="#f5f5f5" /><rect x="60" y="176" width="220" height="104" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1.6" />
+        <text x="170" y="210" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">client</text>
+        <text x="170" y="234" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">.20 · Alpine · curl</text>
+        <text x="170" y="260" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">đi ra → fw-a .251</text>
+
+        <!-- server -->
+        <rect x="1000" y="176" width="220" height="104" rx="8" fill="#f5f5f5" /><rect x="1000" y="176" width="220" height="104" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1.6" />
+        <text x="1110" y="210" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">server</text>
+        <text x="1110" y="234" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">.10 · nginx :80</text>
+
+        <!-- fw-a -->
+        <rect x="500" y="64" width="280" height="132" rx="8" fill="#f5f5f5" /><rect x="500" y="64" width="280" height="132" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1.6" />
+        <text x="640" y="96" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">fw-a</text>
+        <text x="514" y="96" fill="#4f5d75" font-size="15" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start">.251</text>
+        <text x="766" y="96" fill="#4f5d75" font-size="15" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">.251</text>
+        <text x="640" y="118" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">stateful · conntrack riêng</text>
+        <line x1="514" y1="132" x2="766" y2="132" stroke="rgba(45,49,66,0.12)" stroke-width="1" />
+
+        <!-- fw-b -->
+        <rect x="500" y="264" width="280" height="132" rx="8" fill="#f5f5f5" /><rect x="500" y="264" width="280" height="132" rx="8" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1.6" />
+        <text x="640" y="296" fill="#2d3142" font-size="22" font-weight="700" font-family="'Geist', sans-serif" text-anchor="middle">fw-b</text>
+        <text x="514" y="296" fill="#4f5d75" font-size="15" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start">.252</text>
+        <text x="766" y="296" fill="#4f5d75" font-size="15" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end">.252</text>
+        <text x="640" y="318" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">stateful · conntrack riêng</text>
+        <line x1="514" y1="332" x2="766" y2="332" stroke="rgba(45,49,66,0.12)" stroke-width="1" />
+
+        <!-- no state sync between fw-a and fw-b -->
+        <line x1="640" y1="196" x2="640" y2="264" stroke="#7a8399" stroke-width="1.4" stroke-dasharray="5 4" />
+        <rect x="552" y="221" width="176" height="19" rx="2" fill="#f5f5f5" />
+        <text x="640" y="235" fill="#7a8399" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.03em">KHÔNG đồng bộ state</text>
+
+        <!-- readout boxes -->
+        <rect x="60" y="300" width="220" height="92" rx="6" fill="#ffffff" stroke="rgba(45,49,66,0.25)" stroke-width="1.2" />
+        <text x="72" y="318" fill="#7a8399" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.10em">ĐO TỪ CLIENT</text>
+        <text x="72" y="348" fill="#7a8399" font-size="14" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">ping</text>
+        <text x="72" y="378" fill="#7a8399" font-size="14" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="start">curl</text>
+
+        <rect x="1000" y="300" width="220" height="92" rx="6" fill="#ffffff" stroke="rgba(45,49,66,0.25)" stroke-width="1.2" />
+        <text x="1012" y="318" fill="#7a8399" font-size="11" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.10em">NGINX THẤY NGUỒN</text>
+
+        <!-- ============ KB1 — symmetric ============ -->
+        <g class="kb1">
+          <g fill="none" stroke-width="1.8" stroke-linejoin="round">
+            <path d="M280 206 H382 V122 H498" stroke="#4f5d75" marker-end="url(#arrow)" />
+            <path d="M780 122 H898 V206 H998" stroke="#4f5d75" marker-end="url(#arrow)" />
+            <path d="M1000 222 H882 V138 H782" stroke="#2e5aa8" marker-end="url(#arrow-link)" />
+            <path d="M500 138 H398 V222 H282" stroke="#2e5aa8" marker-end="url(#arrow-link)" />
+          </g>
+          <rect x="420" y="101" width="42" height="18" rx="2" fill="#f5f5f5" /><text x="441" y="114" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">SYN</text>
+          <rect x="818" y="101" width="42" height="18" rx="2" fill="#f5f5f5" /><text x="839" y="114" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">SYN</text>
+          <rect x="414" y="143" width="62" height="18" rx="2" fill="#f5f5f5" /><text x="445" y="156" fill="#2e5aa8" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">SYN-ACK</text>
+          <rect x="804" y="143" width="62" height="18" rx="2" fill="#f5f5f5" /><text x="835" y="156" fill="#2e5aa8" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">SYN-ACK</text>
+
+          <text x="640" y="158" fill="#2e5aa8" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">ESTABLISHED</text>
+          <text x="640" y="180" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">thấy đủ SYN và SYN-ACK</text>
+          <text x="640" y="358" fill="#4f5d75" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">0 session · 0 INVALID</text>
+          <text x="640" y="380" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">không thấy gì — mốc so sánh</text>
+
+          <text x="1110" y="260" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">về → fw-a .251</text>
+          <text x="268" y="348" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="end">THÔNG</text>
+          <text x="268" y="378" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="end">200</text>
+          <text x="1012" y="350" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">172.28.8.20</text>
+          <text x="1012" y="376" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">IP thật của client</text>
+        </g>
+
+        <!-- ============ KB2 — asymmetric, both stateful ============ -->
+        <g class="kb2">
+          <g fill="none" stroke-width="1.8" stroke-linejoin="round">
+            <path d="M280 206 H382 V122 H498" stroke="#4f5d75" marker-end="url(#arrow)" />
+            <path d="M780 122 H898 V206 H998" stroke="#4f5d75" marker-end="url(#arrow)" />
+            <path d="M1000 242 H890 V330 H792" stroke="#eb6c36" stroke-width="2.2" />
+          </g>
+          <rect x="420" y="101" width="42" height="18" rx="2" fill="#f5f5f5" /><text x="441" y="114" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">SYN</text>
+          <rect x="818" y="101" width="42" height="18" rx="2" fill="#f5f5f5" /><text x="839" y="114" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">SYN</text>
+          <rect x="806" y="309" width="62" height="18" rx="2" fill="#f5f5f5" /><text x="837" y="322" fill="#eb6c36" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">SYN-ACK</text>
+          <circle cx="780" cy="330" r="10" fill="#f5f5f5" stroke="#eb6c36" stroke-width="2" /><line x1="774.3" y1="324.3" x2="785.7" y2="335.7" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" /><line x1="785.7" y1="324.3" x2="774.3" y2="335.7" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" />
+
+          <text x="640" y="158" fill="#eb6c36" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">SYN_SENT [UNREPLIED]</text>
+          <text x="640" y="180" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">thấy SYN, chờ SYN-ACK mãi</text>
+          <rect x="500" y="264" width="280" height="132" rx="8" fill="none" stroke="#eb6c36" stroke-width="1.8" />
+          <text x="640" y="358" fill="#eb6c36" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">0 session · INVALID ↑</text>
+          <text x="640" y="380" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">SYN-ACK của phiên lạ → DROP</text>
+
+          <text x="1110" y="260" fill="#eb6c36" font-size="13" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">về → fw-b .252</text>
+          <text x="268" y="348" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="end">THÔNG</text>
+          <text x="268" y="378" fill="#eb6c36" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="end">000</text>
+          <text x="1012" y="350" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">—</text>
+          <text x="1012" y="376" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">bắt tay chưa bao giờ xong</text>
+        </g>
+
+        <!-- ============ KB3 — SNAT at fw-a ============ -->
+        <g class="kb3">
+          <g fill="none" stroke-width="1.8" stroke-linejoin="round">
+            <path d="M280 206 H382 V122 H498" stroke="#4f5d75" marker-end="url(#arrow)" />
+            <path d="M780 122 H898 V206 H998" stroke="#4f5d75" marker-end="url(#arrow)" />
+            <path d="M1000 222 H882 V138 H782" stroke="#2e5aa8" marker-end="url(#arrow-link)" />
+            <path d="M500 138 H398 V222 H282" stroke="#2e5aa8" marker-end="url(#arrow-link)" />
+          </g>
+          <rect x="400" y="101" width="82" height="18" rx="2" fill="#f5f5f5" /><text x="441" y="114" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">src .20</text>
+          <rect x="794" y="101" width="90" height="18" rx="2" fill="#f5f5f5" /><text x="839" y="114" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">src .251</text>
+          <rect x="404" y="143" width="82" height="18" rx="2" fill="#f5f5f5" /><text x="445" y="156" fill="#2e5aa8" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">dst .20</text>
+          <rect x="790" y="143" width="90" height="18" rx="2" fill="#f5f5f5" /><text x="835" y="156" fill="#2e5aa8" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="middle">dst .251</text>
+
+          <text x="640" y="158" fill="#2e5aa8" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">MASQUERADE .20 → .251</text>
+          <text x="640" y="180" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">ESTABLISHED · thấy đủ 2 chiều</text>
+          <text x="640" y="358" fill="#4f5d75" font-size="15" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="middle">0 session · 0 INVALID</text>
+          <text x="640" y="380" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">route .252 còn, không dùng tới</text>
+
+          <text x="1110" y="260" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist Mono', monospace" text-anchor="middle">về → fw-b .252 (giữ nguyên)</text>
+          <text x="268" y="348" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="end">THÔNG</text>
+          <text x="268" y="378" fill="#2d3142" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="end">200</text>
+          <text x="1012" y="350" fill="#eb6c36" font-size="16" font-weight="700" font-family="'Geist Mono', monospace" text-anchor="start">172.28.18.251</text>
+          <text x="1012" y="376" fill="#7a8399" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">fw-a — mất IP thật client</text>
+        </g>
+
+        <!-- ============ LEGEND ============ -->
+        <line x1="20" y1="424" x2="1260" y2="424" stroke="rgba(45,49,66,0.12)" stroke-width="1" />
+        <text x="20" y="450" fill="#4f5d75" font-size="12" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0.14em">CHÚ GIẢI</text>
+        <line x1="116" y1="445" x2="144" y2="445" stroke="#4f5d75" stroke-width="1.8" marker-end="url(#arrow)" />
+        <text x="156" y="450" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">gói đi (SYN)</text>
+        <line x1="270" y1="445" x2="298" y2="445" stroke="#2e5aa8" stroke-width="1.8" marker-end="url(#arrow-link)" />
+        <text x="310" y="450" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">gói về · phiên sống</text>
+        <line x1="460" y1="445" x2="488" y2="445" stroke="#eb6c36" stroke-width="2.2" />
+        <text x="500" y="450" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">gói về lệch đường</text>
+        <circle cx="652" cy="445" r="9" fill="#f5f5f5" stroke="#eb6c36" stroke-width="2" /><line x1="646.8" y1="439.8" x2="657.2" y2="450.2" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" /><line x1="657.2" y1="439.8" x2="646.8" y2="450.2" stroke="#eb6c36" stroke-width="2.4" stroke-linecap="round" />
+        <text x="670" y="450" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">DROP · ctstate INVALID</text>
+        <line x1="856" y1="445" x2="884" y2="445" stroke="rgba(45,49,66,0.20)" stroke-width="2.4" />
+        <text x="896" y="450" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">LAN segment</text>
+        <line x1="1006" y1="445" x2="1034" y2="445" stroke="#7a8399" stroke-width="1.4" stroke-dasharray="5 4" />
+        <text x="1046" y="450" fill="#4f5d75" font-size="13" font-weight="500" font-family="'Geist', sans-serif" text-anchor="start">conntrack không đồng bộ</text>
+      </svg>
+    </div>
+    <nav class="tabbar">
+      <label for="t1"><span class="dot"></span>KB1 Khỏe (và Thuốc 2a: Sửa route)</label>
+      <label for="t2"><span class="dot"></span>KB2 Bất đối xứng ⭐</label>
+      <label for="t3"><span class="dot"></span>Thuốc 2b: Chữa bằng SNAT</label>
+    </nav>
+    <div class="panels">
+      <section class="panel pane1">
+        <div class="cmd">
+          <span class="file">scripts/1-binh-thuong.sh · scripts/2a-chua-route.sh</span>
+          <code>ip route replace 172.28.8.0/24 via 172.28.18.251</code>
+        </div>
+        <ul>
+          <li>SYN và SYN-ACK cùng qua <strong>fw-a</strong> → fw-a thấy đủ hai chiều, <code>curl</code> 200, giữ nguyên IP thật client</li>
+          <li><strong>fw-b</strong>: 0 session, 0 gói INVALID — đây vừa là mốc khỏe (KB1) vừa là kết quả khi chữa gốc bằng sửa route (Thuốc 2a)</li>
+          <li>Hai firewall giữ bảng conntrack <strong>riêng</strong>, không ai báo cho ai</li>
+        </ul>
+      </section>
+      <section class="panel pane2">
+        <div class="cmd">
+          <span class="file">scripts/2-bat-doi-xung-stateful.sh · trên server</span>
+          <code>ip route replace 172.28.8.0/24 via 172.28.18.252</code>
+        </div>
+        <ul>
+          <li><code>ping</code> thông (luật cho ICMP qua không xét state), <code>curl</code> <strong>000</strong> — chết ngay bước bắt tay</li>
+          <li>fw-a: <code>SYN_SENT [UNREPLIED]</code> · fw-b: 0 session, counter <code>INVALID</code> tăng</li>
+          <li>Không thiết bị nào hỏng riêng lẻ — hỏng ở chỗ đường về đi qua firewall <strong>chưa từng thấy SYN</strong></li>
+        </ul>
+      </section>
+      <section class="panel pane3">
+        <div class="cmd">
+          <span class="file">scripts/2b-chua-snat.sh · trên fw-a (khi không sửa được route)</span>
+          <code>iptables -t nat -A POSTROUTING -s 172.28.8.0/24 -d 172.28.18.0/24 -j MASQUERADE</code>
+        </div>
+        <ul>
+          <li>Route server <strong>vẫn</strong> trỏ fw-b — nhưng trả lời tới <code>.251</code> cùng LAN, đi thẳng về fw-a</li>
+          <li><code>curl</code> 200, fw-b 0 gói INVALID — đường về tự đối xứng</li>
+          <li>Cái giá: nginx thấy nguồn <code>172.28.18.251</code>, mất IP thật client. Chữa gốc: sửa route (Thuốc 2a)</li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

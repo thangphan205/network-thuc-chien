@@ -10,7 +10,8 @@
 #   moi firewall giu bang conntrack RIENG, va chi tha goi cua ket noi ma no DA THAY
 #   tu dau. Duong ve di qua firewall CHUA TUNG THAY SYN -> goi bi coi INVALID -> DROP.
 #
-#   Ping van thong vi ICMP echo khong can trang thai ket noi de duoc phep.
+#   Ping van thong vi luat cho ICMP qua KHONG xet trang thai (dung truoc luat INVALID).
+#   Neu ICMP cung di qua conntrack thi echo-reply ve lech duong cung bi DROP, ping chet theo.
 # ==============================================================================
 CLIENT=lab08-client
 SERVER=lab08-server
@@ -86,6 +87,15 @@ curl_thu() {
 }
 ping_thu() {
     docker exec $CLIENT ping -c 2 -W 1 $IP_SERVER >/dev/null 2>&1 && echo THONG || echo DUT
+}
+# ping tu server ve client (chieu nguoc): hook "ping 2 chieu" cua ca benh
+ping_nguoc() {
+    docker exec $SERVER ping -c 2 -W 1 $IP_CLIENT >/dev/null 2>&1 && echo THONG || echo DUT
+}
+# curl -v rut gon: tach "chua bat tay xong" (KB2) voi "bat tay xong nhung khong co du lieu"
+curl_chi_tiet() {
+    docker exec $CLIENT curl -sv -o /dev/null --connect-timeout 3 --max-time 5 http://$IP_SERVER/ 2>&1 \
+      | grep -E 'Connected to|timed out' | sed 's/^\* */     /'
 }
 # curl exit code (0=ok, 28=timeout, 7=refused)
 curl_exit() {
