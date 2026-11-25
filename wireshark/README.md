@@ -10,11 +10,7 @@
 
 ## GeoIP Maxmind Database
 
-| Database    | Download |
-| -------- | ------- |
-| Country | <https://share.9ping.cloud/wireshark/GeoLite2-Country.mmdb> |
-|City| <https://share.9ping.cloud/wireshark/GeoLite2-City.mmdb>|
-|ASN| <https://share.9ping.cloud/wireshark/GeoLite2-ASN.mmdb>|
+Link GG Drive: https://drive.google.com/drive/folders/11bU41Obn6ZmdYCsYGUk8w4RGygc-KiC8?usp=sharing
 
 ## tcpdump
 
